@@ -122,7 +122,7 @@ mock.RemovePath("temp/cache.dat")
 ## 📌 Installation
 
 ```bash
-go get github.com/yourusername/mockfs@latest
+go get github.com/balinomad/go-mockfs@latest
 ```
 
 ## 📘 API Reference
@@ -242,4 +242,4 @@ func TestTimeoutHandling(t *testing.T) {
 
 ## ⚖️ License
 
-[License Type] — see `LICENSE` file for details.
+MIT License — see `LICENSE` file for details.
