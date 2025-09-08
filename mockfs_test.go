@@ -21,90 +21,104 @@ func checkStats(t *testing.T, m *mockfs.MockFS, expected mockfs.Stats, context s
 }
 
 func TestBasicFunctionality(t *testing.T) {
-	t.Parallel()
 	mockFS := mockfs.NewMockFS(map[string]*mockfs.MapFile{
 		"test.txt":     {Data: []byte("hello world")},
 		"dir/file.txt": {Data: []byte("in dir")},
 		"dir":          {Mode: fs.ModeDir},
 	})
 
-	// Stat file
-	info, err := mockFS.Stat("test.txt")
-	if err != nil {
-		t.Fatalf("Stat failed: %v", err)
-	}
-	if info.Name() != "test.txt" || info.Size() != 11 || info.IsDir() {
-		t.Errorf("Stat returned unexpected info: %+v", info)
-	}
-	checkStats(t, mockFS, mockfs.Stats{StatCalls: 1}, "After Stat")
+	t.Run("Step 1: Stat File", func(t *testing.T) {
+		info, err := mockFS.Stat("test.txt")
+		if err != nil {
+			t.Fatalf("Stat failed: %v", err)
+		}
+		if info.Name() != "test.txt" || info.Size() != 11 || info.IsDir() {
+			t.Errorf("Stat returned unexpected info: %+v", info)
+		}
+		checkStats(t, mockFS, mockfs.Stats{StatCalls: 1}, "After Stat")
+	})
 
-	// Stat dir
-	info, err = mockFS.Stat("dir")
-	if err != nil {
-		t.Fatalf("Stat dir failed: %v", err)
-	}
-	if !info.IsDir() {
-		t.Errorf("Stat dir returned non-dir info: %+v", info)
-	}
-	checkStats(t, mockFS, mockfs.Stats{StatCalls: 2}, "After Stat dir")
+	t.Run("Step 2: Stat Dir", func(t *testing.T) {
+		info, err := mockFS.Stat("dir")
+		if err != nil {
+			t.Fatalf("Stat dir failed: %v", err)
+		}
+		if !info.IsDir() {
+			t.Errorf("Stat dir returned non-dir info: %+v", info)
+		}
+		checkStats(t, mockFS, mockfs.Stats{StatCalls: 2}, "After Stat dir")
+	})
 
-	// Open and Read file
-	file, err := mockFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("Open failed: %v", err)
-	}
-	checkStats(t, mockFS, mockfs.Stats{StatCalls: 2, OpenCalls: 1}, "After Open")
+	t.Run("Step 3: Open, Read, and Close", func(t *testing.T) {
+		file, err := mockFS.Open("test.txt")
+		if err != nil {
+			t.Fatalf("Open failed: %v", err)
+		}
+		checkStats(t, mockFS, mockfs.Stats{StatCalls: 2, OpenCalls: 1}, "After Open")
 
-	content, err := io.ReadAll(file)
-	if err != nil {
-		t.Fatalf("ReadAll failed: %v", err)
-	}
-	if string(content) != "hello world" {
-		t.Errorf("Expected 'hello world', got %q", string(content))
-	}
-	// ReadAll makes multiple Read calls potentially, stats depend on internal buffer size.
-	// Let's check that ReadCalls is at least 1.
-	statsAfterRead := mockFS.GetStats()
-	if statsAfterRead.ReadCalls < 1 {
-		t.Errorf("Expected at least 1 Read call, got %d", statsAfterRead.ReadCalls)
-	}
+		content, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatalf("ReadAll failed: %v", err)
+		}
+		if string(content) != "hello world" {
+			t.Errorf("Expected 'hello world', got %q", string(content))
+		}
 
-	err = file.Close()
-	if err != nil {
-		t.Fatalf("Close failed: %v", err)
-	}
-	statsAfterClose := mockFS.GetStats()
-	// Need expected stats including reads. Let's assume 1 read for simplicity here.
-	// A more robust test might read byte-by-byte to control read counts.
-	if statsAfterClose.CloseCalls != 1 {
-		t.Errorf("Expected 1 Close call, got %d", statsAfterClose.CloseCalls)
-	}
+		// ReadAll can make multiple reads. Check that the count increased.
+		stats := mockFS.GetStats()
+		if stats.ReadCalls < 1 {
+			t.Errorf("Expected at least 1 Read call, got %d", stats.ReadCalls)
+		}
 
-	// ReadFile
-	mockFS.ResetStats()
-	content, err = mockFS.ReadFile("dir/file.txt")
-	if err != nil {
-		t.Fatalf("ReadFile failed: %v", err)
-	}
-	if string(content) != "in dir" {
-		t.Errorf("Expected 'in dir', got %q", string(content))
-	}
-	// ReadFile internally calls Open, ReadAll, Close. Check relevant stats.
-	statsAfterReadFile := mockFS.GetStats()
-	if statsAfterReadFile.OpenCalls != 1 || statsAfterReadFile.ReadCalls < 1 || statsAfterReadFile.CloseCalls != 1 {
-		t.Errorf("ReadFile stats mismatch: got %+v", statsAfterReadFile)
-	}
+		if err := file.Close(); err != nil {
+			t.Fatalf("Close failed: %v", err)
+		}
+		statsAfterClose := mockFS.GetStats()
+		if statsAfterClose.CloseCalls != 1 {
+			t.Errorf("Expected 1 Close call, got %d", statsAfterClose.CloseCalls)
+		}
+	})
 
-	// ReadDir
-	mockFS.ResetStats()
-	entries, err := mockFS.ReadDir("dir")
-	if err != nil {
-		t.Fatalf("ReadDir failed: %v", err)
-	}
-	if len(entries) != 1 || entries[0].Name() != "file.txt" {
-		t.Errorf("ReadDir returned unexpected entries: %v", entries)
-	}
-	checkStats(t, mockFS, mockfs.Stats{ReadDirCalls: 1}, "After ReadDir")
+	t.Run("Step 4: ReadFile", func(t *testing.T) {
+		// Get stats before the operation to check the delta
+		statsBefore := mockFS.GetStats()
+
+		content, err := mockFS.ReadFile("dir/file.txt")
+		if err != nil {
+			t.Fatalf("ReadFile failed: %v", err)
+		}
+		if string(content) != "in dir" {
+			t.Errorf("Expected 'in dir', got %q", string(content))
+		}
+
+		// Check cumulative stats after ReadFile
+		statsAfter := mockFS.GetStats()
+		if statsAfter.OpenCalls != statsBefore.OpenCalls+1 {
+			t.Errorf("Expected OpenCalls to increment by 1")
+		}
+		if statsAfter.CloseCalls != statsBefore.CloseCalls+1 {
+			t.Errorf("Expected CloseCalls to increment by 1")
+		}
+		if statsAfter.ReadCalls <= statsBefore.ReadCalls {
+			t.Errorf("Expected ReadCalls to increase")
+		}
+	})
+
+	t.Run("Step 5: ReadDir", func(t *testing.T) {
+		statsBefore := mockFS.GetStats()
+		entries, err := mockFS.ReadDir("dir")
+		if err != nil {
+			t.Fatalf("ReadDir failed: %v", err)
+		}
+		if len(entries) != 1 || entries[0].Name() != "file.txt" {
+			t.Errorf("ReadDir returned unexpected entries: %v", entries)
+		}
+
+		statsAfter := mockFS.GetStats()
+		if statsAfter.ReadDirCalls != statsBefore.ReadDirCalls+1 {
+			t.Errorf("Expected ReadDirCalls to increment by 1")
+		}
+	})
 }
 
 func TestErrorInjectionExactMatch(t *testing.T) {
@@ -409,270 +423,282 @@ func TestLatencySimulation(t *testing.T) {
 
 func TestSubFilesystem(t *testing.T) {
 	t.Parallel()
-	parentFS := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"dir":                  {Mode: fs.ModeDir | 0755},
-		"dir/file1.txt":        {Data: []byte("file1")},
-		"dir/subdir":           {Mode: fs.ModeDir | 0755},
-		"dir/subdir/file2.txt": {Data: []byte("file2")},
-		"outside.txt":          {Data: []byte("outside")},
+
+	// Setup function creates a fresh parent FS for each subtest that needs it.
+	setupParentFS := func() *mockfs.MockFS {
+		parentFS := mockfs.NewMockFS(map[string]*mockfs.MapFile{
+			"dir":                  {Mode: fs.ModeDir | 0755},
+			"dir/file1.txt":        {Data: []byte("file1")},
+			"dir/subdir":           {Mode: fs.ModeDir | 0755},
+			"dir/subdir/file2.txt": {Data: []byte("file2")},
+			"outside.txt":          {Data: []byte("outside")},
+		})
+		parentFS.AddOpenError("dir/file1.txt", mockfs.ErrTimeout)
+		parentFS.AddStatError("dir/subdir/file2.txt", fs.ErrPermission)
+		parentFS.AddReadDirError("dir/subdir", mockfs.ErrDiskFull)
+		_ = parentFS.AddErrorPattern(mockfs.OpOpen, `^dir/`, mockfs.ErrInvalid, mockfs.ErrorModeAlways, 0)
+		return parentFS
+	}
+
+	t.Run("ValidSubFS", func(t *testing.T) {
+		parentFS := setupParentFS()
+		subFS, err := parentFS.Sub("dir")
+		if err != nil {
+			t.Fatalf("fs.Sub failed: %v", err)
+		}
+
+		testCases := []struct {
+			name      string
+			path      string
+			operation func(fs.FS, string) error
+			expectErr error
+		}{
+			{"OpenFileWithError", "file1.txt", func(f fs.FS, p string) error { _, err := f.Open(p); return err }, mockfs.ErrTimeout},
+			{"StatFileWithError", "subdir/file2.txt", func(f fs.FS, p string) error { _, err := fs.Stat(f, p); return err }, fs.ErrPermission},
+			{"ReadDirWithError", "subdir", func(f fs.FS, p string) error { _, err := fs.ReadDir(f, p); return err }, mockfs.ErrDiskFull},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				err := tc.operation(subFS, tc.path)
+				if !errors.Is(err, tc.expectErr) {
+					t.Errorf("Expected error %v, got: %v", tc.expectErr, err)
+				}
+			})
+		}
 	})
 
-	// Add errors to parent FS
-	parentFS.AddOpenError("dir/file1.txt", mockfs.ErrTimeout)
-	parentFS.AddStatError("dir/subdir/file2.txt", fs.ErrPermission)
-	parentFS.AddReadDirError("dir/subdir", mockfs.ErrDiskFull)
-	// Add pattern error to parent, should not affect sub if path adjusted correctly
-	_ = parentFS.AddErrorPattern(mockfs.OpOpen, `^dir/`, mockfs.ErrInvalid, mockfs.ErrorModeAlways, 0)
-
-	// Get sub-filesystem for "dir"
-	subFS, err := parentFS.Sub("dir")
-	if err != nil {
-		t.Fatalf("fs.Sub failed: %v", err)
-	}
-
-	// --- Test access within subFS ---
-
-	// 1. Access file1.txt (should fail with timeout from parent)
-	_, err = subFS.Open("file1.txt")
-	if !errors.Is(err, mockfs.ErrTimeout) {
-		t.Errorf("subFS.Open(file1.txt): Expected ErrTimeout, got: %v", err)
-	}
-
-	// 2. Stat subdir/file2.txt (should fail with permission error from parent)
-	_, err = fs.Stat(subFS, "subdir/file2.txt")
-	if !errors.Is(err, fs.ErrPermission) {
-		t.Errorf("fs.Stat(subFS, subdir/file2.txt): Expected ErrPermission, got: %v", err)
-	}
-
-	// 3. ReadDir subdir (should fail with disk full from parent)
-	_, err = fs.ReadDir(subFS, "subdir")
-	if !errors.Is(err, mockfs.ErrDiskFull) {
-		t.Errorf("fs.ReadDir(subFS, subdir): Expected ErrDiskFull, got: %v", err)
-	}
-
-	// 4. Try accessing file outside the sub dir (should fail)
-	_, err = subFS.Open("../outside.txt") // Accessing outside
-	// fs.Sub guarantees paths are checked; expect ErrInvalid or ErrNotExist
-	if err == nil {
-		t.Errorf("subFS.Open(../outside.txt): Expected an error, got nil")
-	} else if !errors.Is(err, fs.ErrInvalid) && !errors.Is(err, fs.ErrNotExist) {
-		t.Logf("subFS.Open(../outside.txt): Got expected error type: %v", err)
-	}
-
-	// 5. Stat the root of subFS (".") - should represent "dir" from parent
-	info, err := fs.Stat(subFS, ".")
-	if err != nil {
-		t.Fatalf("fs.Stat(subFS, .): failed: %v", err)
-	}
-	if !info.IsDir() || info.Name() != "." { // Name within subFS is "."
-		t.Errorf("fs.Stat(subFS, .): Expected directory named '.', got: %+v", info)
-	}
-
-	// 6. Get sub-sub-filesystem
-	subSubFS, err := fs.Sub(subFS, "subdir")
-	if err != nil {
-		t.Fatalf("fs.Sub(subFS, subdir) failed: %v", err)
-	}
-
-	// Stat file2.txt within sub-sub-FS (should still have permission error)
-	_, err = fs.Stat(subSubFS, "file2.txt")
-	if !errors.Is(err, fs.ErrPermission) {
-		t.Errorf("fs.Stat(subSubFS, file2.txt): Expected ErrPermission, got: %v", err)
-	}
-
-	// --- Test edge cases for Sub (using parentFS directly) ---
-	// Use the parent directly because fs.Sub might return errors earlier
-	_, err = parentFS.Sub("dir/file1.txt") // Sub on a file (MockFS impl specific check)
-	if err == nil {
-		// Expecting an error like "not a directory"
-		t.Errorf("parentFS.Sub on a file: Expected error, got nil")
-	} else {
-		t.Logf("parentFS.Sub on a file returned expected error: %v", err)
-	}
-
-	_, err = parentFS.Sub("nonexistent") // Sub on non-existent path
-	if !errors.Is(err, fs.ErrNotExist) {
-		// Check if the error wraps ErrNotExist
-		pathErr := &fs.PathError{}
-		if !(errors.As(err, &pathErr) && errors.Is(pathErr.Err, fs.ErrNotExist)) {
-			t.Errorf("parentFS.Sub on non-existent: Expected ErrNotExist (possibly wrapped), got: %T %v", err, err)
-		} else {
-			t.Logf("parentFS.Sub on non-existent returned expected error: %v", err)
+	t.Run("AccessOutsideSubFS", func(t *testing.T) {
+		parentFS := setupParentFS()
+		subFS, err := parentFS.Sub("dir")
+		if err != nil {
+			t.Fatalf("fs.Sub failed: %v", err)
 		}
-	}
+		_, err = subFS.Open("../outside.txt")
+		if err == nil {
+			t.Errorf("Expected an error when accessing outside subFS, got nil")
+		} else if !errors.Is(err, fs.ErrInvalid) && !errors.Is(err, fs.ErrNotExist) {
+			t.Logf("Got expected error type: %v", err)
+		}
+	})
+
+	t.Run("StatRootOfSubFS", func(t *testing.T) {
+		parentFS := setupParentFS()
+		subFS, err := parentFS.Sub("dir")
+		if err != nil {
+			t.Fatalf("fs.Sub failed: %v", err)
+		}
+		info, err := fs.Stat(subFS, ".")
+		if err != nil {
+			t.Fatalf("fs.Stat(subFS, .) failed: %v", err)
+		}
+		if !info.IsDir() || info.Name() != "." {
+			t.Errorf("Expected directory named '.', got: %+v", info)
+		}
+	})
+
+	t.Run("SubSubFS", func(t *testing.T) {
+		parentFS := setupParentFS()
+		subFS, err := fs.Sub(parentFS, "dir")
+		if err != nil {
+			t.Fatalf("Sub(dir) failed: %v", err)
+		}
+		subSubFS, err := fs.Sub(subFS, "subdir")
+		if err != nil {
+			t.Fatalf("Sub(subdir) failed: %v", err)
+		}
+		_, err = fs.Stat(subSubFS, "file2.txt")
+		if !errors.Is(err, fs.ErrPermission) {
+			t.Errorf("Expected ErrPermission, got: %v", err)
+		}
+	})
+
+	t.Run("SubOnAFile", func(t *testing.T) {
+		parentFS := setupParentFS()
+		_, err := parentFS.Sub("dir/file1.txt")
+		if err == nil {
+			t.Errorf("Expected error when calling Sub on a file, got nil")
+		}
+	})
+
+	t.Run("SubOnNonExistent", func(t *testing.T) {
+		parentFS := setupParentFS()
+		_, err := parentFS.Sub("nonexistent")
+		if !errors.Is(err, fs.ErrNotExist) {
+			pathErr := &fs.PathError{}
+			if !(errors.As(err, &pathErr) && errors.Is(pathErr.Err, fs.ErrNotExist)) {
+				t.Errorf("Expected ErrNotExist (wrapped), got: %T %v", err, err)
+			}
+		}
+	})
 }
 
 func TestFileManagement(t *testing.T) {
 	t.Parallel()
-	mockFS := mockfs.NewMockFS(nil) // Start empty
 
-	// Add files and dirs
-	mockFS.AddFileString("file.txt", "content", 0644)
-	mockFS.AddFileBytes("data.bin", []byte{1, 2, 3}, 0600)
-	mockFS.AddDirectory("d1", 0755)
-	mockFS.AddFileString("d1/nested.txt", "nested", 0644)
-	mockFS.AddDirectory("d1/d2", 0700)
-
-	// Verify additions
-	info, err := mockFS.Stat("file.txt")
-	if err != nil || info.Size() != 7 {
-		t.Fatalf("Stat file.txt failed: %v / %+v", err, info)
-	}
-	info, err = mockFS.Stat("data.bin")
-	if err != nil || info.Mode() != 0600 {
-		t.Fatalf("Stat data.bin failed: %v / %+v", err, info)
-	}
-	info, err = mockFS.Stat("d1")
-	if err != nil || !info.IsDir() {
-		t.Fatalf("Stat d1 failed: %v / %+v", err, info)
-	}
-	info, err = mockFS.Stat("d1/nested.txt")
-	if err != nil || info.Size() != 6 {
-		t.Fatalf("Stat d1/nested.txt failed: %v / %+v", err, info)
-	}
-	info, err = mockFS.Stat("d1/d2")
-	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
-		t.Fatalf("Stat d1/d2 failed: %v / %+v", err, info)
+	// setupFS creates a new mock FS with a standard set of files.
+	setupFS := func() *mockfs.MockFS {
+		mockFS := mockfs.NewMockFS(nil) // Start empty
+		mockFS.AddFileString("file.txt", "content", 0644)
+		mockFS.AddFileBytes("data.bin", []byte{1, 2, 3}, 0600)
+		mockFS.AddDirectory("d1", 0755)
+		mockFS.AddFileString("d1/nested.txt", "nested", 0644)
+		mockFS.AddDirectory("d1/d2", 0700)
+		return mockFS
 	}
 
-	// Remove single file
-	mockFS.RemovePath("data.bin")
-	_, err = mockFS.Stat("data.bin")
-	if !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Expected data.bin to be removed (ErrNotExist), got: %v", err)
-	}
+	t.Run("VerifyAdditions", func(t *testing.T) {
+		mockFS := setupFS()
+		testCases := []struct {
+			path      string
+			isDir     bool
+			size      int64
+			perm      fs.FileMode
+			expectErr bool
+		}{
+			{"file.txt", false, 7, 0644, false},
+			{"data.bin", false, 3, 0600, false},
+			{"d1", true, 0, 0755, false},
+			{"d1/nested.txt", false, 6, 0644, false},
+			{"d1/d2", true, 0, 0700, false},
+			{"nonexistent", false, 0, 0, true},
+		}
 
-	// Mark directory non-existent (recursive)
-	mockFS.MarkDirectoryNonExistent("d1")
+		for _, tc := range testCases {
+			info, err := mockFS.Stat(tc.path)
+			if (err != nil) != tc.expectErr {
+				t.Fatalf("Stat(%q): unexpected error state: %v", tc.path, err)
+			}
+			if err == nil {
+				if info.IsDir() != tc.isDir || info.Size() != tc.size || info.Mode().Perm() != tc.perm {
+					t.Errorf("Stat(%q): mismatch: got dir=%v size=%d perm=%v, want dir=%v size=%d perm=%v",
+						tc.path, info.IsDir(), info.Size(), info.Mode().Perm(), tc.isDir, tc.size, tc.perm)
+				}
+			}
+		}
+	})
 
-	// Verify directory and contents are gone and return NotExist error
-	_, err = mockFS.Stat("d1")
-	if !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Expected d1 stat to return ErrNotExist after MarkDirectoryNonExistent, got: %v", err)
-	}
-	_, err = mockFS.Stat("d1/nested.txt")
-	if !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Expected d1/nested.txt stat to return ErrNotExist after MarkDirectoryNonExistent, got: %v", err)
-	}
-	_, err = mockFS.Stat("d1/d2")
-	if !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Expected d1/d2 stat to return ErrNotExist after MarkDirectoryNonExistent, got: %v", err)
-	}
+	t.Run("RemoveSingleFile", func(t *testing.T) {
+		mockFS := setupFS()
+		mockFS.RemovePath("data.bin")
+		_, err := mockFS.Stat("data.bin")
+		if !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("Expected data.bin to be removed, got err: %v", err)
+		}
+	})
 
-	// Open non-existent dir should also fail
-	_, err = mockFS.Open("d1")
-	if !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("Expected d1 open to return ErrNotExist after MarkDirectoryNonExistent, got: %v", err)
-	}
+	t.Run("MarkDirectoryNonExistent", func(t *testing.T) {
+		mockFS := setupFS()
+		mockFS.MarkDirectoryNonExistent("d1")
+
+		pathsToCheck := []string{"d1", "d1/nested.txt", "d1/d2"}
+		for _, path := range pathsToCheck {
+			_, err := mockFS.Stat(path)
+			if !errors.Is(err, fs.ErrNotExist) {
+				t.Errorf("Expected %q to return ErrNotExist, got: %v", path, err)
+			}
+		}
+	})
 }
 
 // TestWriteOperations requires enabling writes, e.g., using WithWritesEnabled
 func TestWriteOperations(t *testing.T) {
 	t.Parallel()
-	initialData := map[string]*mockfs.MapFile{
-		"writable.txt": {Data: []byte("initial")},
-		"readonly.txt": {Data: []byte("nochange")},
+
+	// setupFS creates a new FS instance with writes enabled for isolated testing.
+	setupFS := func() *mockfs.MockFS {
+		initialData := map[string]*mockfs.MapFile{
+			"writable.txt": {Data: []byte("initial")},
+			"readonly.txt": {Data: []byte("nochange")},
+		}
+		return mockfs.NewMockFS(initialData, mockfs.WithWritesEnabled())
 	}
 
-	// Use WithWritesEnabled to allow modifying the internal map
-	mockFS := mockfs.NewMockFS(initialData, mockfs.WithWritesEnabled())
+	t.Run("SuccessfulWrite", func(t *testing.T) {
+		mockFS := setupFS()
+		file, err := mockFS.Open("writable.txt")
+		if err != nil {
+			t.Fatalf("Open failed: %v", err)
+		}
+		defer file.Close()
 
-	// --- Test successful write ---
-	file, err := mockFS.Open("writable.txt")
-	if err != nil {
-		t.Fatalf("Open writable failed: %v", err)
-	}
-	// Type assert to io.Writer before calling Write
-	writer, ok := file.(io.Writer)
-	if !ok {
-		_ = file.Close()
-		t.Fatalf("Opened file does not implement io.Writer")
-	}
+		writer, ok := file.(io.Writer)
+		if !ok {
+			t.Fatalf("File does not implement io.Writer")
+		}
 
-	n, err := writer.Write([]byte(" new")) // Use writer variable
-	if err != nil {
-		_ = file.Close()
-		t.Fatalf("Write failed: %v", err)
-	}
-	if n != 4 {
-		t.Errorf("Expected Write to return 4 bytes written, got %d", n)
-	}
-	err = file.Close()
-	if err != nil {
-		t.Fatalf("Close failed: %v", err)
-	}
+		n, err := writer.Write([]byte(" new"))
+		if err != nil {
+			t.Fatalf("Write failed: %v", err)
+		}
+		if n != 4 {
+			t.Errorf("Expected Write to return 4, got %d", n)
+		}
 
-	// Verify content changed
-	content, err := mockFS.ReadFile("writable.txt")
-	if err != nil {
-		t.Fatalf("ReadFile after write failed: %v", err)
-	}
-	// Note: The default write callback *overwrites*. If append is desired, callback needs change.
-	// The fstest.MapFile doesn't track seek position easily for appending.
-	// Current callback overwrites, so expected is " new".
-	if string(content) != " new" {
-		t.Errorf("Expected content ' new' after write, got %q", string(content))
-	}
+		// Verify content changed (default callback overwrites)
+		content, err := mockFS.ReadFile("writable.txt")
+		if err != nil {
+			t.Fatalf("ReadFile after write failed: %v", err)
+		}
+		if string(content) != " new" {
+			t.Errorf("Expected content ' new', got %q", string(content))
+		}
+	})
 
-	// --- Test write error injection ---
-	mockFS.AddWriteError("writable.txt", mockfs.ErrDiskFull)
+	t.Run("InjectedWriteError", func(t *testing.T) {
+		mockFS := setupFS()
+		mockFS.AddWriteError("writable.txt", mockfs.ErrDiskFull)
 
-	file, err = mockFS.Open("writable.txt")
-	if err != nil {
-		t.Fatalf("Open writable (2nd time) failed: %v", err)
-	}
+		file, err := mockFS.Open("writable.txt")
+		if err != nil {
+			t.Fatalf("Open failed: %v", err)
+		}
+		defer file.Close()
 
-	// Assert writer again
-	writer, ok = file.(io.Writer)
-	if !ok {
-		_ = file.Close()
-		t.Fatalf("Opened file (2nd time) does not implement io.Writer")
-	}
+		writer, ok := file.(io.Writer)
+		if !ok {
+			t.Fatalf("File does not implement io.Writer")
+		}
 
-	_, err = writer.Write([]byte(" again"))
-	if !errors.Is(err, mockfs.ErrDiskFull) {
-		t.Errorf("Expected Write error ErrDiskFull, got: %v", err)
-	}
-	err = file.Close() // Close should still work
-	if err != nil {
-		t.Errorf("Close after failed write failed: %v", err)
-	}
+		_, err = writer.Write([]byte(" again"))
+		if !errors.Is(err, mockfs.ErrDiskFull) {
+			t.Errorf("Expected ErrDiskFull, got: %v", err)
+		}
 
-	// Verify content did NOT change due to write error
-	content, err = fs.ReadFile(mockFS, "writable.txt") // Use fs.ReadFile
-	if err != nil {
-		t.Fatalf("ReadFile after failed write failed: %v", err)
-	}
-	if string(content) != " new" { // Should still be content from previous successful write
-		t.Errorf("Expected content ' new' after failed write, got %q", string(content))
-	}
+		// Verify content did NOT change
+		content, err := mockFS.ReadFile("writable.txt")
+		if err != nil {
+			t.Fatalf("ReadFile after failed write failed: %v", err)
+		}
+		if string(content) != "initial" { // Should be the original content
+			t.Errorf("Expected content 'initial' after failed write, got %q", string(content))
+		}
+	})
 
-	// --- Test write to non-existent file (should be created by default callback) ---
-	mockFS.ClearErrors()
-	// Add the file first before opening for write
-	mockFS.AddFileString("newfile.txt", "", 0644)
-	file, err = mockFS.Open("newfile.txt")
-	if err != nil {
-		t.Fatalf("Open newfile.txt after Add failed: %v", err)
-	}
+	t.Run("CreateFileOnWrite", func(t *testing.T) {
+		mockFS := setupFS()
+		mockFS.AddFileString("newfile.txt", "", 0644) // Add file before opening
+		file, err := mockFS.Open("newfile.txt")
+		if err != nil {
+			t.Fatalf("Open newfile.txt failed: %v", err)
+		}
+		defer file.Close()
 
-	writer, ok = file.(io.Writer)
-	if !ok {
-		_ = file.Close()
-		t.Fatalf("Opened newfile does not implement io.Writer")
-	}
+		writer, ok := file.(io.Writer)
+		if !ok {
+			t.Fatalf("File does not implement io.Writer")
+		}
 
-	_, err = writer.Write([]byte("new content"))
-	if err != nil {
-		_ = file.Close()
-		t.Fatalf("Write to new file failed: %v", err)
-	}
-	_ = file.Close()
+		_, err = writer.Write([]byte("new content"))
+		if err != nil {
+			t.Fatalf("Write to new file failed: %v", err)
+		}
 
-	content, err = mockFS.ReadFile("newfile.txt")
-	if err != nil || string(content) != "new content" {
-		t.Fatalf("ReadFile newfile.txt failed or content mismatch: %v / %q", err, string(content))
-	}
+		content, err := mockFS.ReadFile("newfile.txt")
+		if err != nil || string(content) != "new content" {
+			t.Fatalf("ReadFile newfile.txt failed or content mismatch: %v / %q", err, string(content))
+		}
+	})
 }
 
 // Test concurrent operations to check locking

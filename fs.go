@@ -99,18 +99,17 @@ func WithWritesEnabled() Option {
 // NewMockFS creates a new MockFS with the given MapFS data and options.
 func NewMockFS(data map[string]*MapFile, opts ...Option) *MockFS {
 	mapFS := make(fstest.MapFS)
-	if data != nil {
-		// Create a copy of the input map to avoid external modifications
-		for path, file := range data {
-			cleanPath := filepath.Clean(path) // Clean path keys
-			// Create a copy of the MapFile as well
-			if file != nil {
-				newFile := *file
-				newFile.Data = append([]byte(nil), file.Data...)
-				mapFS[cleanPath] = &newFile
-			} else {
-				mapFS[cleanPath] = nil
-			}
+
+	// Create a copy of the input map to avoid external modifications
+	for path, file := range data {
+		cleanPath := filepath.Clean(path) // Clean path keys
+		// Create a copy of the MapFile as well
+		if file != nil {
+			newFile := *file
+			newFile.Data = append([]byte(nil), file.Data...)
+			mapFS[cleanPath] = &newFile
+		} else {
+			mapFS[cleanPath] = nil
 		}
 	}
 
@@ -225,66 +224,88 @@ func (m *MockFS) ReadDir(name string) ([]fs.DirEntry, error) {
 
 // Sub implements fs.SubFS to return a sub-filesystem.
 func (m *MockFS) Sub(dir string) (fs.FS, error) {
-	cleanDir := filepath.Clean(dir)
-	// Validate the directory itself using the *parent* filesystem's Stat wrapper
-	// This ensures injected Stat errors on the dir are checked first.
-	info, err := m.Stat(cleanDir) // Use wrapped Stat
+	// Validate the directory path and get its info.
+	cleanDir, info, err := m.validateSubdir(dir)
 	if err != nil {
-		// If Stat fails (either injected or underlying), Sub fails.
-		// Wrap error for context, consistent with fs.Sub behavior.
-		return nil, &fs.PathError{Op: "sub", Path: dir, Err: err}
-	}
-	if !info.IsDir() {
-		return nil, &fs.PathError{Op: "sub", Path: dir, Err: ErrNotDir} // Use specific error
-	}
-	if !fs.ValidPath(cleanDir) || cleanDir == "." || cleanDir == "/" {
-		// Redundant check as Stat would likely fail, but keep for robustness
-		return nil, &fs.PathError{Op: "sub", Path: dir, Err: fs.ErrInvalid}
+		return nil, err
 	}
 
 	// Create the new MockFS for the subdirectory
-	subFS := NewMockFS(nil) // Start with empty map in subFS
+	subFS := NewMockFS(nil)
 	subFS.latency = m.latency
 	subFS.allowWrites = m.allowWrites
 	subFS.writeCallback = m.writeCallback
 
-	// Copy relevant files from parent's underlying fsys to subFS's fsys
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// Populate the sub-filesystem with the relevant files and directories.
+	m.copyFilesToSubFS(subFS, cleanDir, info)
+
+	// Copy and adjust relevant error injection configurations.
+	m.copyErrorConfigsToSubFS(subFS, cleanDir)
+
+	return subFS, nil
+}
+
+// validateSubdir cleans and validates the target directory path for Sub.
+// It ensures the path is a valid, existing directory.
+func (m *MockFS) validateSubdir(dir string) (cleanDir string, info fs.FileInfo, err error) {
+	cleanDir = filepath.Clean(dir)
+
+	// Validate the directory itself using the *parent* filesystem's Stat wrapper.
+	// This ensures injected Stat errors on the dir are checked first.
+	info, err = m.Stat(cleanDir) // Use wrapped Stat
+	if err != nil {
+		// If Stat fails (either injected or underlying), Sub fails.
+		return "", nil, &fs.PathError{Op: "sub", Path: dir, Err: err}
+	}
+	if !info.IsDir() {
+		return "", nil, &fs.PathError{Op: "sub", Path: dir, Err: ErrNotDir}
+	}
+
+	// Although Stat would likely fail for these cases, this check adds robustness.
+	if !fs.ValidPath(cleanDir) || cleanDir == "." || cleanDir == "/" {
+		return "", nil, &fs.PathError{Op: "sub", Path: dir, Err: fs.ErrInvalid}
+	}
+
+	return cleanDir, info, nil
+}
+
+// copyFilesToSubFS populates the sub-filesystem's file map from the parent.
+// It assumes the caller has acquired the necessary read lock on the parent MockFS.
+func (m *MockFS) copyFilesToSubFS(subFS *MockFS, cleanDir string, dirInfo fs.FileInfo) {
 	prefix := cleanDir
 	if !strings.HasSuffix(prefix, "/") {
 		prefix += "/"
 	}
 
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	// Map the directory itself to "." in the sub-filesystem.
+	subFS.fsys["."] = &fstest.MapFile{
+		Mode:    dirInfo.Mode() | fs.ModeDir, // Ensure ModeDir is set
+		ModTime: dirInfo.ModTime(),
+		Sys:     dirInfo.Sys(),
+	}
 
-	// Copy files from parent's fsys
+	// Copy all descendant files from the parent's underlying fsys.
 	for path, file := range m.fsys {
-		// path is already clean due to how keys are stored in NewMockFS/Add*
-		if path == cleanDir || strings.HasPrefix(path, prefix) {
-			var subPath string
-			if path == cleanDir {
-				// Map the dir itself to "." in subFS
-				subPath = "."
-				subFS.fsys[subPath] = &fstest.MapFile{
-					Mode:    info.Mode() | fs.ModeDir, // Ensure ModeDir is set
-					ModTime: info.ModTime(),
-					Sys:     info.Sys(),
-				}
-				continue
-			} else {
-				subPath = path[len(prefix):] // Get path relative to subDir
-			}
+		// Path is already clean due to how keys are stored in NewMockFS/Add*.
+		if strings.HasPrefix(path, prefix) {
+			subPath := path[len(prefix):] // Get path relative to subDir
 
-			// Copy the MapFile to the sub filesystem
+			// Copy the MapFile to the sub filesystem, ensuring data is a deep copy.
 			if file != nil {
 				newFile := *file
-				newFile.Data = append([]byte(nil), file.Data...)
+				newFile.Data = append([]byte(nil), file.Data...) // Deep copy of data slice
 				subFS.fsys[subPath] = &newFile
 			}
 		}
 	}
+}
 
-	// Copy and adjust relevant error configurations
+// copyErrorConfigsToSubFS copies and adjusts error injection rules for the sub-filesystem.
+// It assumes the caller has acquired the necessary read lock on the parent MockFS.
+func (m *MockFS) copyErrorConfigsToSubFS(subFS *MockFS, cleanDir string) {
 	for op, configs := range m.errorConfigs {
 		subConfigs := make([]*ErrorConfig, 0, len(configs))
 		for _, cfg := range configs {
@@ -293,9 +314,9 @@ func (m *MockFS) Sub(dir string) (fs.FS, error) {
 			}
 
 			subCfg := cfg.Clone()
-			// Adjust exact path matches
+			// Adjust exact path matches to be relative to the new sub-filesystem root.
 			subCfg.Matches = adjustPathsForSub(subCfg.Matches, cleanDir)
-			// Patterns are assumed relative or simple, copied as-is via Clone
+			// Patterns are assumed relative or simple, copied as-is via Clone.
 
 			// Only add the config to subFS if it's still potentially relevant
 			// (i.e., it has remaining matches or patterns after adjustment).
@@ -307,8 +328,6 @@ func (m *MockFS) Sub(dir string) (fs.FS, error) {
 			subFS.errorConfigs[op] = subConfigs
 		}
 	}
-
-	return subFS, nil
 }
 
 // --- File/Directory Management ---

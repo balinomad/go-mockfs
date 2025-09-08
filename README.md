@@ -1,6 +1,7 @@
 [![Go](https://github.com/balinomad/go-mockfs/actions/workflows/go.yml/badge.svg)](https://github.com/balinomad/go-mockfs/actions/workflows/go.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/balinomad/go-mockfs)](https://goreportcard.com/report/github.com/balinomad/go-mockfs)
 
-# go-mockfs
+# mockfs
 
 *A flexible and feature-rich filesystem mocking library for Go, built on top of `testing/fstest.MapFS` with powerful error injection and behavior simulation capabilities.*
 
