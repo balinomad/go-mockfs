@@ -1,5 +1,10 @@
+[![GoDoc](https://pkg.go.dev/badge/github.com/balinomad/go-mockfs?status.svg)](https://pkg.go.dev/github.com/balinomad/go-mockfs?tab=doc)
+[![GoMod](https://img.shields.io/github/go-mod/go-version/balinomad/go-mockfs)](https://github.com/balinomad/go-mockfs)
+[![Size](https://img.shields.io/github/languages/code-size/balinomad/go-mockfs)](https://github.com/balinomad/go-mockfs)
+[![License](https://img.shields.io/github/license/balinomad/go-mockfs)](./LICENSE)
 [![Go](https://github.com/balinomad/go-mockfs/actions/workflows/go.yml/badge.svg)](https://github.com/balinomad/go-mockfs/actions/workflows/go.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/balinomad/go-mockfs)](https://goreportcard.com/report/github.com/balinomad/go-mockfs)
+[![codecov](https://codecov.io/github/balinomad/go-mockfs/graph/badge.svg?token=L1K68IIN51)](https://codecov.io/github/balinomad/go-mockfs)
 
 # mockfs
 
