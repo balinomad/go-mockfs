@@ -700,6 +700,162 @@ func TestWriteOperations(t *testing.T) {
 		}
 	})
 }
+
+// TestAdvancedFeaturesAndErrorPaths covers more specific scenarios, convenience
+// methods, and error paths that are not covered in the broader functionality tests.
+func TestAdvancedFeaturesAndErrorPaths(t *testing.T) {
+	t.Parallel()
+
+	// This test explicitly verifies that a Stat call on an open MockFile handle
+	// successfully retrieves the FileInfo from the underlying file. This covers
+	// the simple pass-through logic in `MockFile.Stat`.
+	t.Run("MockFileStatPassThrough", func(t *testing.T) {
+		t.Parallel()
+		now := time.Now()
+		mockFS := mockfs.NewMockFS(map[string]*mockfs.MapFile{
+			"file.txt": {Data: []byte("content"), ModTime: now},
+		})
+
+		file, err := mockFS.Open("file.txt")
+		if err != nil {
+			t.Fatalf("Open failed: %v", err)
+		}
+		defer file.Close()
+
+		info, err := file.Stat()
+		if err != nil {
+			t.Fatalf("MockFile.Stat() failed: %v", err)
+		}
+
+		if info.Name() != "file.txt" {
+			t.Errorf("expected name %q, got %q", "file.txt", info.Name())
+		}
+		if info.Size() != 7 {
+			t.Errorf("expected size %d, got %d", 7, info.Size())
+		}
+		if !info.ModTime().Equal(now) {
+			t.Errorf("expected mod time %v, got %v", now, info.ModTime())
+		}
+	})
+
+	// This table-driven test verifies the error handling within ReadFile.
+	// It ensures that errors injected into the underlying Open and Read
+	// operations are correctly propagated.
+	t.Run("ReadFileErrorPaths", func(t *testing.T) {
+		t.Parallel()
+		errInjected := errors.New("injected error")
+
+		testCases := []struct {
+			name        string
+			setupFS     func(m *mockfs.MockFS)
+			expectedErr error
+		}{
+			{
+				name: "PropagatesOpenError",
+				setupFS: func(m *mockfs.MockFS) {
+					m.AddOpenError("file.txt", errInjected)
+				},
+				expectedErr: errInjected,
+			},
+			{
+				name: "PropagatesReadError",
+				setupFS: func(m *mockfs.MockFS) {
+					m.AddReadError("file.txt", errInjected)
+				},
+				expectedErr: errInjected,
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				mockFS := mockfs.NewMockFS(map[string]*mockfs.MapFile{
+					"file.txt": {Data: []byte("hello")},
+				})
+				tc.setupFS(mockFS)
+
+				_, err := mockFS.ReadFile("file.txt")
+				if !errors.Is(err, tc.expectedErr) {
+					t.Errorf("expected error %v, got %v", tc.expectedErr, err)
+				}
+			})
+		}
+	})
+
+	// This test validates that the simple, single-operation error helpers
+	// correctly configure the filesystem to inject errors for specific actions.
+	t.Run("ConvenienceErrorHelpers", func(t *testing.T) {
+		t.Parallel()
+		errInjected := errors.New("injected error")
+
+		t.Run("AddReadError", func(t *testing.T) {
+			mockFS := mockfs.NewMockFS(map[string]*mockfs.MapFile{
+				"file.txt": {Data: []byte("hello")},
+			})
+			mockFS.AddReadError("file.txt", errInjected)
+
+			f, err := mockFS.Open("file.txt")
+			if err != nil {
+				t.Fatalf("Open failed: %v", err)
+			}
+			defer f.Close()
+
+			_, err = f.Read(make([]byte, 1))
+			if !errors.Is(err, errInjected) {
+				t.Errorf("expected Read error %v, got %v", errInjected, err)
+			}
+		})
+
+		t.Run("AddCloseError", func(t *testing.T) {
+			mockFS := mockfs.NewMockFS(map[string]*mockfs.MapFile{
+				"file.txt": {Data: []byte("hello")},
+			})
+			mockFS.AddCloseError("file.txt", errInjected)
+
+			f, err := mockFS.Open("file.txt")
+			if err != nil {
+				t.Fatalf("Open failed: %v", err)
+			}
+
+			err = f.Close()
+			if !errors.Is(err, errInjected) {
+				t.Errorf("expected Close error %v, got %v", errInjected, err)
+			}
+		})
+	})
+
+	// This test ensures that MarkNonExistent correctly removes a path and
+	// injects ErrNotExist for any subsequent operations on that path,
+	// without affecting other files.
+	t.Run("MarkNonExistent", func(t *testing.T) {
+		t.Parallel()
+		mockFS := mockfs.NewMockFS(map[string]*mockfs.MapFile{
+			"existent.txt":  {Data: []byte("I am here")},
+			"to_delete.txt": {Data: []byte("I will be gone")},
+		})
+
+		mockFS.MarkNonExistent("to_delete.txt")
+
+		// Verify the marked file is gone and errors out
+		_, err := mockFS.Stat("to_delete.txt")
+		if !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("expected ErrNotExist for Stat, got %v", err)
+		}
+		_, err = mockFS.Open("to_delete.txt")
+		if !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("expected ErrNotExist for Open, got %v", err)
+		}
+
+		// Verify other files are unaffected
+		info, err := mockFS.Stat("existent.txt")
+		if err != nil {
+			t.Errorf("expected no error for other file, got %v", err)
+		}
+		if info == nil || info.Name() != "existent.txt" {
+			t.Errorf("Stat on other file returned unexpected result")
+		}
+	})
+}
+
 func TestFileOperationsEdgeCases(t *testing.T) {
 	t.Parallel()
 
