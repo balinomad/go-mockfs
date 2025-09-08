@@ -700,6 +700,154 @@ func TestWriteOperations(t *testing.T) {
 		}
 	})
 }
+func TestFileOperationsEdgeCases(t *testing.T) {
+	t.Parallel()
+
+	// This subtest verifies that all operations on a closed MockFile correctly
+	// return fs.ErrClosed. This covers the `if f.closed` checks at the
+	// beginning of Read, Write, Stat, and Close.
+	t.Run("OperationsOnClosedFile", func(t *testing.T) {
+		mockFS := mockfs.NewMockFS(map[string]*mockfs.MapFile{
+			"test.txt": {Data: []byte("data")},
+		}, mockfs.WithWritesEnabled()) // Enable writes for the Write test
+
+		file, err := mockFS.Open("test.txt")
+		if err != nil {
+			t.Fatalf("Open failed: %v", err)
+		}
+
+		// Close the file to set its state for the checks below
+		if err := file.Close(); err != nil {
+			t.Fatalf("Initial Close failed: %v", err)
+		}
+
+		// 1. Test Read on closed file
+		_, err = file.Read(make([]byte, 1))
+		if !errors.Is(err, fs.ErrClosed) {
+			t.Errorf("Read on closed file: expected fs.ErrClosed, got %v", err)
+		}
+
+		// 2. Test Write on closed file
+		writer, ok := file.(io.Writer)
+		if !ok {
+			t.Fatal("File does not implement io.Writer")
+		}
+		_, err = writer.Write([]byte("more"))
+		if !errors.Is(err, fs.ErrClosed) {
+			t.Errorf("Write on closed file: expected fs.ErrClosed, got %v", err)
+		}
+
+		// 3. Test Stat on closed file
+		_, err = file.Stat()
+		if !errors.Is(err, fs.ErrClosed) {
+			t.Errorf("Stat on closed file: expected fs.ErrClosed, got %v", err)
+		}
+
+		// 4. Test Close on already closed file (idempotency check)
+		err = file.Close()
+		if !errors.Is(err, fs.ErrClosed) {
+			t.Errorf("Second Close: expected fs.ErrClosed, got %v", err)
+		}
+	})
+
+	// This subtest ensures that attempting to write to a file fails with
+	// fs.ErrInvalid if the filesystem was not configured with writes enabled.
+	// This covers the `if !canWrite` check in the Write method.
+	t.Run("WriteWhenDisabled", func(t *testing.T) {
+		// Create FS without WithWritesEnabled()
+		mockFS := mockfs.NewMockFS(map[string]*mockfs.MapFile{
+			"test.txt": {Data: []byte("data")},
+		})
+
+		file, err := mockFS.Open("test.txt")
+		if err != nil {
+			t.Fatalf("Open failed: %v", err)
+		}
+		defer file.Close()
+
+		writer, ok := file.(io.Writer)
+		if !ok {
+			t.Fatal("File does not implement io.Writer")
+		}
+
+		_, err = writer.Write([]byte("some data"))
+		if !errors.Is(err, fs.ErrInvalid) {
+			t.Errorf("Write with writes disabled: expected fs.ErrInvalid, got %v", err)
+		}
+	})
+
+	// This subtest validates that injecting an error for the Close operation
+	// works as expected and that the file is still marked as closed internally
+	// even if the close operation returns an error.
+	t.Run("InjectedCloseError", func(t *testing.T) {
+		mockFS := mockfs.NewMockFS(map[string]*mockfs.MapFile{
+			"test.txt": {Data: []byte("data")},
+		})
+
+		// Inject a specific error for the Close operation
+		err := mockFS.AddErrorPattern(mockfs.OpClose, `^test\.txt$`, mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0)
+		if err != nil {
+			t.Fatalf("AddErrorPattern for OpClose failed: %v", err)
+		}
+
+		file, err := mockFS.Open("test.txt")
+		if err != nil {
+			t.Fatalf("Open failed: %v", err)
+		}
+
+		// This Close call should fail with the injected error
+		err = file.Close()
+		if !errors.Is(err, mockfs.ErrTimeout) {
+			t.Errorf("Close with injected error: expected mockfs.ErrTimeout, got %v", err)
+		}
+
+		// Even though Close failed, the file handle should now be marked as closed internally.
+		// Any subsequent operation should return fs.ErrClosed.
+		_, err = file.Stat()
+		if !errors.Is(err, fs.ErrClosed) {
+			t.Errorf("Stat after failed Close: expected fs.ErrClosed, got %v", err)
+		}
+	})
+
+	// This subtest covers the scenario where a custom write callback returns an
+	// error, ensuring the error is propagated and the underlying file data
+	// is not modified.
+	t.Run("WriteCallbackError", func(t *testing.T) {
+		customErr := errors.New("custom write callback error")
+
+		// Create FS with a callback that always returns an error
+		mockFS := mockfs.NewMockFS(map[string]*mockfs.MapFile{
+			"test.txt": {Data: []byte("initial")},
+		}, mockfs.WithWritesEnabled(), mockfs.WithWriteCallback(func(path string, data []byte) error {
+			return customErr
+		}))
+
+		file, err := mockFS.Open("test.txt")
+		if err != nil {
+			t.Fatalf("Open failed: %v", err)
+		}
+		defer file.Close()
+
+		writer, ok := file.(io.Writer)
+		if !ok {
+			t.Fatal("File does not implement io.Writer")
+		}
+
+		_, err = writer.Write([]byte("some data"))
+		if !errors.Is(err, customErr) {
+			t.Errorf("Write with failing callback: expected custom error, got %v", err)
+		}
+
+		// Verify the file content was not changed
+		content, err := mockFS.ReadFile("test.txt")
+		if err != nil {
+			t.Fatalf("ReadFile after failed write failed: %v", err)
+		}
+		if string(content) != "initial" {
+			t.Errorf("Expected content to be 'initial' after failed write, got %q", string(content))
+		}
+	})
+}
 
 // Test concurrent operations to check locking
 func TestConcurrency(t *testing.T) {
