@@ -12,25 +12,12 @@ import (
 	"time"
 )
 
-// Operation defines the type of filesystem operation for error injection context.
-type Operation int
-
-const (
-	OpStat Operation = iota
-	OpOpen
-	OpRead
-	OpWrite
-	OpReadDir
-	OpClose
-	opSentinel // Marks the end of valid operations
-)
-
 // MockFS wraps fstest.MapFS to inject errors for specific paths and operations.
 type MockFS struct {
 	fsys          fstest.MapFS
 	mu            sync.RWMutex
 	errorConfigs  map[Operation][]*ErrorConfig         // Map operations to their error configs
-	stats         Stats                                // Internal stats struct
+	counters      *Counters                            // Internal statistics
 	latency       time.Duration                        // Simulated latency
 	allowWrites   bool                                 // Flag to enable simulated writes
 	writeCallback func(path string, data []byte) error // Optional callback for writes
@@ -116,6 +103,7 @@ func NewMockFS(data map[string]*MapFile, opts ...Option) *MockFS {
 	m := &MockFS{
 		fsys:         mapFS,
 		errorConfigs: make(map[Operation][]*ErrorConfig),
+		counters:     NewCounters(),
 	}
 
 	for _, opt := range opts {
@@ -126,19 +114,19 @@ func NewMockFS(data map[string]*MapFile, opts ...Option) *MockFS {
 }
 
 // GetStats returns the current operation counts.
-func (m *MockFS) GetStats() Stats {
+func (m *MockFS) GetStats() *Counters {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	// Return a copy to avoid race conditions if the caller modifies it
-	statsCopy := m.stats
-	return statsCopy
+
+	return m.counters.Clone()
 }
 
 // ResetStats resets all operation counters to zero.
 func (m *MockFS) ResetStats() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.stats = Stats{} // Reset to zero values
+
+	m.counters.ResetAll()
 }
 
 // Stat intercepts the Stat call and returns configured errors for paths.
@@ -428,7 +416,7 @@ func (m *MockFS) AddErrorPattern(op Operation, pattern string, err error, mode E
 func (m *MockFS) AddPathError(path string, err error, mode ErrorMode, successes int) {
 	cleanPath := filepath.Clean(path)
 	baseCfg := NewErrorConfig(err, mode, successes, []string{cleanPath}, nil)
-	for op := range AllOperations() {
+	for op := Operation(0); op < NumOperations; op++ {
 		// Need to clone the config for each operation if stateful modes are used,
 		// otherwise ErrorModeOnce/AfterSuccesses state is shared across ops.
 		cfgForOp := baseCfg.Clone()
@@ -443,7 +431,7 @@ func (m *MockFS) AddPathErrorPattern(pattern string, err error, mode ErrorMode, 
 		return fmt.Errorf("invalid pattern %q: %w", pattern, regexErr)
 	}
 	baseCfg := NewErrorConfig(err, mode, successes, nil, []*regexp.Regexp{regex})
-	for op := range AllOperations() {
+	for op := Operation(0); op < NumOperations; op++ {
 		// Clone for each operation type to ensure independent state
 		cfgForOp := baseCfg.Clone()
 		m.AddError(op, cfgForOp)
@@ -571,7 +559,7 @@ func (m *MockFS) checkForError(op Operation, path string) error {
 	defer m.mu.Unlock()
 
 	// Increment stats for the operation attempt
-	m.incrementStat(op)
+	m.incStat(op)
 
 	configs := m.errorConfigs[op]
 	for _, cfg := range configs {
@@ -591,23 +579,10 @@ func (m *MockFS) checkForError(op Operation, path string) error {
 	return nil // No injected error found
 }
 
-// incrementStat safely increments the counter for the given operation.
+// incStat safely increments the counter for the given operation.
 // Assumes write lock is held.
-func (m *MockFS) incrementStat(op Operation) {
-	switch op {
-	case OpStat:
-		m.stats.StatCalls++
-	case OpOpen:
-		m.stats.OpenCalls++
-	case OpRead:
-		m.stats.ReadCalls++
-	case OpWrite:
-		m.stats.WriteCalls++
-	case OpReadDir:
-		m.stats.ReadDirCalls++
-	case OpClose:
-		m.stats.CloseCalls++
-	}
+func (m *MockFS) incStat(op Operation) {
+	m.counters.inc(op)
 }
 
 // adjustPathsForSub adjusts exact match paths relative to a new root.
@@ -638,13 +613,4 @@ func adjustPathsForSub(paths []string, subDir string) []string {
 		return nil
 	}
 	return result
-}
-
-// AllOperations returns a map representing all known Operation types. Used for iteration.
-func AllOperations() map[Operation]struct{} {
-	m := make(map[Operation]struct{}, opSentinel)
-	for i := Operation(0); i < opSentinel; i++ {
-		m[i] = struct{}{}
-	}
-	return m
 }

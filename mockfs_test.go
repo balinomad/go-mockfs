@@ -12,11 +12,11 @@ import (
 )
 
 // checkStats is a helper to check stats.
-func checkStats(t *testing.T, m *mockfs.MockFS, expected mockfs.Stats, context string) {
+func checkStats(t *testing.T, m *mockfs.MockFS, expected [mockfs.NumOperations]int, context string) {
 	t.Helper()
-	actual := m.GetStats()
+	actual := m.GetStats().Snapshot()
 	if actual != expected {
-		t.Errorf("%s: Stats mismatch: Expected %+v, got %+v", context, expected, actual)
+		t.Errorf("%s: snapshot = %+v, want %+v", context, actual, expected)
 	}
 }
 
@@ -45,8 +45,8 @@ func testOpenReadClose(t *testing.T, mockFS *mockfs.MockFS, path, expectedConten
 
 	// Verify Open incremented the count
 	statsAfterOpen := mockFS.GetStats()
-	if statsAfterOpen.OpenCalls != statsBefore.OpenCalls+1 {
-		t.Errorf("Expected OpenCalls to increment by 1")
+	if statsAfterOpen.Count(mockfs.OpOpen) != statsBefore.Count(mockfs.OpOpen)+1 {
+		t.Errorf("Expected mockfs.OpOpen to increment by 1")
 	}
 
 	content, err := io.ReadAll(file)
@@ -59,8 +59,8 @@ func testOpenReadClose(t *testing.T, mockFS *mockfs.MockFS, path, expectedConten
 
 	// ReadAll can make multiple reads. Check that the count increased.
 	statsAfterRead := mockFS.GetStats()
-	if statsAfterRead.ReadCalls <= statsBefore.ReadCalls {
-		t.Errorf("Expected ReadCalls to increase from %d", statsBefore.ReadCalls)
+	if statsAfterRead.Count(mockfs.OpRead) <= statsBefore.Count(mockfs.OpRead) {
+		t.Errorf("Expected mockfs.OpRead to increase from %d", statsBefore.Count(mockfs.OpRead))
 	}
 
 	if err := file.Close(); err != nil {
@@ -69,7 +69,7 @@ func testOpenReadClose(t *testing.T, mockFS *mockfs.MockFS, path, expectedConten
 
 	// Verify Close incremented the count
 	statsAfterClose := mockFS.GetStats()
-	if statsAfterClose.CloseCalls != statsBefore.CloseCalls+1 {
+	if statsAfterClose.Count(mockfs.OpClose) != statsBefore.Count(mockfs.OpClose)+1 {
 		t.Errorf("Expected CloseCalls to increment by 1")
 	}
 }
@@ -89,14 +89,14 @@ func testReadFile(t *testing.T, mockFS *mockfs.MockFS, path, expectedContent str
 
 	// Check cumulative stats after ReadFile
 	statsAfter := mockFS.GetStats()
-	if statsAfter.OpenCalls != statsBefore.OpenCalls+1 {
-		t.Errorf("Expected OpenCalls to increment by 1")
+	if statsAfter.Count(mockfs.OpOpen) != statsBefore.Count(mockfs.OpOpen)+1 {
+		t.Errorf("Expected mockfs.OpOpen to increment by 1")
 	}
-	if statsAfter.CloseCalls != statsBefore.CloseCalls+1 {
+	if statsAfter.Count(mockfs.OpClose) != statsBefore.Count(mockfs.OpClose)+1 {
 		t.Errorf("Expected CloseCalls to increment by 1")
 	}
-	if statsAfter.ReadCalls <= statsBefore.ReadCalls {
-		t.Errorf("Expected ReadCalls to increase")
+	if statsAfter.Count(mockfs.OpRead) <= statsBefore.Count(mockfs.OpRead) {
+		t.Errorf("Expected mockfs.OpRead to increase")
 	}
 }
 
@@ -116,7 +116,7 @@ func TestDirectoryOperations(t *testing.T) {
 		if !info.IsDir() {
 			t.Errorf("Stat dir returned non-dir info: %+v", info)
 		}
-		checkStats(t, mockFS, mockfs.Stats{StatCalls: 1}, "After Stat dir")
+		checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpStat: 1}, "After Stat dir")
 	})
 
 	t.Run("ReadDir", func(t *testing.T) {
@@ -130,8 +130,8 @@ func TestDirectoryOperations(t *testing.T) {
 		}
 
 		statsAfter := mockFS.GetStats()
-		if statsAfter.ReadDirCalls != statsBefore.ReadDirCalls+1 {
-			t.Errorf("Expected ReadDirCalls to increment by 1")
+		if statsAfter.Count(mockfs.OpReadDir) != statsBefore.Count(mockfs.OpReadDir)+1 {
+			t.Errorf("Expected mockfs.OpReadDir to increment by 1")
 		}
 	})
 }
@@ -192,40 +192,40 @@ func TestErrorInjectionExactMatch(t *testing.T) {
 	if !errors.Is(err, fs.ErrPermission) {
 		t.Errorf("Expected Stat permission error, got: %v", err)
 	}
-	checkStats(t, mockFS, mockfs.Stats{StatCalls: 1}, "After denied Stat")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpStat: 1}, "After denied Stat")
 
 	// Test Open error
 	_, err = mockFS.Open("deny.txt")
 	if !errors.Is(err, mockfs.ErrTimeout) {
 		t.Errorf("Expected Open timeout error, got: %v", err)
 	}
-	checkStats(t, mockFS, mockfs.Stats{StatCalls: 1, OpenCalls: 1}, "After denied Open")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpStat: 1, mockfs.OpOpen: 1}, "After denied Open")
 
 	// Test ReadDir error
 	_, err = mockFS.ReadDir("dir")
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("Expected ReadDir not exist error, got: %v", err)
 	}
-	checkStats(t, mockFS, mockfs.Stats{StatCalls: 1, OpenCalls: 1, ReadDirCalls: 1}, "After denied ReadDir")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpStat: 1, mockfs.OpOpen: 1, mockfs.OpReadDir: 1}, "After denied ReadDir")
 
 	// Test allowed file
 	_, err = mockFS.Stat("allow.txt")
 	if err != nil {
 		t.Errorf("Stat on allowed file failed: %v", err)
 	}
-	checkStats(t, mockFS, mockfs.Stats{StatCalls: 2, OpenCalls: 1, ReadDirCalls: 1}, "After allowed Stat")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpStat: 2, mockfs.OpOpen: 1, mockfs.OpReadDir: 1}, "After allowed Stat")
 
 	// Clear errors and re-test denied file
 	mockFS.ClearErrors()
-	checkStats(t, mockFS, mockfs.Stats{StatCalls: 2, OpenCalls: 1, ReadDirCalls: 1}, "After ClearErrors") // Stats remain
+	checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpStat: 2, mockfs.OpOpen: 1, mockfs.OpReadDir: 1}, "After ClearErrors") // Stats remain
 
 	_, err = mockFS.Stat("deny.txt")
 	if err != nil {
 		t.Errorf("Expected Stat success after ClearErrors, got: %v", err)
 	}
 	finalStats := mockFS.GetStats()
-	if finalStats.StatCalls != 3 {
-		t.Errorf("Expected 3 stat calls finally, got %d", finalStats.StatCalls)
+	if finalStats.Count(mockfs.OpStat) != 3 {
+		t.Errorf("Expected 3 stat calls finally, got %d", finalStats.Count(mockfs.OpStat))
 	}
 }
 
@@ -300,8 +300,8 @@ func TestErrorInjectionPattern(t *testing.T) {
 		t.Errorf("Read on data.txt failed unexpectedly: %v", err)
 	}
 	stats := mockFS.GetStats()
-	if stats.ReadCalls != 1 {
-		t.Errorf("Expected 1 read call got %d", stats.ReadCalls)
+	if stats.Count(mockfs.OpRead) != 1 {
+		t.Errorf("Expected 1 read call got %d", stats.Count(mockfs.OpRead))
 	}
 }
 
@@ -327,21 +327,21 @@ func TestErrorModes(t *testing.T) {
 	if !errors.Is(err, fs.ErrPermission) {
 		t.Errorf("ModeOnce: Expected permission error on first attempt, got: %v", err)
 	}
-	checkStats(t, mockFS, mockfs.Stats{OpenCalls: 1}, "ModeOnce Fail")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpOpen: 1}, "ModeOnce Fail")
 
 	// Second attempt should succeed
 	file, err := mockFS.Open("test.txt")
 	if err != nil {
 		t.Errorf("ModeOnce: Expected success on second attempt, got: %v", err)
 	}
-	checkStats(t, mockFS, mockfs.Stats{OpenCalls: 2}, "ModeOnce Success")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpOpen: 2}, "ModeOnce Success")
 
 	// Third attempt should also succeed
 	file2, err := mockFS.Open("test.txt")
 	if err != nil {
 		t.Errorf("ModeOnce: Expected success on third attempt, got: %v", err)
 	}
-	checkStats(t, mockFS, mockfs.Stats{OpenCalls: 3}, "ModeOnce Success 2")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpOpen: 3}, "ModeOnce Success 2")
 
 	if file != nil {
 		file.Close()
@@ -361,7 +361,7 @@ func TestErrorModes(t *testing.T) {
 		t.Fatalf("ModeAfterN: Failed to open file: %v", err)
 	}
 	defer file.Close()
-	checkStats(t, mockFS, mockfs.Stats{OpenCalls: 1}, "ModeAfterN Open")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpOpen: 1}, "ModeAfterN Open")
 
 	buf := make([]byte, 1) // Read one byte at a time
 
@@ -370,14 +370,14 @@ func TestErrorModes(t *testing.T) {
 	if err != nil {
 		t.Errorf("ModeAfterN: Expected first read to succeed, got: %v", err)
 	}
-	checkStats(t, mockFS, mockfs.Stats{OpenCalls: 1, ReadCalls: 1}, "ModeAfterN Read 1 Success")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpOpen: 1, mockfs.OpRead: 1}, "ModeAfterN Read 1 Success")
 
 	// Second read should succeed
 	_, err = file.Read(buf)
 	if err != nil {
 		t.Errorf("ModeAfterN: Expected second read to succeed, got: %v", err)
 	}
-	checkStats(t, mockFS, mockfs.Stats{OpenCalls: 1, ReadCalls: 2}, "ModeAfterN Read 2 Success")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpOpen: 1, mockfs.OpRead: 2}, "ModeAfterN Read 2 Success")
 
 	// Third read should fail with corruption error
 	_, err = file.Read(buf)
@@ -385,14 +385,14 @@ func TestErrorModes(t *testing.T) {
 		t.Errorf("ModeAfterN: Expected corruption error on third read, got: %v", err)
 	}
 	// Stat check after failure - note the counter includes the failed call
-	checkStats(t, mockFS, mockfs.Stats{OpenCalls: 1, ReadCalls: 3}, "ModeAfterN Read 3 Fail")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpOpen: 1, mockfs.OpRead: 3}, "ModeAfterN Read 3 Fail")
 
 	// Fourth read should also fail (ErrorModeAfterSuccesses keeps failing after trigger)
 	_, err = file.Read(buf)
 	if !errors.Is(err, mockfs.ErrCorrupted) {
 		t.Errorf("ModeAfterN: Expected corruption error on fourth read, got: %v", err)
 	}
-	checkStats(t, mockFS, mockfs.Stats{OpenCalls: 1, ReadCalls: 4}, "ModeAfterN Read 4 Fail")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{mockfs.OpOpen: 1, mockfs.OpRead: 4}, "ModeAfterN Read 4 Fail")
 }
 
 // TestStatistics exercises the statistics tracking.
@@ -408,7 +408,7 @@ func TestStatistics(t *testing.T) {
 	})
 
 	mockFS.ResetStats()
-	checkStats(t, mockFS, mockfs.Stats{}, "Initial")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{}, "Initial")
 
 	_, _ = mockFS.Stat("test.txt")
 	_, _ = mockFS.Stat("dir")
@@ -420,17 +420,17 @@ func TestStatistics(t *testing.T) {
 	}
 	_, _ = mockFS.ReadDir("dir")
 
-	expected := mockfs.Stats{
-		StatCalls:    2,
-		OpenCalls:    1,
-		ReadCalls:    2,
-		ReadDirCalls: 1,
-		CloseCalls:   1,
+	expected := [mockfs.NumOperations]int{
+		mockfs.OpStat:    2,
+		mockfs.OpOpen:    1,
+		mockfs.OpRead:    2,
+		mockfs.OpReadDir: 1,
+		mockfs.OpClose:   1,
 	}
 	checkStats(t, mockFS, expected, "After operations")
 
 	mockFS.ResetStats()
-	checkStats(t, mockFS, mockfs.Stats{}, "After Reset")
+	checkStats(t, mockFS, [mockfs.NumOperations]int{}, "After Reset")
 }
 
 // TestLatencySimulation exercises the latency simulation feature.
@@ -1182,7 +1182,7 @@ func TestConcurrency(t *testing.T) {
 	stats := mockFS.GetStats()
 	t.Logf("Stats after concurrent run: %+v", stats)
 
-	// Check ErrorModeOnce: OpenCalls for file1.txt should be numGoroutines * numOpsPerG.
+	// Check ErrorModeOnce: mockfs.OpOpen for file1.txt should be numGoroutines * numOpsPerG.
 	// We expect exactly one fs.ErrPermission error among those calls.
 	// Re-running the first Open call should now succeed.
 	_, err := mockFS.Open("file1.txt")
@@ -1190,7 +1190,7 @@ func TestConcurrency(t *testing.T) {
 		t.Errorf("Open on file1.txt after concurrent run failed unexpectedly: %v", err)
 	}
 
-	// Check ErrorModeAfterSuccesses: ReadCalls for file2.txt should be significant.
+	// Check ErrorModeAfterSuccesses: mockfs.OpRead for file2.txt should be significant.
 	// We expect ErrCorrupted after the 5th successful read overall.
 	// Perform a few more reads to confirm it keeps failing.
 	successCount := 0
@@ -1214,14 +1214,14 @@ func TestConcurrency(t *testing.T) {
 	// We expect the first 5 reads total to succeed, and subsequent ones to fail.
 	// This check after the concurrent run isn't precise, but checks the mode's persistence.
 	t.Logf("Post-concurrency file2 reads: %d successes, %d failures (expecting failures after 5 total successes)", successCount, failCount)
-	if failCount == 0 && stats.ReadCalls > 5 {
+	if failCount == 0 && stats.Count(mockfs.OpRead) > 5 {
 		t.Error("Expected read failures on file2.txt after 5 successes, but none occurred in post-check")
 	}
 
 	// Check total stats are roughly correct order of magnitude
 	totalOps := numGoroutines * numOpsPerG
 	// Each loop does ~2 Stats, ~2 Opens, ~reads/closes depend on open success.
-	if stats.StatCalls < totalOps || stats.OpenCalls < totalOps {
+	if stats.Count(mockfs.OpStat) < totalOps || stats.Count(mockfs.OpOpen) < totalOps {
 		t.Errorf("Stats seem too low after concurrent run: %+v", stats)
 	}
 }
