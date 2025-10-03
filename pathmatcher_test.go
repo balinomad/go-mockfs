@@ -1,22 +1,24 @@
-package mockfs
+package mockfs_test
 
 import (
 	"testing"
+
+	"github.com/balinomad/go-mockfs"
 )
 
 func TestPathMatcher_Interface(t *testing.T) {
 	// verify all types implement PathMatcher interface
-	var _ PathMatcher = (*ExactMatcher)(nil)
-	var _ PathMatcher = (*RegexpMatcher)(nil)
-	var _ PathMatcher = (*WildcardMatcher)(nil)
+	var _ mockfs.PathMatcher = (*mockfs.ExactMatcher)(nil)
+	var _ mockfs.PathMatcher = (*mockfs.RegexpMatcher)(nil)
+	var _ mockfs.PathMatcher = (*mockfs.WildcardMatcher)(nil)
 
 	// test that interface methods work polymorphically
-	matchers := []PathMatcher{
-		NewExactMatcher("test.txt"),
-		&WildcardMatcher{},
+	matchers := []mockfs.PathMatcher{
+		mockfs.NewExactMatcher("test.txt"),
+		&mockfs.WildcardMatcher{},
 	}
 
-	m, err := NewRegexpMatcher("\\.txt$")
+	m, err := mockfs.NewRegexpMatcher("\\.txt$")
 	if err != nil {
 		t.Fatalf("failed to create regexp matcher: %v", err)
 	}
@@ -86,7 +88,7 @@ func TestExactMatcher_Matches(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "path with leading slash",
+			name:     "leading slash literal",
 			stored:   "/absolute/path.txt",
 			input:    "/absolute/path.txt",
 			expected: true,
@@ -107,7 +109,7 @@ func TestExactMatcher_Matches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewExactMatcher(tt.stored)
+			m := mockfs.NewExactMatcher(tt.stored)
 			if got := m.Matches(tt.input); got != tt.expected {
 				t.Errorf("ExactMatcher.Matches() = %v, want %v", got, tt.expected)
 			}
@@ -117,76 +119,76 @@ func TestExactMatcher_Matches(t *testing.T) {
 
 func TestExactMatcher_CloneForSub(t *testing.T) {
 	tests := []struct {
-		name     string
-		stored   string
-		prefix   string
-		testPath string
-		expected bool
+		name       string
+		stored     string // full parent path stored in the original matcher
+		prefix     string // sub prefix
+		inputInSub string // path used inside sub filesystem (relative path)
+		expected   bool
 	}{
 		{
-			name:     "clone with prefix",
-			stored:   "file.txt",
-			prefix:   "subdir",
-			testPath: "subdir/file.txt",
-			expected: true,
+			name:       "simple child",
+			stored:     "subdir/file.txt",
+			prefix:     "subdir",
+			inputInSub: "file.txt",
+			expected:   true,
 		},
 		{
-			name:     "clone with prefix ending slash",
-			stored:   "file.txt",
-			prefix:   "subdir/",
-			testPath: "subdir/file.txt",
-			expected: true,
+			name:       "prefix with trailing slash",
+			stored:     "subdir/file.txt",
+			prefix:     "subdir/",
+			inputInSub: "file.txt",
+			expected:   true,
 		},
 		{
-			name:     "clone with path leading slash",
-			stored:   "/file.txt",
-			prefix:   "subdir",
-			testPath: "subdir/file.txt",
-			expected: true,
+			name:       "nested prefix",
+			stored:     "dir/subdir/file.txt",
+			prefix:     "dir/subdir",
+			inputInSub: "file.txt",
+			expected:   true,
 		},
 		{
-			name:     "clone with empty prefix",
-			stored:   "file.txt",
-			prefix:   "",
-			testPath: "file.txt",
-			expected: true,
+			name:       "nested path preserved",
+			stored:     "dir/sub/file.txt",
+			prefix:     "dir",
+			inputInSub: "sub/file.txt",
+			expected:   true,
 		},
 		{
-			name:     "clone with nested prefix",
-			stored:   "file.txt",
-			prefix:   "dir/subdir",
-			testPath: "dir/subdir/file.txt",
-			expected: true,
+			name:       "directory maps to subdir name",
+			stored:     "dir/subdir",
+			prefix:     "dir",
+			inputInSub: "subdir",
+			expected:   true,
 		},
 		{
-			name:     "clone with nested path",
-			stored:   "sub/file.txt",
-			prefix:   "dir",
-			testPath: "dir/sub/file.txt",
-			expected: true,
+			name:       "prefix path maps to dot",
+			stored:     "dir",
+			prefix:     "dir",
+			inputInSub: ".",
+			expected:   true,
 		},
 		{
-			name:     "clone does not match original",
-			stored:   "file.txt",
-			prefix:   "subdir",
-			testPath: "file.txt",
-			expected: false,
+			name:       "outside subtree yields no match",
+			stored:     "file.txt",
+			prefix:     "subdir",
+			inputInSub: "file.txt",
+			expected:   false,
 		},
 		{
-			name:     "clone with both slashes",
-			stored:   "/file.txt",
-			prefix:   "subdir/",
-			testPath: "subdir/file.txt",
-			expected: true,
+			name:       "both slashes in stored and prefix",
+			stored:     "/file.txt",
+			prefix:     "subdir/",
+			inputInSub: "/file.txt", // literal matching preserved
+			expected:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := NewExactMatcher(tt.stored)
-			cloned := m.CloneForSub(tt.prefix)
-			if got := cloned.Matches(tt.testPath); got != tt.expected {
-				t.Errorf("CloneForSub().Matches() = %v, want %v", got, tt.expected)
+			orig := mockfs.NewExactMatcher(tt.stored)
+			cloned := orig.CloneForSub(tt.prefix)
+			if got := cloned.Matches(tt.inputInSub); got != tt.expected {
+				t.Errorf("CloneForSub().Matches() = %v, want %v (stored=%q prefix=%q input=%q)", got, tt.expected, tt.stored, tt.prefix, tt.inputInSub)
 			}
 		})
 	}
@@ -194,7 +196,7 @@ func TestExactMatcher_CloneForSub(t *testing.T) {
 
 // TestExactMatcher_Concurrent tests concurrent access to ExactMatcher.
 func TestExactMatcher_Concurrent(t *testing.T) {
-	m := NewExactMatcher("test.txt")
+	m := mockfs.NewExactMatcher("test.txt")
 
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
@@ -219,7 +221,7 @@ func TestExactMatcher_LongPaths(t *testing.T) {
 	}
 	longPath += "file.txt"
 
-	m := NewExactMatcher(longPath)
+	m := mockfs.NewExactMatcher(longPath)
 	if !m.Matches(longPath) {
 		t.Error("should match long path")
 	}
@@ -268,7 +270,7 @@ func TestNewRegexpMatcher(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewRegexpMatcher(tt.pattern)
+			got, err := mockfs.NewRegexpMatcher(tt.pattern)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewRegexpMatcher() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -384,7 +386,7 @@ func TestRegexpMatcher_Matches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, err := NewRegexpMatcher(tt.pattern)
+			m, err := mockfs.NewRegexpMatcher(tt.pattern)
 			if err != nil {
 				t.Fatalf("NewRegexpMatcher() unexpected error: %v", err)
 			}
@@ -397,63 +399,151 @@ func TestRegexpMatcher_Matches(t *testing.T) {
 
 func TestRegexpMatcher_CloneForSub(t *testing.T) {
 	tests := []struct {
-		name     string
-		pattern  string
-		prefix   string
-		testPath string
-		expected bool
+		name        string
+		pattern     string
+		prefix      string
+		testPath    string // path inside the sub-FS (relative)
+		expected    bool   // expectation for cloned matcher
+		origCheck   string // optional: a path the original must still match
+		origCheckOK bool   // expected result for origCheck
+		nestedClone string // optional second CloneForSub
 	}{
 		{
-			name:     "clone preserves pattern",
+			// original pattern matches suffix; when cloned into "subdir" it will check "subdir/<testPath>"
+			name:     "clone preserves suffix semantics",
 			pattern:  "\\.txt$",
 			prefix:   "subdir",
 			testPath: "test.txt",
 			expected: true,
 		},
 		{
-			name:     "clone ignores prefix",
+			// anchored prefix ^test will not match when composed with "subdir/<testPath>" because the assembled path
+			// starts with "subdir/"
+			name:     "anchored prefix not matched after cloning",
 			pattern:  "^test",
 			prefix:   "subdir",
 			testPath: "test.txt",
-			expected: true,
+			expected: false,
 		},
 		{
-			name:     "clone with empty prefix",
+			// empty prefix returns same behaviour as original (CloneForSub returns original)
+			name:     "empty prefix no-op",
 			pattern:  "file",
 			prefix:   "",
 			testPath: "myfile.txt",
 			expected: true,
 		},
 		{
-			name:     "clone does not modify original",
-			pattern:  "^exact$",
-			prefix:   "dir",
-			testPath: "exact",
+			// cloning with "." should be treated like no-op and return the same matcher
+			name:     "dot prefix no-op",
+			pattern:  "abc",
+			prefix:   ".",
+			testPath: "abc",
+			expected: true,
+		},
+		{
+			// trailing slash in prefix should be trimmed
+			name:     "trailing slash in prefix",
+			pattern:  "\\.txt$",
+			prefix:   "dir/",
+			testPath: "file.txt",
+			expected: true,
+		},
+		{
+			// cloning should not modify the original matcher behaviour.
+			// The original pattern matches "exact" in the parent FS,
+			// but inside Sub("dir"), the full path becomes "dir/exact",
+			// which does not match ^exact$.
+			name:        "original unaffected by clone",
+			pattern:     "^exact$",
+			prefix:      "dir",
+			testPath:    "exact",
+			expected:    false,
+			origCheck:   "exact",
+			origCheckOK: true,
+		},
+		{
+			name:        "nested clone combines prefixes",
+			pattern:     "\\.txt$",
+			prefix:      "dir",
+			testPath:    "file.txt",
+			expected:    true,
+			origCheck:   "file.txt", // original still works
+			origCheckOK: true,
+			nestedClone: "subdir", // we’ll handle nestedClone inside the loop (see below)
+		},
+		{
+			name:     "exact outside prefix becomes noneMatcher",
+			pattern:  "^file\\.txt$",
+			prefix:   "otherdir",
+			testPath: "file.txt",
+			expected: false,
+		},
+		{
+			// dot path matches the prefix itself
+			name:     "dot matches prefix",
+			pattern:  "^subdir$",
+			prefix:   "subdir",
+			testPath: ".",
+			expected: true,
+		},
+		// empty string path also matches prefix
+		{
+			name:     "empty string matches prefix",
+			pattern:  "^subdir$",
+			prefix:   "subdir",
+			testPath: "",
 			expected: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, err := NewRegexpMatcher(tt.pattern)
+			m, err := mockfs.NewRegexpMatcher(tt.pattern)
 			if err != nil {
 				t.Fatalf("NewRegexpMatcher() unexpected error: %v", err)
 			}
 			cloned := m.CloneForSub(tt.prefix)
-			if got := cloned.Matches(tt.testPath); got != tt.expected {
-				t.Errorf("CloneForSub().Matches() = %v, want %v", got, tt.expected)
+			if tt.nestedClone != "" {
+				cloned = cloned.CloneForSub(tt.nestedClone)
 			}
-			// ensure original still works
-			if got := m.Matches(tt.testPath); got != tt.expected {
-				t.Errorf("original matcher affected by clone: got %v, want %v", got, tt.expected)
+			// check cloned behaviour
+			if got := cloned.Matches(tt.testPath); got != tt.expected {
+				t.Errorf("CloneForSub().Matches() = %v, want %v (pattern=%q prefix=%q subject=%q)",
+					got, tt.expected, tt.pattern, tt.prefix, tt.testPath)
+			}
+
+			// optional original-behaviour check
+			if tt.origCheck != "" {
+				if got := m.Matches(tt.origCheck); got != tt.origCheckOK {
+					t.Errorf("original matcher: Matches(%q) = %v, want %v",
+						tt.origCheck, got, tt.origCheckOK)
+				}
 			}
 		})
 	}
 }
 
+// TestRegexpParentMatcher_CloneForSub_DotPrefix tests that CloneForSub("."), called on a
+// regexpParentMatcher, returns the same matcher. This is because the dot prefix is treated
+// as a no-op and the returned matcher should preserve the original behaviour.
+func TestRegexpParentMatcher_CloneForSub_DotPrefix(t *testing.T) {
+	m, err := mockfs.NewRegexpMatcher(".*")
+	if err != nil {
+		t.Fatalf("failed to compile regexp: %v", err)
+	}
+	pm := m.CloneForSub("dir") // now we have a regexpParentMatcher
+
+	clone := pm.CloneForSub(".") // this should trigger the dot-prefix branch
+
+	if clone != pm {
+		t.Errorf("expected CloneForSub(\".\") on regexpParentMatcher to return the same matcher")
+	}
+}
+
 // TestRegexpMatcher_Concurrent tests concurrent access to RegexpMatcher.
 func TestRegexpMatcher_Concurrent(t *testing.T) {
-	m, err := NewRegexpMatcher("\\.txt$")
+	m, err := mockfs.NewRegexpMatcher("\\.txt$")
 	if err != nil {
 		t.Fatalf("NewRegexpMatcher() error: %v", err)
 	}
@@ -509,7 +599,7 @@ func TestRegexpMatcher_RealWorldPatterns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, err := NewRegexpMatcher(tt.pattern)
+			m, err := mockfs.NewRegexpMatcher(tt.pattern)
 			if err != nil {
 				t.Fatalf("NewRegexpMatcher() error: %v", err)
 			}
@@ -529,7 +619,7 @@ func TestRegexpMatcher_RealWorldPatterns(t *testing.T) {
 	}
 }
 
-// TeTestRegexpMatcher_SafeCompilation test regex compilation errors don't panic.
+// TestRegexpMatcher_SafeCompilation test regex compilation errors don't panic.
 func TestRegexpMatcher_SafeCompilation(t *testing.T) {
 	invalidPatterns := []string{
 		"[",
@@ -542,7 +632,7 @@ func TestRegexpMatcher_SafeCompilation(t *testing.T) {
 
 	for _, pattern := range invalidPatterns {
 		t.Run(pattern, func(t *testing.T) {
-			m, err := NewRegexpMatcher(pattern)
+			m, err := mockfs.NewRegexpMatcher(pattern)
 			if err == nil {
 				t.Errorf("expected error for invalid pattern %q", pattern)
 			}
@@ -550,17 +640,6 @@ func TestRegexpMatcher_SafeCompilation(t *testing.T) {
 				t.Errorf("expected nil matcher for invalid pattern %q", pattern)
 			}
 		})
-	}
-}
-
-// Test that [regexp.Regexp] pointer is not nil after creation.
-func TestRegexpMatcher_NonNilRegexp(t *testing.T) {
-	m, err := NewRegexpMatcher("test")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if m.re == nil {
-		t.Error("regexp should not be nil")
 	}
 }
 
@@ -579,7 +658,7 @@ func TestWildcardMatcher_Matches(t *testing.T) {
 		{name: "unicode path", input: "файл.txt"},
 	}
 
-	m := NewWildcardMatcher()
+	m := mockfs.NewWildcardMatcher()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := m.Matches(tt.input); !got {
@@ -600,7 +679,7 @@ func TestWildcardMatcher_CloneForSub(t *testing.T) {
 		{name: "clone with nested prefix", prefix: "dir/subdir", testPath: "test.txt"},
 	}
 
-	m := NewWildcardMatcher()
+	m := mockfs.NewWildcardMatcher()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cloned := m.CloneForSub(tt.prefix)
@@ -615,148 +694,44 @@ func TestWildcardMatcher_CloneForSub(t *testing.T) {
 	}
 }
 
-func Test_cleanJoin(t *testing.T) {
-	tests := []struct {
-		name     string
-		prefix   string
-		path     string
-		expected string
-	}{
-		{
-			name:     "both non-empty",
-			prefix:   "dir",
-			path:     "file.txt",
-			expected: "dir/file.txt",
-		},
-		{
-			name:     "prefix with trailing slash",
-			prefix:   "dir/",
-			path:     "file.txt",
-			expected: "dir/file.txt",
-		},
-		{
-			name:     "path with leading slash",
-			prefix:   "dir",
-			path:     "/file.txt",
-			expected: "dir/file.txt",
-		},
-		{
-			name:     "both with slashes",
-			prefix:   "dir/",
-			path:     "/file.txt",
-			expected: "dir/file.txt",
-		},
-		{
-			name:     "empty prefix",
-			prefix:   "",
-			path:     "file.txt",
-			expected: "file.txt",
-		},
-		{
-			name:     "empty path",
-			prefix:   "dir",
-			path:     "",
-			expected: "dir",
-		},
-		{
-			name:     "both empty",
-			prefix:   "",
-			path:     "",
-			expected: "",
-		},
-		{
-			name:     "nested prefix",
-			prefix:   "dir/subdir",
-			path:     "file.txt",
-			expected: "dir/subdir/file.txt",
-		},
-		{
-			name:     "nested path",
-			prefix:   "dir",
-			path:     "subdir/file.txt",
-			expected: "dir/subdir/file.txt",
-		},
-		{
-			name:     "nested both",
-			prefix:   "dir/sub",
-			path:     "another/file.txt",
-			expected: "dir/sub/another/file.txt",
-		},
-		{
-			name:     "multiple leading slashes in path",
-			prefix:   "dir",
-			path:     "//file.txt",
-			expected: "dir//file.txt",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := cleanJoin(tt.prefix, tt.path)
-			if got != tt.expected {
-				t.Errorf("cleanJoin() = %q, want %q", got, tt.expected)
-			}
-		})
-	}
-}
-
-// TestCleanJoin_MultipleSlashes tests that cleanJoin handles edge cases with multiple slashes.
-func Test_cleanJoin_MultipleSlashes(t *testing.T) {
-	tests := []struct {
-		prefix   string
-		path     string
-		expected string
-	}{
-		{"dir/", "/file.txt", "dir/file.txt"},
-		{"dir//", "file.txt", "dir//file.txt"},
-		{"dir", "//file.txt", "dir//file.txt"},
-	}
-
-	for _, tt := range tests {
-		got := cleanJoin(tt.prefix, tt.path)
-		if got != tt.expected {
-			t.Errorf("cleanJoin(%q, %q) = %q, want %q", tt.prefix, tt.path, got, tt.expected)
-		}
-	}
-}
-
 // TestCloneIndependence tests that matchers work correctly after cloning.
 func TestCloneIndependence(t *testing.T) {
-	// test ExactMatcher
+	// test ExactMatcher: original stores parent path, cloned should match relative path
 	t.Run("exact matcher", func(t *testing.T) {
-		original := NewExactMatcher("file.txt")
+		original := mockfs.NewExactMatcher("dir/file.txt")
 		cloned := original.CloneForSub("dir")
 
-		if !original.Matches("file.txt") {
-			t.Error("original should match 'file.txt'")
+		if !original.Matches("dir/file.txt") {
+			t.Error("original should match 'dir/file.txt'")
 		}
-		if original.Matches("dir/file.txt") {
-			t.Error("original should not match 'dir/file.txt'")
+		if original.Matches("file.txt") {
+			t.Error("original should not match 'file.txt'")
 		}
-		if cloned.Matches("file.txt") {
-			t.Error("cloned should not match 'file.txt'")
+		if cloned.Matches("dir/file.txt") {
+			t.Error("cloned should not match 'dir/file.txt'")
 		}
-		if !cloned.Matches("dir/file.txt") {
-			t.Error("cloned should match 'dir/file.txt'")
+		if !cloned.Matches("file.txt") {
+			t.Error("cloned should match 'file.txt'")
 		}
 	})
 
-	// test RegexpMatcher
+	// test RegexpMatcher: ensure original and clone behave consistently
 	t.Run("regexp matcher", func(t *testing.T) {
-		original, _ := NewRegexpMatcher("\\.txt$")
+		original, _ := mockfs.NewRegexpMatcher("\\.txt$")
 		cloned := original.CloneForSub("dir")
 
 		if !original.Matches("test.txt") {
 			t.Error("original should match 'test.txt'")
 		}
+		// cloned matches when composed parent path "dir/test.txt" matches pattern
 		if !cloned.Matches("test.txt") {
-			t.Error("cloned should match 'test.txt'")
+			t.Error("cloned should match 'test.txt' when parent path matches")
 		}
 	})
 
 	// test WildcardMatcher
 	t.Run("wildcard matcher", func(t *testing.T) {
-		original := NewWildcardMatcher()
+		original := mockfs.NewWildcardMatcher()
 		cloned := original.CloneForSub("dir")
 
 		if !original.Matches("anything") {
@@ -767,13 +742,31 @@ func TestCloneIndependence(t *testing.T) {
 		}
 	})
 }
+func TestNoneMatcher_CloneForSub(t *testing.T) {
+	// Get a noneMatcher by cloning an ExactMatcher outside the prefix
+	em := mockfs.NewExactMatcher("foo")
+	nm := em.CloneForSub("bar") // foo is outside bar, returns noneMatcher
+
+	// sanity check
+	if nm.Matches("foo") {
+		t.Errorf("expected noneMatcher to never match")
+	}
+
+	// now call CloneForSub on the noneMatcher itself
+	nm2 := nm.CloneForSub("baz")
+
+	// must still be a noneMatcher and never match
+	if nm2.Matches("anything.txt") {
+		t.Errorf("expected noneMatcher.CloneForSub result to never match")
+	}
+}
 
 // BenchmarkMatchers benchmarks the performance of different matchers on a given path.
 func BenchmarkMatchers(b *testing.B) {
 	path := "dir/subdir/file.txt"
-	mExact := NewExactMatcher("dir/subdir/file.txt")
-	mRegexp, _ := NewRegexpMatcher("^dir/.*/.*\\.txt$")
-	mWildcard := NewWildcardMatcher()
+	mExact := mockfs.NewExactMatcher("dir/subdir/file.txt")
+	mRegexp, _ := mockfs.NewRegexpMatcher("^dir/.*/.*\\.txt$")
+	mWildcard := mockfs.NewWildcardMatcher()
 
 	b.Run("ExactMatcher", func(b *testing.B) {
 		b.ResetTimer()
@@ -800,9 +793,9 @@ func BenchmarkMatchers(b *testing.B) {
 // BenchmarkCloneForSub benchmarks the performance of CloneForSub method on different matchers.
 // It measures how long it takes to call CloneForSub() on each matcher type with a given prefix.
 func BenchmarkCloneForSub(b *testing.B) {
-	mExact := NewExactMatcher("file.txt")
-	mRegexp, _ := NewRegexpMatcher("^dir/.*/.*\\.txt$")
-	mWildcard := NewWildcardMatcher()
+	mExact := mockfs.NewExactMatcher("file.txt")
+	mRegexp, _ := mockfs.NewRegexpMatcher("^dir/.*/.*\\.txt$")
+	mWildcard := mockfs.NewWildcardMatcher()
 
 	prefix := "dir/subdir"
 
@@ -834,40 +827,6 @@ func BenchmarkRegexpMatcher_Compile(b *testing.B) {
 	pattern := "^dir/.*/.*\\.txt$"
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = NewRegexpMatcher(pattern)
+		_, _ = mockfs.NewRegexpMatcher(pattern)
 	}
-}
-
-// Benchmark_cleanJoin benchmarks the performance of cleanJoin with various
-// input combinations, with and without leading and trailing slashes.
-func Benchmark_cleanJoin(b *testing.B) {
-	prefix := "dir/subdir"
-	prefixWithSlash := prefix + "/"
-	path := "another/file.txt"
-	pathWithSlash := "/" + path
-
-	b.Run("no slashes", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = cleanJoin(prefix, path)
-		}
-	})
-	b.Run("leading slash in path", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = cleanJoin(prefix, pathWithSlash)
-		}
-	})
-	b.Run("trailing slash in prefix", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = cleanJoin(prefixWithSlash, path)
-		}
-	})
-	b.Run("both with slashes", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = cleanJoin(prefixWithSlash, pathWithSlash)
-		}
-	})
 }
