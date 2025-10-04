@@ -127,11 +127,28 @@ mock.AddDirectory("logs", 0755)
 mock.RemovePath("temp/cache.dat")
 ```
 
-## 📌 Installation
+### Mocking `os` Package Functions
 
-```bash
-go get github.com/balinomad/go-mockfs@latest
+In Go, free functions (like `os.MkdirAll`) are not mockable unless they are introduced through indirection.
+Here is how you can use mockfs to mock `os` functions:
+
+#### Dependency Injection with Interfaces
+Instead of calling `os.MkdirAll` directly, depend on an abstraction:
+```go
+// Abstraction for directory creation
+type DirMaker interface {
+    MkdirAll(path string, perm fs.FileMode) error
+}
+
+// Real implementation
+type OSDir struct{}
+
+func (OSDir) MkdirAll(path string, perm fs.FileMode) error {
+    return os.MkdirAll(path, perm)
+}
 ```
+- In production: pass `OSDir{}`.
+- In tests: use `mockfs` or a custom mock that injects errors.
 
 ## 📘 API Reference
 
