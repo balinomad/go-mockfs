@@ -20,16 +20,17 @@ const (
 // Generic file system errors.
 // Errors returned by file systems can be tested against these errors using [errors.Is].
 var (
-	ErrInvalid        = fs.ErrInvalid    // "invalid argument"
-	ErrPermission     = fs.ErrPermission // "permission denied"
-	ErrExist          = fs.ErrExist      // "file already exists"
-	ErrNotExist       = fs.ErrNotExist   // "file does not exist"
-	ErrClosed         = fs.ErrClosed     // "file already closed"
-	ErrDiskFull       = errors.New("disk full")
-	ErrTimeout        = errors.New("operation timeout")
-	ErrCorrupted      = errors.New("corrupted data")
-	ErrTooManyHandles = errors.New("too many open files")
-	ErrNotDir         = errors.New("not a directory")
+	ErrInvalid        = fs.ErrInvalid                     // ErrInvalid indicates an invalid argument.
+	ErrPermission     = fs.ErrPermission                  // ErrPermission indicates a permission error.
+	ErrExist          = fs.ErrExist                       // ErrExist indicates that a file already exists.
+	ErrNotExist       = fs.ErrNotExist                    // ErrNotExist indicates that a file does not exist.
+	ErrClosed         = fs.ErrClosed                      // ErrClosed indicates that a file is closed.
+	ErrDiskFull       = errors.New("disk full")           // ErrDiskFull indicates that the disk is full.
+	ErrTimeout        = errors.New("operation timeout")   // ErrTimeout indicates that the operation timed out.
+	ErrCorrupted      = errors.New("corrupted data")      // ErrCorrupted indicates that the data is corrupted.
+	ErrTooManyHandles = errors.New("too many open files") // ErrTooManyHandles indicates that too many handles are open.
+	ErrNotDir         = errors.New("not a directory")     // ErrNotDir indicates that a path component is not a directory.
+	ErrNotEmpty       = errors.New("directory not empty") // ErrNotEmpty indicates that a directory is not empty.
 )
 
 // ErrorRule captures the settings for an error to be injected.
