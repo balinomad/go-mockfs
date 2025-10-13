@@ -15,8 +15,17 @@ type MockFile struct {
 	writeHandler  func([]byte) (int, error)     // Write handler if configured.
 	checkError    func(Operation, string) error // Check for configured errors.
 	simulateDelay func()                        // Simulate latency.
-	inc           func(Operation)               // Optional operation counter incrementer.
+	inc           func(Operation)               // Operation counter incrementer.
 }
+
+// Ensure interface implementations.
+var (
+	_ fs.File        = (*MockFile)(nil)
+	_ fs.ReadDirFile = (*MockFile)(nil)
+	_ io.Reader      = (*MockFile)(nil)
+	_ io.Writer      = (*MockFile)(nil)
+	_ io.Closer      = (*MockFile)(nil)
+)
 
 // NewMockFile constructs a MockFile.
 //
@@ -25,7 +34,7 @@ type MockFile struct {
 //   - name: cleaned path used when checking injection rules.
 //   - errorChecker: callback to check and apply configured errors (may be nil).
 //   - delaySimulator: callback to simulate latency (may be nil).
-//   - inc: optional function called with the Operation (may be nil).
+//   - inc: function called with the Operation (may be nil).
 //   - writeHandler: optional write handler; if nil and underlyingFile implements io.Writer,
 //     that implementation is used.
 func NewMockFile(
@@ -55,6 +64,7 @@ func NewMockFile(
 		inc:           inc,
 	}
 
+	// Set write handler: prefer explicit handler, fallback to underlying Writer
 	if writeHandler != nil {
 		f.writeHandler = writeHandler
 	} else if wf, ok := underlyingFile.(io.Writer); ok {
@@ -92,18 +102,46 @@ func (f *MockFile) Write(b []byte) (int, error) {
 		return 0, fs.ErrClosed
 	}
 
+	if f.writeHandler == nil {
+		return 0, &fs.PathError{Op: "write", Path: f.name, Err: fs.ErrInvalid}
+	}
+
 	f.inc(OpWrite)
 
 	if err := f.checkError(OpWrite, f.name); err != nil {
 		return 0, err
 	}
 
-	if f.writeHandler == nil {
-		return 0, fs.ErrInvalid
+	f.simulateDelay()
+	return f.writeHandler(b)
+}
+
+// ReadDir reads the contents of the directory and returns
+// a slice of up to n DirEntry values in directory order.
+// Subsequent calls on the same file will yield further DirEntry values.
+// It implements fs.ReadDirFile for MockFile.
+func (f *MockFile) ReadDir(n int) ([]fs.DirEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.closed {
+		return nil, fs.ErrClosed
+	}
+
+	// Check if underlying file implements ReadDirFile
+	rdf, ok := f.file.(fs.ReadDirFile)
+	if !ok {
+		return nil, &fs.PathError{Op: "ReadDir", Path: f.name, Err: fs.ErrInvalid}
+	}
+
+	f.inc(OpReadDir)
+
+	if err := f.checkError(OpReadDir, f.name); err != nil {
+		return nil, err
 	}
 
 	f.simulateDelay()
-	return f.writeHandler(b)
+	return rdf.ReadDir(n)
 }
 
 // Stat implements fs.File.Stat.
@@ -121,8 +159,9 @@ func (f *MockFile) Stat() (fs.FileInfo, error) {
 
 // Close implements io.Closer for MockFile.
 //
-// Close is idempotent. If an injected close error is configured, the underlying file
-// is still closed to avoid leaks.
+// Close returns fs.ErrClosed if called multiple times, allowing tests to detect
+// double-close bugs. If an injected close error is configured, the underlying file
+// is still closed to avoid resource leaks.
 func (f *MockFile) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -132,6 +171,7 @@ func (f *MockFile) Close() error {
 	}
 
 	f.inc(OpClose)
+
 	// Check for injected close error first
 	if err := f.checkError(OpClose, f.name); err != nil {
 		// Attempt to close underlying file to avoid resource leaks

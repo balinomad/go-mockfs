@@ -2,6 +2,7 @@ package mockfs_test
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"strings"
@@ -11,14 +12,6 @@ import (
 
 	"github.com/balinomad/go-mockfs"
 )
-
-// TestMockFile_Interface verifies MockFile implements required interfaces.
-func TestMockFile_Interface(t *testing.T) {
-	var _ fs.File = (*mockfs.MockFile)(nil)
-	var _ io.Reader = (*mockfs.MockFile)(nil)
-	var _ io.Writer = (*mockfs.MockFile)(nil)
-	var _ io.Closer = (*mockfs.MockFile)(nil)
-}
 
 // createTestFS creates a test filesystem with a single file.
 func createTestFS(content string) fstest.MapFS {
@@ -401,6 +394,297 @@ func TestMockFile_Write_WithCounter(t *testing.T) {
 	}
 	if lastOp != mockfs.OpWrite {
 		t.Errorf("last operation = %v, expected OpWrite", lastOp)
+	}
+}
+
+// TestMockFile_ReadDir tests the ReadDir method.
+func TestMockFile_ReadDir(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupFS     func() fstest.MapFS
+		openPath    string
+		readCount   int
+		injectError error
+		wantEntries int
+		wantErr     error
+		// A second read to test statefulness
+		secondReadCount   int
+		wantSecondEntries int
+		wantSecondErr     error
+	}{
+		{
+			name: "read directory all entries at once",
+			setupFS: func() fstest.MapFS {
+				return fstest.MapFS{
+					"dir":           {Mode: fs.ModeDir | 0755},
+					"dir/file1.txt": {Data: []byte("content1"), Mode: 0644},
+					"dir/file2.txt": {Data: []byte("content2"), Mode: 0644},
+					"dir/file3.txt": {Data: []byte("content3"), Mode: 0644},
+				}
+			},
+			openPath:    "dir",
+			readCount:   -1, // Read all
+			wantEntries: 3,
+			wantErr:     nil,
+		},
+		{
+			name: "read directory in chunks until EOF",
+			setupFS: func() fstest.MapFS {
+				return fstest.MapFS{
+					"dir":           {Mode: fs.ModeDir | 0755},
+					"dir/file1.txt": {Data: []byte("content1"), Mode: 0644},
+					"dir/file2.txt": {Data: []byte("content2"), Mode: 0644},
+				}
+			},
+			openPath:          "dir",
+			readCount:         1, // Read first entry
+			wantEntries:       1,
+			wantErr:           nil,
+			secondReadCount:   10,  // Try to read more
+			wantSecondEntries: 1,   // Should get the second entry
+			wantSecondErr:     nil, // A third read would give EOF
+		},
+		{
+			name: "read directory with zero count reads all",
+			setupFS: func() fstest.MapFS {
+				return fstest.MapFS{
+					"dir":           {Mode: fs.ModeDir | 0755},
+					"dir/file1.txt": {Data: []byte("content1"), Mode: 0644},
+					"dir/file2.txt": {Data: []byte("content2"), Mode: 0644},
+				}
+			},
+			openPath:    "dir",
+			readCount:   0, // Read all, same as -1
+			wantEntries: 2,
+			wantErr:     nil,
+		},
+		{
+			name: "read from empty directory with n>0 returns EOF",
+			setupFS: func() fstest.MapFS {
+				return fstest.MapFS{
+					"dir": {Mode: fs.ModeDir | 0755},
+				}
+			},
+			openPath:    "dir",
+			readCount:   1,
+			wantEntries: 0,
+			wantErr:     io.EOF,
+		},
+		{
+			name: "read all from empty directory returns no error",
+			setupFS: func() fstest.MapFS {
+				return fstest.MapFS{
+					"dir": {Mode: fs.ModeDir | 0755},
+				}
+			},
+			openPath:    "dir",
+			readCount:   -1,
+			wantEntries: 0,
+			wantErr:     nil,
+		},
+		{
+			name: "read non-directory returns error",
+			setupFS: func() fstest.MapFS {
+				return fstest.MapFS{
+					"file.txt": {Data: []byte("content"), Mode: 0644},
+				}
+			},
+			openPath:  "file.txt",
+			readCount: -1,
+			wantErr:   fs.ErrInvalid,
+		},
+		{
+			name: "read directory with injected error",
+			setupFS: func() fstest.MapFS {
+				return fstest.MapFS{
+					"dir":          {Mode: fs.ModeDir | 0755},
+					"dir/file.txt": {Data: []byte("content"), Mode: 0644},
+				}
+			},
+			openPath:    "dir",
+			readCount:   -1,
+			injectError: mockfs.ErrPermission,
+			wantErr:     mockfs.ErrPermission,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testFS := tt.setupFS()
+			underlyingFile, err := testFS.Open(tt.openPath)
+			if err != nil {
+				// This can happen in the "read non-directory" case if Open itself fails
+				if tt.wantErr != nil && errors.Is(err, tt.wantErr) {
+					return
+				}
+				t.Fatalf("test setup failed to open path %q: %v", tt.openPath, err)
+			}
+			defer underlyingFile.Close()
+
+			errorChecker := func(op mockfs.Operation, path string) error {
+				if tt.injectError != nil && op == mockfs.OpReadDir && path == tt.openPath {
+					return tt.injectError
+				}
+				return nil
+			}
+
+			f := mockfs.NewMockFile(underlyingFile, tt.openPath, errorChecker, nil, nil, nil)
+			defer f.Close()
+
+			// Perform the first read
+			entries, err := f.ReadDir(tt.readCount)
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("ReadDir() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if err != nil {
+				return // Expected error occurred, no need to check entries
+			}
+
+			if len(entries) != tt.wantEntries {
+				t.Errorf("ReadDir() got %d entries, want %d", len(entries), tt.wantEntries)
+			}
+
+			// If a second read is specified in the test case, perform it
+			if tt.secondReadCount > 0 {
+				secondEntries, secondErr := f.ReadDir(tt.secondReadCount)
+				if !errors.Is(secondErr, tt.wantSecondErr) {
+					t.Errorf("Second ReadDir() error = %v, wantErr %v", secondErr, tt.wantSecondErr)
+					return
+				}
+				if secondErr != nil {
+					return
+				}
+				if len(secondEntries) != tt.wantSecondEntries {
+					t.Errorf("Second ReadDir() got %d entries, want %d", len(secondEntries), tt.wantSecondEntries)
+				}
+			}
+		})
+	}
+}
+
+// TestMockFile_ReadDir_Closed tests ReadDir on a closed file.
+func TestMockFile_ReadDir_Closed(t *testing.T) {
+	testFS := fstest.MapFS{
+		"dir":          {Mode: fs.ModeDir | 0755},
+		"dir/file.txt": {Data: []byte("content")},
+	}
+	underlyingFile, err := testFS.Open("dir")
+	if err != nil {
+		t.Fatalf("failed to open: %v", err)
+	}
+
+	f := mockfs.NewMockFile(underlyingFile, "dir", nil, nil, nil, nil)
+
+	if err := f.Close(); err != nil {
+		t.Fatalf("failed to close: %v", err)
+	}
+
+	_, err = f.ReadDir(-1)
+	if !errors.Is(err, fs.ErrClosed) {
+		t.Errorf("expected ErrClosed, got %v", err)
+	}
+}
+
+// TestMockFile_ReadDir_Multiple tests multiple ReadDir calls.
+func TestMockFile_ReadDir_Multiple(t *testing.T) {
+	testFS := fstest.MapFS{
+		"dir":           {Mode: fs.ModeDir | 0755},
+		"dir/file1.txt": {Data: []byte("1")},
+		"dir/file2.txt": {Data: []byte("2")},
+		"dir/file3.txt": {Data: []byte("3")},
+	}
+
+	underlyingFile, err := testFS.Open("dir")
+	if err != nil {
+		t.Fatalf("failed to open: %v", err)
+	}
+	defer underlyingFile.Close()
+
+	f := mockfs.NewMockFile(underlyingFile, "dir", nil, nil, nil, nil)
+	defer f.Close()
+
+	// First read: get 2 entries
+	entries1, err := f.ReadDir(2)
+	if err != nil && err != io.EOF {
+		t.Fatalf("first ReadDir failed: %v", err)
+	}
+	if len(entries1) != 2 {
+		t.Errorf("first read: expected 2 entries, got %d", len(entries1))
+	}
+
+	// Second read: get remaining entries
+	entries2, err := f.ReadDir(-1)
+	if err != nil && err != io.EOF {
+		t.Fatalf("second ReadDir failed: %v", err)
+	}
+
+	totalEntries := len(entries1) + len(entries2)
+	if totalEntries != 3 {
+		t.Errorf("total entries = %d, expected 3", totalEntries)
+	}
+}
+
+// TestMockFile_ReadDir_WithDelay tests ReadDir with simulated delay.
+func TestMockFile_ReadDir_WithDelay(t *testing.T) {
+	testFS := fstest.MapFS{
+		"dir":          {Mode: fs.ModeDir | 0755},
+		"dir/file.txt": {Data: []byte("content")},
+	}
+	underlyingFile, err := testFS.Open("dir")
+	if err != nil {
+		t.Fatalf("failed to open: %v", err)
+	}
+	defer underlyingFile.Close()
+
+	delayCalled := false
+	delaySimulator := func() {
+		delayCalled = true
+	}
+
+	f := mockfs.NewMockFile(underlyingFile, "dir", nil, delaySimulator, nil, nil)
+	defer f.Close()
+
+	_, _ = f.ReadDir(-1)
+
+	if !delayCalled {
+		t.Error("delay simulator was not called")
+	}
+}
+
+// TestMockFile_ReadDir_WithCounter tests operation counting.
+func TestMockFile_ReadDir_WithCounter(t *testing.T) {
+	testFS := fstest.MapFS{
+		"dir":          {Mode: fs.ModeDir | 0755},
+		"dir/file.txt": {Data: []byte("content")},
+	}
+	underlyingFile, err := testFS.Open("dir")
+	if err != nil {
+		t.Fatalf("failed to open: %v", err)
+	}
+	defer underlyingFile.Close()
+
+	var readDirCount int
+	var lastOp mockfs.Operation
+	counter := func(op mockfs.Operation) {
+		if op == mockfs.OpReadDir {
+			readDirCount++
+		}
+		lastOp = op
+	}
+
+	f := mockfs.NewMockFile(underlyingFile, "dir", nil, nil, counter, nil)
+	defer f.Close()
+
+	_, _ = f.ReadDir(-1)
+
+	if readDirCount != 1 {
+		t.Errorf("readdir count = %d, expected 1", readDirCount)
+	}
+	if lastOp != mockfs.OpReadDir {
+		t.Errorf("last operation = %v, expected OpReadDir", lastOp)
 	}
 }
 
@@ -1326,5 +1610,32 @@ func BenchmarkMockFile_ReadWithCounter(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = f.Read(buf)
+	}
+}
+
+// BenchmarkMockFile_ReadDir benchmarks the ReadDir operation.
+func BenchmarkMockFile_ReadDir(b *testing.B) {
+	testFS := fstest.MapFS{
+		"dir": {Mode: fs.ModeDir | 0755},
+	}
+	for i := 0; i < 100; i++ {
+		testFS[fmt.Sprintf("dir/file%d.txt", i)] = &fstest.MapFile{
+			Data: []byte("content"),
+			Mode: 0644,
+		}
+	}
+
+	underlyingFile, err := testFS.Open("dir")
+	if err != nil {
+		b.Fatalf("failed to open: %v", err)
+	}
+	defer underlyingFile.Close()
+
+	f := mockfs.NewMockFile(underlyingFile, "dir", nil, nil, nil, nil)
+	defer f.Close()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = f.ReadDir(-1)
 	}
 }
