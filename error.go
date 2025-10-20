@@ -145,6 +145,11 @@ var operationNames = map[Operation]string{
 	OpRename:         "Rename",
 }
 
+// IsValid returns true if the operation is valid.
+func (op Operation) IsValid() bool {
+	return op >= 0 && op < NumOperations
+}
+
 // String returns a human-readable string representation of the operation.
 // This is used for logging and testing purposes.
 func (op Operation) String() string {
@@ -197,93 +202,100 @@ type ErrorInjector interface {
 	GetAll() map[Operation][]*ErrorRule // for introspection & tests
 }
 
-// ErrorManager implements ErrorInjector.
-type ErrorManager struct {
+// errorInjector implements ErrorInjector.
+type errorInjector struct {
 	mu      sync.RWMutex
 	configs map[Operation][]*ErrorRule
 }
 
-// Ensure ErrorManager implements ErrorInjector.
-var _ ErrorInjector = (*ErrorManager)(nil)
+// Ensure errorInjector implements ErrorInjector.
+var _ ErrorInjector = (*errorInjector)(nil)
 
-// NewErrorManager returns a new ErrorManager.
-func NewErrorManager() *ErrorManager {
-	return &ErrorManager{
+// NewErrorInjector returns a new ErrorInjector.
+func NewErrorInjector() ErrorInjector {
+	return &errorInjector{
 		configs: make(map[Operation][]*ErrorRule),
 	}
 }
 
 // Add adds an error rule to the injector.
-func (em *ErrorManager) Add(op Operation, rule *ErrorRule) {
-	em.mu.Lock()
-	defer em.mu.Unlock()
-	em.configs[op] = append(em.configs[op], rule)
+func (ei *errorInjector) Add(op Operation, rule *ErrorRule) {
+	ei.mu.Lock()
+	defer ei.mu.Unlock()
+
+	ei.configs[op] = append(ei.configs[op], rule)
 }
 
 // AddExact adds an error rule for a specific path.
-func (em *ErrorManager) AddExact(op Operation, path string, err error, mode ErrorMode, after uint64) {
-	em.Add(op, NewErrorRule(err, mode, after, NewExactMatcher(path)))
+func (ei *errorInjector) AddExact(op Operation, path string, err error, mode ErrorMode, after uint64) {
+	ei.Add(op, NewErrorRule(err, mode, after, NewExactMatcher(path)))
 }
 
 // AddPattern adds an error rule for a pattern match.
 // The pattern is a regular expression.
-func (em *ErrorManager) AddPattern(op Operation, pattern string, err error, mode ErrorMode, after uint64) error {
+func (ei *errorInjector) AddPattern(op Operation, pattern string, err error, mode ErrorMode, after uint64) error {
 	m, errRule := NewRegexpMatcher(pattern)
 	if errRule != nil {
 		return errRule
 	}
-	em.Add(op, NewErrorRule(err, mode, after, m))
+
+	ei.Add(op, NewErrorRule(err, mode, after, m))
 	return nil
 }
 
 // AddForPathAllOps adds an error rule for all operations on a specific path.
-func (em *ErrorManager) AddForPathAllOps(path string, err error, mode ErrorMode, after uint64) {
+func (ei *errorInjector) AddForPathAllOps(path string, err error, mode ErrorMode, after uint64) {
 	for op := OpStat; op < NumOperations; op++ {
-		em.AddExact(op, path, err, mode, after)
+		ei.AddExact(op, path, err, mode, after)
 	}
 }
 
 // Clear clears all error rules.
-func (em *ErrorManager) Clear() {
-	em.mu.Lock()
-	defer em.mu.Unlock()
-	em.configs = make(map[Operation][]*ErrorRule)
+func (ei *errorInjector) Clear() {
+	ei.mu.Lock()
+	defer ei.mu.Unlock()
+
+	ei.configs = make(map[Operation][]*ErrorRule)
 }
 
 // GetAll returns all error rules.
-func (em *ErrorManager) GetAll() map[Operation][]*ErrorRule {
-	em.mu.RLock()
-	defer em.mu.RUnlock()
-	out := make(map[Operation][]*ErrorRule, len(em.configs))
-	for op, arr := range em.configs {
+func (ei *errorInjector) GetAll() map[Operation][]*ErrorRule {
+	ei.mu.RLock()
+	defer ei.mu.RUnlock()
+
+	out := make(map[Operation][]*ErrorRule, len(ei.configs))
+	for op, arr := range ei.configs {
 		cop := make([]*ErrorRule, len(arr))
 		copy(cop, arr)
 		out[op] = cop
 	}
+
 	return out
 }
 
 // CloneForSub returns a clone of the injector adjusted for a sub-namespace (used by SubFS).
-func (em *ErrorManager) CloneForSub(prefix string) ErrorInjector {
-	em.mu.RLock()
-	defer em.mu.RUnlock()
-	clone := NewErrorManager()
-	for op, arr := range em.configs {
+func (ei *errorInjector) CloneForSub(prefix string) ErrorInjector {
+	ei.mu.RLock()
+	defer ei.mu.RUnlock()
+
+	clone := NewErrorInjector()
+	for op, arr := range ei.configs {
 		for _, r := range arr {
 			clone.Add(op, r.CloneForSub(prefix))
 		}
 	}
+
 	return clone
 }
 
 // CheckAndApply tries rules in insertion order; notionally we could add priorities.
 // It owns locking and mutates rule state (shouldReturnError uses atomics for some modes).
-func (em *ErrorManager) CheckAndApply(op Operation, path string) error {
-	em.mu.RLock()
-	defer em.mu.RUnlock()
+func (ei *errorInjector) CheckAndApply(op Operation, path string) error {
+	ei.mu.RLock()
+	defer ei.mu.RUnlock()
 
 	// First check op-specific rules
-	if arr, ok := em.configs[op]; ok {
+	if arr, ok := ei.configs[op]; ok {
 		for _, r := range arr {
 			if r.matches(path) {
 				if r.shouldReturnError() {
@@ -293,7 +305,7 @@ func (em *ErrorManager) CheckAndApply(op Operation, path string) error {
 		}
 	}
 	// Then optionally check any global/wildcard rules (OpUnknown)
-	if arr, ok := em.configs[OpUnknown]; ok {
+	if arr, ok := ei.configs[OpUnknown]; ok {
 		for _, r := range arr {
 			if r.matches(path) {
 				if r.shouldReturnError() {

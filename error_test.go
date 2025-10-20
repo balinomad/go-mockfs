@@ -191,7 +191,7 @@ func TestStringToOperation(t *testing.T) {
 
 func TestErrorRule_NoMatchers(t *testing.T) {
 	// test that no matchers means match nothing through CheckAndApply
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	rule := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 	em.Add(mockfs.OpOpen, rule)
 
@@ -209,7 +209,7 @@ func TestErrorRule_NoMatchers(t *testing.T) {
 
 func TestErrorRule_WithWildcardMatcher(t *testing.T) {
 	// test that WildcardMatcher matches all paths
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	rule := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0, mockfs.NewWildcardMatcher())
 	em.Add(mockfs.OpOpen, rule)
 
@@ -223,7 +223,7 @@ func TestErrorRule_WithWildcardMatcher(t *testing.T) {
 }
 
 func TestErrorRule_WithExactMatcher(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	matcher := mockfs.NewExactMatcher("test.txt")
 	rule := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0, matcher)
 	em.Add(mockfs.OpOpen, rule)
@@ -242,7 +242,7 @@ func TestErrorRule_WithExactMatcher(t *testing.T) {
 }
 
 func TestErrorRule_WithRegexpMatcher(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	matcher, err := mockfs.NewRegexpMatcher("\\.txt$")
 	if err != nil {
 		t.Fatalf("NewRegexpMatcher() error: %v", err)
@@ -272,7 +272,7 @@ func TestErrorRule_WithRegexpMatcher(t *testing.T) {
 }
 
 func TestErrorRule_WithMultipleMatchers(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	m1 := mockfs.NewExactMatcher("file1.txt")
 	m2 := mockfs.NewExactMatcher("file2.txt")
 	m3, _ := mockfs.NewRegexpMatcher("\\.go$")
@@ -306,7 +306,7 @@ func TestErrorRule_WithMultipleMatchers(t *testing.T) {
 }
 
 func TestErrorRule_ModeAlways(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 
 	// should return error every time
@@ -319,7 +319,7 @@ func TestErrorRule_ModeAlways(t *testing.T) {
 }
 
 func TestErrorRule_ModeOnce(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrCorrupted, mockfs.ErrorModeOnce, 0)
 
 	// first call should return error
@@ -378,7 +378,7 @@ func TestErrorRule_ModeAfterSuccesses(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			em := mockfs.NewErrorManager()
+			em := mockfs.NewErrorInjector()
 			em.AddExact(mockfs.OpWrite, "test.txt", mockfs.ErrDiskFull, mockfs.ErrorModeAfterSuccesses, tt.afterN)
 
 			for i := 0; i < tt.calls; i++ {
@@ -432,7 +432,7 @@ func TestErrorRule_CloneForSub(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			em := mockfs.NewErrorManager()
+			em := mockfs.NewErrorInjector()
 			em.AddExact(mockfs.OpOpen, tt.originalPath, mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 
 			cloned := em.CloneForSub(tt.prefix)
@@ -447,7 +447,7 @@ func TestErrorRule_CloneForSub(t *testing.T) {
 }
 
 func TestErrorRule_CloneForSub_PreservesProperties(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpWrite, "prefix/file.txt", mockfs.ErrDiskFull, mockfs.ErrorModeAfterSuccesses, 5)
 
 	cloned := em.CloneForSub("prefix")
@@ -468,10 +468,10 @@ func TestErrorRule_CloneForSub_PreservesProperties(t *testing.T) {
 	}
 }
 
-func TestNewErrorManager(t *testing.T) {
-	em := mockfs.NewErrorManager()
+func TestNewErrorInjector(t *testing.T) {
+	em := mockfs.NewErrorInjector()
 	if em == nil {
-		t.Fatal("NewErrorManager() returned nil")
+		t.Fatal("NewErrorInjector() returned nil")
 	}
 
 	// verify it's usable
@@ -483,7 +483,7 @@ func TestNewErrorManager(t *testing.T) {
 }
 
 func TestErrorManager_Add(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	rule := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
 
 	em.Add(mockfs.OpOpen, rule)
@@ -495,7 +495,7 @@ func TestErrorManager_Add(t *testing.T) {
 }
 
 func TestErrorManager_AddExact(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 
 	err := em.CheckAndApply(mockfs.OpRead, "test.txt")
@@ -529,7 +529,7 @@ func TestErrorManager_AddPattern(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			em := mockfs.NewErrorManager()
+			em := mockfs.NewErrorInjector()
 			err := em.AddPattern(mockfs.OpOpen, tt.pattern, mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AddPattern() error = %v, wantErr %v", err, tt.wantErr)
@@ -547,7 +547,7 @@ func TestErrorManager_AddPattern(t *testing.T) {
 }
 
 func TestErrorManager_AddForPathAllOps(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddForPathAllOps("test.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 
 	expectedOps := []mockfs.Operation{
@@ -567,7 +567,7 @@ func TestErrorManager_AddForPathAllOps(t *testing.T) {
 }
 
 func TestErrorManager_Clear(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 	em.AddExact(mockfs.OpRead, "other.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 
@@ -592,7 +592,7 @@ func TestErrorManager_Clear(t *testing.T) {
 }
 
 func TestErrorManager_CheckAndApply_NoRules(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	err := em.CheckAndApply(mockfs.OpOpen, "test.txt")
 	if err != nil {
 		t.Errorf("expected no error with no rules, got %v", err)
@@ -600,7 +600,7 @@ func TestErrorManager_CheckAndApply_NoRules(t *testing.T) {
 }
 
 func TestErrorManager_CheckAndApply_MultipleRules(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpOpen, "first.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 	em.AddExact(mockfs.OpOpen, "second.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 
@@ -616,7 +616,7 @@ func TestErrorManager_CheckAndApply_MultipleRules(t *testing.T) {
 }
 
 func TestErrorManager_CheckAndApply_OpUnknown(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	rule := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
 	em.Add(mockfs.OpUnknown, rule)
 
@@ -633,7 +633,7 @@ func TestErrorManager_CheckAndApply_OpUnknown(t *testing.T) {
 }
 
 func TestErrorManager_CheckAndApply_OpSpecificTakesPrecedence(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 	rule := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
 	em.Add(mockfs.OpUnknown, rule)
@@ -646,7 +646,7 @@ func TestErrorManager_CheckAndApply_OpSpecificTakesPrecedence(t *testing.T) {
 }
 
 func TestErrorManager_InsertionOrder(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeOnce, 0)
 	em.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 
@@ -664,7 +664,7 @@ func TestErrorManager_InsertionOrder(t *testing.T) {
 }
 
 func TestErrorManager_DifferentOperations(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 	em.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 	em.AddExact(mockfs.OpWrite, "test.txt", mockfs.ErrDiskFull, mockfs.ErrorModeAlways, 0)
@@ -697,7 +697,7 @@ func TestErrorManager_DifferentOperations(t *testing.T) {
 }
 
 func TestErrorManager_GetAll(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 	em.AddExact(mockfs.OpRead, "other.txt", mockfs.ErrPermission, mockfs.ErrorModeOnce, 0)
 	em.AddExact(mockfs.OpWrite, "third.txt", mockfs.ErrDiskFull, mockfs.ErrorModeAfterSuccesses, 5)
@@ -727,7 +727,7 @@ func TestErrorManager_GetAll(t *testing.T) {
 }
 
 func TestErrorManager_GetAll_ReturnsIndependentCopy(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 
 	all1 := em.GetAll()
@@ -751,7 +751,7 @@ func TestErrorManager_GetAll_ReturnsIndependentCopy(t *testing.T) {
 }
 
 func TestErrorManager_CloneForSub_Independence(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpOpen, "file.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 
 	cloned := em.CloneForSub("subdir")
@@ -773,7 +773,7 @@ func TestErrorManager_CloneForSub_Independence(t *testing.T) {
 }
 
 func TestErrorManager_EmptyPath(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpOpen, "", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 
 	err := em.CheckAndApply(mockfs.OpOpen, "")
@@ -788,7 +788,7 @@ func TestErrorManager_EmptyPath(t *testing.T) {
 }
 
 func TestErrorManager_SpecialCharactersInPath(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	specialPath := "file with spaces & special!@#$.txt"
 	em.AddExact(mockfs.OpOpen, specialPath, mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 
@@ -799,7 +799,7 @@ func TestErrorManager_SpecialCharactersInPath(t *testing.T) {
 }
 
 func TestErrorManager_VeryLongPath(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	longPath := ""
 	for i := 0; i < 100; i++ {
 		longPath += "very/long/path/segment/"
@@ -815,7 +815,7 @@ func TestErrorManager_VeryLongPath(t *testing.T) {
 }
 
 func TestErrorManager_Concurrent_Add(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	var wg sync.WaitGroup
 
 	// concurrent adds
@@ -838,7 +838,7 @@ func TestErrorManager_Concurrent_Add(t *testing.T) {
 }
 
 func TestErrorManager_Concurrent_CheckAndApply(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 
 	var wg sync.WaitGroup
@@ -869,7 +869,7 @@ func TestErrorManager_Concurrent_CheckAndApply(t *testing.T) {
 }
 
 func TestErrorManager_Concurrent_MixedOperations(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	var wg sync.WaitGroup
 
 	// concurrent mixed operations
@@ -903,7 +903,7 @@ func TestErrorManager_Concurrent_MixedOperations(t *testing.T) {
 }
 
 func TestErrorManager_Concurrent_ErrorModeOnce(t *testing.T) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrCorrupted, mockfs.ErrorModeOnce, 0)
 
 	var wg sync.WaitGroup
@@ -930,19 +930,6 @@ func TestErrorManager_Concurrent_ErrorModeOnce(t *testing.T) {
 
 	if errCount != 1 {
 		t.Errorf("ErrorModeOnce: expected exactly 1 error in concurrent access, got %d", errCount)
-	}
-}
-
-func TestErrorInjector_Interface(t *testing.T) {
-	// verify ErrorManager implements ErrorInjector
-	var _ mockfs.ErrorInjector = (*mockfs.ErrorManager)(nil)
-
-	// test that interface methods work
-	var ei mockfs.ErrorInjector = mockfs.NewErrorManager()
-	ei.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
-	err := ei.CheckAndApply(mockfs.OpOpen, "test.txt")
-	if !errors.Is(err, mockfs.ErrNotExist) {
-		t.Errorf("interface usage: expected ErrNotExist, got %v", err)
 	}
 }
 
@@ -1009,7 +996,7 @@ func TestStandardFSErrors(t *testing.T) {
 
 func TestErrorManager_RealWorldScenarios(t *testing.T) {
 	t.Run("intermittent network error", func(t *testing.T) {
-		em := mockfs.NewErrorManager()
+		em := mockfs.NewErrorInjector()
 		// simulate network error after 3 successful reads
 		em.AddExact(mockfs.OpRead, "remote/data.txt", mockfs.ErrTimeout, mockfs.ErrorModeAfterSuccesses, 3)
 
@@ -1027,7 +1014,7 @@ func TestErrorManager_RealWorldScenarios(t *testing.T) {
 	})
 
 	t.Run("disk full on write", func(t *testing.T) {
-		em := mockfs.NewErrorManager()
+		em := mockfs.NewErrorInjector()
 		em.AddExact(mockfs.OpWrite, "logs/app.log", mockfs.ErrDiskFull, mockfs.ErrorModeAlways, 0)
 
 		err := em.CheckAndApply(mockfs.OpWrite, "logs/app.log")
@@ -1037,7 +1024,7 @@ func TestErrorManager_RealWorldScenarios(t *testing.T) {
 	})
 
 	t.Run("permission denied on specific directory", func(t *testing.T) {
-		em := mockfs.NewErrorManager()
+		em := mockfs.NewErrorInjector()
 		pattern := "^/protected/"
 		err := em.AddPattern(mockfs.OpOpen, pattern, mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 		if err != nil {
@@ -1056,7 +1043,7 @@ func TestErrorManager_RealWorldScenarios(t *testing.T) {
 	})
 
 	t.Run("transient corruption error", func(t *testing.T) {
-		em := mockfs.NewErrorManager()
+		em := mockfs.NewErrorInjector()
 		em.AddExact(mockfs.OpRead, "data.db", mockfs.ErrCorrupted, mockfs.ErrorModeOnce, 0)
 
 		err := em.CheckAndApply(mockfs.OpRead, "data.db")
@@ -1073,7 +1060,7 @@ func TestErrorManager_RealWorldScenarios(t *testing.T) {
 
 // Benchmark tests
 func BenchmarkErrorManager_Add(b *testing.B) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		em.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
@@ -1081,7 +1068,7 @@ func BenchmarkErrorManager_Add(b *testing.B) {
 }
 
 func BenchmarkErrorManager_CheckAndApply_NoMatch(b *testing.B) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpOpen, "other.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -1090,7 +1077,7 @@ func BenchmarkErrorManager_CheckAndApply_NoMatch(b *testing.B) {
 }
 
 func BenchmarkErrorManager_CheckAndApply_Match(b *testing.B) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -1099,7 +1086,7 @@ func BenchmarkErrorManager_CheckAndApply_Match(b *testing.B) {
 }
 
 func BenchmarkErrorManager_CheckAndApply_MultipleRules(b *testing.B) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	for i := 0; i < 10; i++ {
 		em.AddExact(mockfs.OpOpen, "other.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 	}
@@ -1111,7 +1098,7 @@ func BenchmarkErrorManager_CheckAndApply_MultipleRules(b *testing.B) {
 }
 
 func BenchmarkErrorManager_CheckAndApply_WithWildcard(b *testing.B) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	rule := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0, mockfs.NewWildcardMatcher())
 	em.Add(mockfs.OpOpen, rule)
 	b.ResetTimer()
@@ -1121,7 +1108,7 @@ func BenchmarkErrorManager_CheckAndApply_WithWildcard(b *testing.B) {
 }
 
 func BenchmarkErrorManager_CloneForSub(b *testing.B) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	for i := 0; i < 10; i++ {
 		em.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 	}
@@ -1139,7 +1126,7 @@ func BenchmarkStringToOperation(b *testing.B) {
 }
 
 func BenchmarkErrorModeAfterSuccesses(b *testing.B) {
-	em := mockfs.NewErrorManager()
+	em := mockfs.NewErrorInjector()
 	em.AddExact(mockfs.OpWrite, "test.txt", mockfs.ErrDiskFull, mockfs.ErrorModeAfterSuccesses, 1000000)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
