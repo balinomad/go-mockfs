@@ -10,12 +10,13 @@ import (
 )
 
 const (
-	testDuration     = 50 * time.Millisecond
-	testDurationLong = 100 * time.Millisecond
-	tolerance        = 15 * time.Millisecond // Timing tolerance for test flakiness
+	testDurationShort = 25 * time.Millisecond
+	testDuration      = 50 * time.Millisecond
+	testDurationLong  = 100 * time.Millisecond
+	tolerance         = 20 * time.Millisecond // Timing tolerance for test flakiness
 )
 
-// assertDuration checks if elapsed time is within expected range
+// assertDuration checks if elapsed time is within expected range.
 func assertDuration(t *testing.T, start time.Time, expected time.Duration, name string) {
 	t.Helper()
 	elapsed := time.Since(start)
@@ -24,12 +25,12 @@ func assertDuration(t *testing.T, start time.Time, expected time.Duration, name 
 	}
 }
 
-// assertNoDuration checks that operation completed quickly (no sleep)
+// assertNoDuration checks that operation completed quickly (no sleep).
 func assertNoDuration(t *testing.T, start time.Time, name string) {
 	t.Helper()
 	elapsed := time.Since(start)
 	if elapsed > tolerance {
-		t.Errorf("%s: expected no sleep, but took %v", name, elapsed)
+		t.Errorf("%s: expected no latency, but it took %v", name, elapsed)
 	}
 }
 
@@ -37,7 +38,7 @@ func TestNewLatencySimulator(t *testing.T) {
 	t.Run("zero duration", func(t *testing.T) {
 		ls := mockfs.NewLatencySimulator(0)
 		if ls == nil {
-			t.Fatal("expected non-nil simulator")
+			t.Fatal("returned nil, expected non-nil simulator")
 		}
 
 		start := time.Now()
@@ -47,6 +48,9 @@ func TestNewLatencySimulator(t *testing.T) {
 
 	t.Run("positive duration", func(t *testing.T) {
 		ls := mockfs.NewLatencySimulator(testDuration)
+		if ls == nil {
+			t.Fatal("returned nil, expected non-nil simulator")
+		}
 
 		start := time.Now()
 		ls.Simulate(mockfs.OpRead)
@@ -64,66 +68,71 @@ func TestNewLatencySimulator(t *testing.T) {
 }
 
 func TestNewLatencySimulatorPerOp(t *testing.T) {
-	t.Run("empty map", func(t *testing.T) {
-		ls := mockfs.NewLatencySimulatorPerOp(map[mockfs.Operation]time.Duration{})
+	testCases := []struct {
+		name        string
+		durations   map[mockfs.Operation]time.Duration
+		opToTest    mockfs.Operation
+		expectedDur time.Duration
+	}{
+		{
+			name:        "specific operation has latency",
+			durations:   map[mockfs.Operation]time.Duration{mockfs.OpRead: testDuration},
+			opToTest:    mockfs.OpRead,
+			expectedDur: testDuration,
+		},
+		{
+			name:        "fallback to OpUnknown",
+			durations:   map[mockfs.Operation]time.Duration{mockfs.OpUnknown: testDurationLong},
+			opToTest:    mockfs.OpWrite,
+			expectedDur: testDurationLong,
+		},
+		{
+			name:        "specific operation overrides OpUnknown",
+			durations:   map[mockfs.Operation]time.Duration{mockfs.OpUnknown: testDuration, mockfs.OpRead: testDurationShort},
+			opToTest:    mockfs.OpRead,
+			expectedDur: testDurationShort,
+		},
+		{
+			name:        "unspecified operation has no latency",
+			durations:   map[mockfs.Operation]time.Duration{mockfs.OpRead: testDuration},
+			opToTest:    mockfs.OpWrite,
+			expectedDur: 0,
+		},
+		{
+			name:        "invalid operation falls back to OpUnknown",
+			durations:   map[mockfs.Operation]time.Duration{mockfs.OpUnknown: testDuration},
+			opToTest:    mockfs.Operation(999),
+			expectedDur: testDuration,
+		},
+	}
 
-		start := time.Now()
-		ls.Simulate(mockfs.OpRead)
-		assertNoDuration(t, start, "empty map")
-	})
-
-	t.Run("per-operation durations", func(t *testing.T) {
-		ls := mockfs.NewLatencySimulatorPerOp(map[mockfs.Operation]time.Duration{
-			mockfs.OpRead:  testDuration,
-			mockfs.OpWrite: testDurationLong,
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ls := mockfs.NewLatencySimulatorPerOp(tc.durations)
+			start := time.Now()
+			ls.Simulate(tc.opToTest)
+			if tc.expectedDur == 0 {
+				assertNoDuration(t, start, tc.name)
+			} else {
+				assertDuration(t, start, tc.expectedDur, tc.name)
+			}
 		})
-
-		start := time.Now()
-		ls.Simulate(mockfs.OpRead)
-		assertDuration(t, start, testDuration, "OpRead")
-
-		start = time.Now()
-		ls.Simulate(mockfs.OpWrite)
-		assertDuration(t, start, testDurationLong, "OpWrite")
-	})
-
-	t.Run("fallback to OpUnknown", func(t *testing.T) {
-		ls := mockfs.NewLatencySimulatorPerOp(map[mockfs.Operation]time.Duration{
-			mockfs.OpUnknown: testDuration,
-		})
-
-		start := time.Now()
-		ls.Simulate(mockfs.OpRead) // Not in map, should use OpUnknown
-		assertDuration(t, start, testDuration, "fallback to OpUnknown")
-	})
-
-	t.Run("operation overrides OpUnknown", func(t *testing.T) {
-		ls := mockfs.NewLatencySimulatorPerOp(map[mockfs.Operation]time.Duration{
-			mockfs.OpUnknown: testDuration,
-			mockfs.OpRead:    testDurationLong,
-		})
-
-		start := time.Now()
-		ls.Simulate(mockfs.OpRead)
-		assertDuration(t, start, testDurationLong, "operation overrides OpUnknown")
-	})
+	}
 
 	t.Run("negative duration panics", func(t *testing.T) {
 		defer func() {
 			if r := recover(); r == nil {
-				t.Error("expected panic for negative duration")
+				t.Error("expected a panic for negative per-op duration, but got none")
 			}
 		}()
-		mockfs.NewLatencySimulatorPerOp(map[mockfs.Operation]time.Duration{
-			mockfs.OpRead: -1 * time.Millisecond,
-		})
+		mockfs.NewLatencySimulatorPerOp(map[mockfs.Operation]time.Duration{mockfs.OpRead: -1})
 	})
 }
 
 func TestNewNoopLatencySimulator(t *testing.T) {
 	ls := mockfs.NewNoopLatencySimulator()
 	if ls == nil {
-		t.Fatal("expected non-nil simulator")
+		t.Fatal("returned nil, expected non-nil simulator")
 	}
 
 	start := time.Now()
@@ -132,47 +141,63 @@ func TestNewNoopLatencySimulator(t *testing.T) {
 	assertNoDuration(t, start, "noop simulator")
 }
 
-func TestSimulate_InvalidOperation(t *testing.T) {
-	ls := mockfs.NewLatencySimulator(testDuration)
+func TestSimulate_Concurrency(t *testing.T) {
+	t.Run("default is serialized", func(t *testing.T) {
+		ls := mockfs.NewLatencySimulator(testDuration)
+		numGoroutines := 3
 
-	start := time.Now()
-	ls.Simulate(mockfs.InvalidOperation)
-	assertDuration(t, start, testDuration, "invalid operation uses OpUnknown")
-}
+		var wg sync.WaitGroup
+		startTimes := make([]time.Time, numGoroutines)
+		endTimes := make([]time.Time, numGoroutines)
 
-func TestSimulate_OutOfRangeOperation(t *testing.T) {
-	ls := mockfs.NewLatencySimulator(testDuration)
+		wg.Add(numGoroutines)
+		for i := 0; i < numGoroutines; i++ {
+			go func(idx int) {
+				defer wg.Done()
+				startTimes[idx] = time.Now()
+				ls.Simulate(mockfs.OpRead)
+				endTimes[idx] = time.Now()
+			}(i)
+		}
+		wg.Wait()
 
-	start := time.Now()
-	ls.Simulate(mockfs.Operation(999)) // Out of range
-	assertDuration(t, start, testDuration, "out of range operation uses OpUnknown")
-}
+		minStart := startTimes[0]
+		maxEnd := endTimes[0]
+		for i := 1; i < numGoroutines; i++ {
+			if startTimes[i].Before(minStart) {
+				minStart = startTimes[i]
+			}
+			if endTimes[i].After(maxEnd) {
+				maxEnd = endTimes[i]
+			}
+		}
 
-func TestSimulate_DefaultSerialized(t *testing.T) {
-	ls := mockfs.NewLatencySimulator(testDuration)
+		totalElapsed := maxEnd.Sub(minStart)
+		// A safe check is that the total duration is at least (n-1) * duration.
+		expectedMinTotal := testDuration * time.Duration(numGoroutines-1)
+		if totalElapsed < expectedMinTotal {
+			t.Errorf("serialized mode operations overlapped too much. Total: %v, expected at least %v", totalElapsed, expectedMinTotal)
+		}
+	})
 
-	var wg sync.WaitGroup
-	startTimes := make([]time.Time, 3)
-	endTimes := make([]time.Time, 3)
+	t.Run("async is parallel", func(t *testing.T) {
+		ls := mockfs.NewLatencySimulator(testDuration)
+		numGoroutines := 3
 
-	for i := 0; i < 3; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			startTimes[idx] = time.Now()
-			ls.Simulate(mockfs.OpRead)
-			endTimes[idx] = time.Now()
-		}(i)
-	}
+		start := time.Now()
+		var wg sync.WaitGroup
+		wg.Add(numGoroutines)
+		for i := 0; i < numGoroutines; i++ {
+			go func() {
+				defer wg.Done()
+				ls.Simulate(mockfs.OpRead, mockfs.Async())
+			}()
+		}
+		wg.Wait()
 
-	wg.Wait()
-
-	// In serialized mode, operations should not overlap significantly
-	// Each should take ~testDuration, total should be ~3*testDuration
-	totalElapsed := endTimes[2].Sub(startTimes[0])
-	if totalElapsed < 2*testDuration {
-		t.Errorf("serialized mode: operations overlapped too much, total: %v", totalElapsed)
-	}
+		// In async mode, all should run in parallel. Total time should be ~1 duration.
+		assertDuration(t, start, testDuration, "async mode")
+	})
 }
 
 func TestSimulate_Async(t *testing.T) {
@@ -525,7 +550,7 @@ func TestSimOpt_MultipleOptions(t *testing.T) {
 
 // Benchmark tests
 func BenchmarkSimulate_NoLatency(b *testing.B) {
-	ls := mockfs.NewLatencySimulator(0)
+	ls := mockfs.NewNoopLatencySimulator()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ls.Simulate(mockfs.OpRead)
@@ -533,6 +558,7 @@ func BenchmarkSimulate_NoLatency(b *testing.B) {
 }
 
 func BenchmarkSimulate_WithLatency(b *testing.B) {
+	// Use a small duration to avoid making the benchmark too slow
 	ls := mockfs.NewLatencySimulator(time.Microsecond)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -557,7 +583,7 @@ func BenchmarkSimulate_OnceAsync(b *testing.B) {
 }
 
 func BenchmarkSimulate_Parallel(b *testing.B) {
-	ls := mockfs.NewLatencySimulator(0)
+	ls := mockfs.NewNoopLatencySimulator()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {

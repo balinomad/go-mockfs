@@ -118,6 +118,7 @@ func (ls *latencySimulator) Simulate(op Operation, opts ...SimOpt) {
 		ls.mu.Lock()
 		if ls.seen[op] {
 			ls.mu.Unlock()
+
 			return
 		}
 		ls.seen[op] = true
@@ -125,12 +126,14 @@ func (ls *latencySimulator) Simulate(op Operation, opts ...SimOpt) {
 		if so.async {
 			ls.mu.Unlock()
 			time.Sleep(dur)
+
 			return
 		}
 
 		// Serialized once: hold lock while sleeping
 		time.Sleep(dur)
 		ls.mu.Unlock()
+
 		return
 	}
 
@@ -138,9 +141,13 @@ func (ls *latencySimulator) Simulate(op Operation, opts ...SimOpt) {
 	if !so.async {
 		// Serialized: hold lock during sleep
 		ls.mu.Lock()
-		defer ls.mu.Unlock()
+		time.Sleep(dur)
+		ls.mu.Unlock()
+
+		return
 	}
 
+	// Async: sleep without lock
 	time.Sleep(dur)
 }
 
