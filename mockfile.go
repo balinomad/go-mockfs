@@ -9,21 +9,6 @@ import (
 	"time"
 )
 
-// mapFileInfo implements fs.FileInfo for fstest.MapFile-backed files.
-type mapFileInfo struct {
-	name    string
-	size    int64
-	mode    fs.FileMode
-	modTime time.Time
-}
-
-func (m *mapFileInfo) Name() string       { return m.name }
-func (m *mapFileInfo) Size() int64        { return m.size }
-func (m *mapFileInfo) Mode() fs.FileMode  { return m.mode }
-func (m *mapFileInfo) ModTime() time.Time { return m.modTime }
-func (m *mapFileInfo) IsDir() bool        { return m.mode.IsDir() }
-func (m *mapFileInfo) Sys() interface{}   { return nil }
-
 // fileBackend is an interface for accessing the underlying file, counters, and error injector.
 type fileBackend interface {
 	// Counters returns the operation counters for this file.
@@ -36,7 +21,7 @@ type fileBackend interface {
 	LatencySimulator() LatencySimulator
 }
 
-// MockFile is a wrapper around fstest.MapFile to inject errors and track operations.
+// MockFile represents an open file. It is a wrapper around fstest.MapFile to inject errors and track operations.
 type MockFile interface {
 	fs.ReadDirFile
 	io.Writer
@@ -52,7 +37,6 @@ type mockFile struct {
 	closed         bool                             // Tracks if the file has been closed.
 	writeMode      writeMode                        // How writes modify the file data.
 	readDirHandler func(int) ([]fs.DirEntry, error) // Handler for ReadDir operations (directories only).
-	checkError     func(Operation, string) error    // Check for configured errors.
 	latency        LatencySimulator                 // Latency simulator for this file.
 	counters       *Counters                        // Operation counters.
 	injector       ErrorInjector                    // Error injector for operations on this file.
@@ -74,7 +58,7 @@ var (
 //   - mapFile: the fstest.MapFile containing file data and metadata.
 //   - name: cleaned path used when checking injection rules.
 //   - writeMode: how Write operations modify the file (append/overwrite/readonly).
-//   - errorChecker: callback to check and apply configured errors (may be nil).
+//   - injector: the error injector to use (may be nil to use a new, empty injector).
 //   - latencySimulator: simulator for operation latency (may be nil for no latency).
 //   - readDirHandler: handler for ReadDir operations on directories (may be nil).
 //
@@ -84,7 +68,7 @@ func NewMockFile(
 	mapFile *fstest.MapFile,
 	name string,
 	writeMode writeMode,
-	errorChecker func(Operation, string) error,
+	injector ErrorInjector,
 	latencySimulator LatencySimulator,
 	readDirHandler func(int) ([]fs.DirEntry, error),
 ) MockFile {
@@ -93,8 +77,8 @@ func NewMockFile(
 	}
 
 	// Default no-op callbacks
-	if errorChecker == nil {
-		errorChecker = func(op Operation, path string) error { return nil }
+	if injector == nil {
+		injector = NewErrorInjector()
 	}
 	if latencySimulator == nil {
 		latencySimulator = NewNoopLatencySimulator()
@@ -104,11 +88,10 @@ func NewMockFile(
 		mapFile:        mapFile,
 		name:           name,
 		writeMode:      writeMode,
-		checkError:     errorChecker,
+		injector:       injector,
 		latency:        latencySimulator,
 		readDirHandler: readDirHandler,
 		counters:       NewCounters(),
-		injector:       NewErrorInjector(),
 	}
 }
 
@@ -143,7 +126,7 @@ func NewMockFileForReadWrite(
 	mapFile *fstest.MapFile,
 	name string,
 	latency time.Duration,
-	errorChecker func(Operation, string) error,
+	injector ErrorInjector,
 ) MockFile {
 	// Create per-operation latency with only Read/Write having delays
 	perOpLatency := NewLatencySimulatorPerOp(map[Operation]time.Duration{
@@ -151,7 +134,7 @@ func NewMockFileForReadWrite(
 		OpWrite: latency,
 	})
 
-	return NewMockFile(mapFile, name, writeModeOverwrite, errorChecker, perOpLatency, nil)
+	return NewMockFile(mapFile, name, writeModeOverwrite, injector, perOpLatency, nil)
 }
 
 // NewMockDirectory constructs a MockFile representing a directory.
@@ -160,7 +143,7 @@ func NewMockDirectory(
 	name string,
 	modTime time.Time,
 	readDirHandler func(int) ([]fs.DirEntry, error),
-	errorChecker func(Operation, string) error,
+	injector ErrorInjector,
 	latencySimulator LatencySimulator,
 ) MockFile {
 	mapFile := &fstest.MapFile{
@@ -172,7 +155,7 @@ func NewMockDirectory(
 		panic("mockfs: readDirHandler required for directories")
 	}
 
-	return NewMockFile(mapFile, name, writeModeReadOnly, errorChecker, latencySimulator, readDirHandler)
+	return NewMockFile(mapFile, name, writeModeReadOnly, injector, latencySimulator, readDirHandler)
 }
 
 // Read implements io.Reader for MockFile.
@@ -189,7 +172,7 @@ func (f *mockFile) Read(b []byte) (int, error) {
 	// Simulate latency before checking for errors (models real I/O timing)
 	f.latency.Simulate(OpRead)
 
-	if err := f.checkError(OpRead, f.name); err != nil {
+	if err := f.injector.CheckAndApply(OpRead, f.name); err != nil {
 		return 0, err
 	}
 
@@ -218,7 +201,7 @@ func (f *mockFile) Write(b []byte) (int, error) {
 	// Simulate latency before checking for errors (models real I/O timing)
 	f.latency.Simulate(OpWrite)
 
-	if err := f.checkError(OpWrite, f.name); err != nil {
+	if err := f.injector.CheckAndApply(OpWrite, f.name); err != nil {
 		return 0, err
 	}
 
@@ -269,7 +252,7 @@ func (f *mockFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	// Simulate latency before checking for errors (models real I/O timing)
 	f.latency.Simulate(OpReadDir)
 
-	if err := f.checkError(OpReadDir, f.name); err != nil {
+	if err := f.injector.CheckAndApply(OpReadDir, f.name); err != nil {
 		return nil, err
 	}
 
@@ -290,7 +273,7 @@ func (f *mockFile) Stat() (fs.FileInfo, error) {
 	// Simulate latency before checking for errors
 	f.latency.Simulate(OpStat)
 
-	if err := f.checkError(OpStat, f.name); err != nil {
+	if err := f.injector.CheckAndApply(OpStat, f.name); err != nil {
 		return nil, err
 	}
 
@@ -300,7 +283,7 @@ func (f *mockFile) Stat() (fs.FileInfo, error) {
 	mode := f.mapFile.Mode
 	modTime := f.mapFile.ModTime
 
-	return &mapFileInfo{
+	return &fileInfo{
 		name:    name,
 		size:    size,
 		mode:    mode,
@@ -326,7 +309,7 @@ func (f *mockFile) Close() error {
 	f.latency.Simulate(OpClose)
 
 	// Check for injected error
-	if err := f.checkError(OpClose, f.name); err != nil {
+	if err := f.injector.CheckAndApply(OpClose, f.name); err != nil {
 		// Still mark as closed to prevent resource leaks
 		f.closed = true
 		f.latency.Reset()
