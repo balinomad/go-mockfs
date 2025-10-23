@@ -9,186 +9,6 @@ import (
 	"github.com/balinomad/go-mockfs"
 )
 
-func TestOperationString(t *testing.T) {
-	tests := []struct {
-		name string
-		op   mockfs.Operation
-		want string
-	}{
-		{
-			name: "stat",
-			op:   mockfs.OpStat,
-			want: "Stat",
-		},
-		{
-			name: "open",
-			op:   mockfs.OpOpen,
-			want: "Open",
-		},
-		{
-			name: "read",
-			op:   mockfs.OpRead,
-			want: "Read",
-		},
-		{
-			name: "write",
-			op:   mockfs.OpWrite,
-			want: "Write",
-		},
-		{
-			name: "close",
-			op:   mockfs.OpClose,
-			want: "Close",
-		},
-		{
-			name: "readdir",
-			op:   mockfs.OpReadDir,
-			want: "ReadDir",
-		},
-		{
-			name: "mkdir",
-			op:   mockfs.OpMkdir,
-			want: "Mkdir",
-		},
-		{
-			name: "mkdirall",
-			op:   mockfs.OpMkdirAll,
-			want: "MkdirAll",
-		},
-		{
-			name: "remove",
-			op:   mockfs.OpRemove,
-			want: "Remove",
-		},
-		{
-			name: "removeall",
-			op:   mockfs.OpRemoveAll,
-			want: "RemoveAll",
-		},
-		{
-			name: "rename",
-			op:   mockfs.OpRename,
-			want: "Rename",
-		},
-		{
-			name: "unknown",
-			op:   mockfs.OpUnknown,
-			want: "Unknown",
-		},
-		{
-			name: "out of range",
-			op:   mockfs.NumOperations,
-			want: "Invalid",
-		},
-		{
-			name: "invalid",
-			op:   mockfs.InvalidOperation,
-			want: "Invalid",
-		},
-		{
-			name: "negative out of range",
-			op:   mockfs.Operation(-100),
-			want: "Invalid",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tt.op.String()
-			if got != tt.want {
-				t.Errorf("String() = %s, wanted %s", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestStringToOperation(t *testing.T) {
-	tests := []struct {
-		name string
-		s    string
-		want mockfs.Operation
-	}{
-		{
-			name: "stat",
-			s:    "Stat",
-			want: mockfs.OpStat,
-		},
-		{
-			name: "open",
-			s:    "Open",
-			want: mockfs.OpOpen,
-		},
-		{
-			name: "read",
-			s:    "Read",
-			want: mockfs.OpRead,
-		},
-		{
-			name: "write",
-			s:    "Write",
-			want: mockfs.OpWrite,
-		},
-		{
-			name: "close mixed case",
-			s:    "ClOsE",
-			want: mockfs.OpClose,
-		},
-		{
-			name: "readdir uppercase",
-			s:    "READDIR",
-			want: mockfs.OpReadDir,
-		},
-		{
-			name: "mkdir lowercase",
-			s:    "mkdir",
-			want: mockfs.OpMkdir,
-		},
-		{
-			name: "mkdirall mixed",
-			s:    "MkDirAll",
-			want: mockfs.OpMkdirAll,
-		},
-		{
-			name: "remove",
-			s:    "Remove",
-			want: mockfs.OpRemove,
-		},
-		{
-			name: "removeall",
-			s:    "RemoveAll",
-			want: mockfs.OpRemoveAll,
-		},
-		{
-			name: "rename lowercase",
-			s:    "rename",
-			want: mockfs.OpRename,
-		},
-		{
-			name: "invalid",
-			s:    "invalid",
-			want: mockfs.InvalidOperation,
-		},
-		{
-			name: "empty string",
-			s:    "",
-			want: mockfs.InvalidOperation,
-		},
-		{
-			name: "random string",
-			s:    "notanoperation",
-			want: mockfs.InvalidOperation,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := mockfs.StringToOperation(tt.s)
-			if got != tt.want {
-				t.Errorf("StringToOperation() = %d, want %d", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestErrorRule_NoMatchers(t *testing.T) {
 	// test that no matchers means match nothing through CheckAndApply
 	em := mockfs.NewErrorInjector()
@@ -465,6 +285,248 @@ func TestErrorRule_CloneForSub_PreservesProperties(t *testing.T) {
 	err := cloned.CheckAndApply(mockfs.OpWrite, "file.txt")
 	if !errors.Is(err, mockfs.ErrDiskFull) {
 		t.Errorf("call 6: expected ErrDiskFull, got %v", err)
+	}
+}
+func TestOperation_IsValid(t *testing.T) {
+	tests := []struct {
+		name string
+		op   mockfs.Operation
+		want bool
+	}{
+		{
+			name: "valid stat",
+			op:   mockfs.OpStat,
+			want: true,
+		},
+		{
+			name: "valid open",
+			op:   mockfs.OpOpen,
+			want: true,
+		},
+		{
+			name: "valid read",
+			op:   mockfs.OpRead,
+			want: true,
+		},
+		{
+			name: "valid write",
+			op:   mockfs.OpWrite,
+			want: true,
+		},
+		{
+			name: "valid close",
+			op:   mockfs.OpClose,
+			want: true,
+		},
+		{
+			name: "first invalid negative",
+			op:   -1,
+			want: false,
+		},
+		{
+			name: "large invalid negative",
+			op:   -10000,
+			want: false,
+		},
+		{
+			name: "first invalid positive",
+			op:   mockfs.NumOperations,
+			want: false,
+		},
+		{
+			name: "large invalid positive",
+			op:   10000,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.op.IsValid()
+			if got != tt.want {
+				t.Errorf("op=%q, isValid()=%v, want %v", tt.op, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOperation_String(t *testing.T) {
+	tests := []struct {
+		name string
+		op   mockfs.Operation
+		want string
+	}{
+		{
+			name: "stat",
+			op:   mockfs.OpStat,
+			want: "Stat",
+		},
+		{
+			name: "open",
+			op:   mockfs.OpOpen,
+			want: "Open",
+		},
+		{
+			name: "read",
+			op:   mockfs.OpRead,
+			want: "Read",
+		},
+		{
+			name: "write",
+			op:   mockfs.OpWrite,
+			want: "Write",
+		},
+		{
+			name: "close",
+			op:   mockfs.OpClose,
+			want: "Close",
+		},
+		{
+			name: "readdir",
+			op:   mockfs.OpReadDir,
+			want: "ReadDir",
+		},
+		{
+			name: "mkdir",
+			op:   mockfs.OpMkdir,
+			want: "Mkdir",
+		},
+		{
+			name: "mkdirall",
+			op:   mockfs.OpMkdirAll,
+			want: "MkdirAll",
+		},
+		{
+			name: "remove",
+			op:   mockfs.OpRemove,
+			want: "Remove",
+		},
+		{
+			name: "removeall",
+			op:   mockfs.OpRemoveAll,
+			want: "RemoveAll",
+		},
+		{
+			name: "rename",
+			op:   mockfs.OpRename,
+			want: "Rename",
+		},
+		{
+			name: "unknown",
+			op:   mockfs.OpUnknown,
+			want: "Unknown",
+		},
+		{
+			name: "out of range",
+			op:   mockfs.NumOperations,
+			want: "Invalid",
+		},
+		{
+			name: "invalid",
+			op:   mockfs.InvalidOperation,
+			want: "Invalid",
+		},
+		{
+			name: "negative out of range",
+			op:   mockfs.Operation(-100),
+			want: "Invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.op.String()
+			if got != tt.want {
+				t.Errorf("String() = %s, wanted %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStringToOperation(t *testing.T) {
+	tests := []struct {
+		name string
+		s    string
+		want mockfs.Operation
+	}{
+		{
+			name: "stat",
+			s:    "Stat",
+			want: mockfs.OpStat,
+		},
+		{
+			name: "open",
+			s:    "Open",
+			want: mockfs.OpOpen,
+		},
+		{
+			name: "read",
+			s:    "Read",
+			want: mockfs.OpRead,
+		},
+		{
+			name: "write",
+			s:    "Write",
+			want: mockfs.OpWrite,
+		},
+		{
+			name: "close mixed case",
+			s:    "ClOsE",
+			want: mockfs.OpClose,
+		},
+		{
+			name: "readdir uppercase",
+			s:    "READDIR",
+			want: mockfs.OpReadDir,
+		},
+		{
+			name: "mkdir lowercase",
+			s:    "mkdir",
+			want: mockfs.OpMkdir,
+		},
+		{
+			name: "mkdirall mixed",
+			s:    "MkDirAll",
+			want: mockfs.OpMkdirAll,
+		},
+		{
+			name: "remove",
+			s:    "Remove",
+			want: mockfs.OpRemove,
+		},
+		{
+			name: "removeall",
+			s:    "RemoveAll",
+			want: mockfs.OpRemoveAll,
+		},
+		{
+			name: "rename lowercase",
+			s:    "rename",
+			want: mockfs.OpRename,
+		},
+		{
+			name: "invalid",
+			s:    "invalid",
+			want: mockfs.InvalidOperation,
+		},
+		{
+			name: "empty string",
+			s:    "",
+			want: mockfs.InvalidOperation,
+		},
+		{
+			name: "random string",
+			s:    "notanoperation",
+			want: mockfs.InvalidOperation,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mockfs.StringToOperation(tt.s)
+			if got != tt.want {
+				t.Errorf("StringToOperation() = %d, want %d", got, tt.want)
+			}
+		})
 	}
 }
 

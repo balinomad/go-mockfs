@@ -147,13 +147,13 @@ var operationNames = map[Operation]string{
 
 // IsValid returns true if the operation is valid.
 func (op Operation) IsValid() bool {
-	return op >= 0 && op < NumOperations
+	return op > 0 && op < NumOperations
 }
 
 // String returns a human-readable string representation of the operation.
 // This is used for logging and testing purposes.
 func (op Operation) String() string {
-	if op < 0 || op >= NumOperations {
+	if !op.IsValid() && op != OpUnknown {
 		return operationNames[InvalidOperation]
 	}
 

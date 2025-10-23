@@ -2,1640 +2,1377 @@ package mockfs_test
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"strings"
 	"sync"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/balinomad/go-mockfs"
 )
 
-// createTestFS creates a test filesystem with a single file.
-func createTestFS(content string) fstest.MapFS {
-	return fstest.MapFS{
-		"test.txt": &fstest.MapFile{
-			Data: []byte(content),
-			Mode: 0644,
-		},
+// TestNewMockFile tests the main constructor.
+func TestNewMockFile(t *testing.T) {
+	mapFile := &fstest.MapFile{
+		Data:    []byte("test data"),
+		Mode:    0644,
+		ModTime: time.Now(),
 	}
-}
 
-// TestMockFile_Read tests the Read method.
-func TestMockFile_Read(t *testing.T) {
 	tests := []struct {
-		name        string
-		content     string
-		readSize    int
-		injectError error
+		name      string
+		mapFile   *fstest.MapFile
+		fileName  string
+		wantPanic bool
 	}{
 		{
-			name:     "read full content",
-			content:  "hello world",
-			readSize: 100,
+			name:      "valid file",
+			mapFile:   mapFile,
+			fileName:  "test.txt",
+			wantPanic: false,
 		},
 		{
-			name:     "read partial content",
-			content:  "hello world",
-			readSize: 5,
-		},
-		{
-			name:     "read empty file",
-			content:  "",
-			readSize: 10,
-		},
-		{
-			name:        "read with injected error",
-			content:     "test",
-			readSize:    10,
-			injectError: mockfs.ErrCorrupted,
+			name:      "nil mapfile panics",
+			mapFile:   nil,
+			fileName:  "test.txt",
+			wantPanic: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testFS := createTestFS(tt.content)
-			underlyingFile, err := testFS.Open("test.txt")
-			if err != nil {
-				t.Fatalf("failed to open test file: %v", err)
-			}
-			defer underlyingFile.Close()
-
-			errorChecker := func(op mockfs.Operation, path string) error {
-				if tt.injectError != nil && op == mockfs.OpRead {
-					return tt.injectError
+			defer func() {
+				r := recover()
+				if (r != nil) != tt.wantPanic {
+					t.Errorf("panic = %v, wantPanic = %v", r != nil, tt.wantPanic)
 				}
-				return nil
-			}
+			}()
 
-			f := mockfs.NewMockFile(underlyingFile, "test.txt", errorChecker, nil, nil, nil)
-
-			buf := make([]byte, tt.readSize)
-			n, err := f.Read(buf)
-
-			if tt.injectError != nil {
-				if !errors.Is(err, tt.injectError) {
-					t.Errorf("expected error %v, got %v", tt.injectError, err)
-				}
-				return
-			}
-
-			if err != nil && err != io.EOF {
-				t.Errorf("unexpected error: %v", err)
-			}
-
-			expectedLen := len(tt.content)
-			if expectedLen > tt.readSize {
-				expectedLen = tt.readSize
-			}
-			if n != expectedLen {
-				t.Errorf("read %d bytes, expected %d", n, expectedLen)
-			}
-
-			if n > 0 && string(buf[:n]) != tt.content[:n] {
-				t.Errorf("read %q, expected %q", string(buf[:n]), tt.content[:n])
+			file := mockfs.NewMockFile(tt.mapFile, tt.fileName, 0, nil, nil, nil, nil)
+			if file == nil && !tt.wantPanic {
+				t.Error("expected non-nil file")
 			}
 		})
 	}
 }
 
-// TestMockFile_Read_Closed tests reading from a closed file.
-func TestMockFile_Read_Closed(t *testing.T) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
+// TestNewMockFile_defaults tests that nil arguments to NewMockFile are
+// initialized with non-nil default implementations.
+func TestNewMockFile_defaults(t *testing.T) {
+	mapFile := &fstest.MapFile{Data: []byte("test")}
+	// Call with nil for injector, latency, and stats
+	file := mockfs.NewMockFile(mapFile, "test.txt", 0, nil, nil, nil, nil)
+
+	if file.ErrorInjector() == nil {
+		t.Error("expected non-nil default ErrorInjector")
 	}
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, nil)
-
-	if err := f.Close(); err != nil {
-		t.Fatalf("failed to close file: %v", err)
+	if file.LatencySimulator() == nil {
+		t.Error("expected non-nil default LatencySimulator")
 	}
-
-	buf := make([]byte, 10)
-	_, err = f.Read(buf)
-	if !errors.Is(err, fs.ErrClosed) {
-		t.Errorf("expected ErrClosed, got %v", err)
+	if file.Stats() == nil {
+		t.Error("expected non-nil default Stats")
 	}
 }
 
-// TestMockFile_Read_Multiple tests multiple sequential reads.
-func TestMockFile_Read_Multiple(t *testing.T) {
-	content := "hello world"
-	testFS := createTestFS(content)
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, nil)
-	defer f.Close()
-
-	// first read
-	buf1 := make([]byte, 5)
-	n1, err := f.Read(buf1)
-	if err != nil {
-		t.Fatalf("first read failed: %v", err)
-	}
-	if n1 != 5 || string(buf1) != "hello" {
-		t.Errorf("first read: got %d bytes %q, expected 5 bytes 'hello'", n1, string(buf1))
+// TestNewMockFileSimple tests the simple constructor.
+func TestNewMockFileSimple(t *testing.T) {
+	mapFile := &fstest.MapFile{
+		Data:    []byte("hello"),
+		Mode:    0644,
+		ModTime: time.Now(),
 	}
 
-	// second read
-	buf2 := make([]byte, 6)
-	n2, err := f.Read(buf2)
-	if err != nil {
-		t.Fatalf("second read failed: %v", err)
+	file := mockfs.NewMockFileSimple(mapFile, "test.txt")
+	if file == nil {
+		t.Fatal("expected non-nil file")
 	}
-	if n2 != 6 || string(buf2) != " world" {
-		t.Errorf("second read: got %d bytes %q, expected 6 bytes ' world'", n2, string(buf2))
+
+	// Should be able to read
+	buf := make([]byte, 5)
+	n, err := file.Read(buf)
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	if n != 5 || string(buf) != "hello" {
+		t.Errorf("read = %q, want %q", buf[:n], "hello")
 	}
 }
 
-// TestMockFile_Read_WithDelay tests read with simulated delay.
-func TestMockFile_Read_WithDelay(t *testing.T) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
+// TestNewMockFileFromData tests creating file from data.
+func TestNewMockFileFromData(t *testing.T) {
+	data := []byte("test content")
+	file := mockfs.NewMockFileFromData("test.txt", data)
+
+	if file == nil {
+		t.Fatal("expected non-nil file")
+	}
+
+	buf := make([]byte, len(data))
+	n, err := file.Read(buf)
 	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
+		t.Fatalf("read failed: %v", err)
 	}
-	defer underlyingFile.Close()
+	if n != len(data) || string(buf) != string(data) {
+		t.Errorf("read = %q, want %q", buf[:n], data)
+	}
+}
 
-	delayCalled := false
-	delaySimulator := func() {
-		delayCalled = true
+// TestNewMockFileWithLatency tests latency constructor.
+func TestNewMockFileWithLatency(t *testing.T) {
+	mapFile := &fstest.MapFile{
+		Data:    []byte("data"),
+		Mode:    0644,
+		ModTime: time.Now(),
 	}
 
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, delaySimulator, nil, nil)
-	defer f.Close()
+	file := mockfs.NewMockFileWithLatency(mapFile, "test.txt", testDuration)
 
-	buf := make([]byte, 10)
-	_, err = f.Read(buf)
-	if err != nil && err != io.EOF {
+	buf := make([]byte, 4)
+	start := time.Now()
+	_, err := file.Read(buf)
+	if err != nil {
 		t.Fatalf("read failed: %v", err)
 	}
 
-	if !delayCalled {
-		t.Error("delay simulator was not called")
-	}
+	assertDuration(t, start, testDuration, "read with latency")
 }
 
-// TestMockFile_Read_WithCounter tests operation counting.
-func TestMockFile_Read_WithCounter(t *testing.T) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
+// TestNewMockFileForReadWrite tests read/write focused constructor.
+func TestNewMockFileForReadWrite(t *testing.T) {
+	mapFile := &fstest.MapFile{
+		Data:    []byte("test"),
+		Mode:    0644,
+		ModTime: time.Now(),
+	}
+
+	injector := mockfs.NewErrorInjector()
+	injector.AddExact(mockfs.OpRead, "test.txt", io.ErrUnexpectedEOF, mockfs.ErrorModeOnce, 0)
+
+	file := mockfs.NewMockFileForReadWrite(mapFile, "test.txt", testDuration, injector)
+
+	// First read should fail
+	buf := make([]byte, 4)
+	_, err := file.Read(buf)
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("first read error = %v, want %v", err, io.ErrUnexpectedEOF)
+	}
+
+	// Second read should succeed with latency
+	start := time.Now()
+	n, err := file.Read(buf)
 	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
+		t.Fatalf("second read failed: %v", err)
 	}
-	defer underlyingFile.Close()
-
-	var readCount int
-	var lastOp mockfs.Operation
-	counter := func(op mockfs.Operation) {
-		if op == mockfs.OpRead {
-			readCount++
-		}
-		lastOp = op
+	if n != 4 {
+		t.Errorf("read n = %d, want 4", n)
 	}
+	assertDuration(t, start, testDuration, "read latency")
 
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, counter, nil)
-	defer f.Close()
-
-	buf := make([]byte, 10)
-	_, _ = f.Read(buf)
-
-	if readCount != 1 {
-		t.Errorf("read count = %d, expected 1", readCount)
-	}
-	if lastOp != mockfs.OpRead {
-		t.Errorf("last operation = %v, expected OpRead", lastOp)
-	}
+	// Close should not have latency (not in per-op config)
+	start = time.Now()
+	_ = file.Close()
+	assertNoDuration(t, start, "close should be fast")
 }
 
-// TestMockFile_Write tests the Write method.
-func TestMockFile_Write(t *testing.T) {
+// TestNewMockDirectory tests directory constructor.
+func TestNewMockDirectory(t *testing.T) {
+	t.Run("with handler", func(t *testing.T) {
+		handler := func(n int) ([]fs.DirEntry, error) {
+			return []fs.DirEntry{}, nil
+		}
+
+		dir := mockfs.NewMockDirectory("testdir", time.Now(), handler, nil, nil, nil)
+		if dir == nil {
+			t.Fatal("expected non-nil directory")
+		}
+
+		entries, err := dir.ReadDir(-1)
+		if err != nil {
+			t.Fatalf("readdir failed: %v", err)
+		}
+		if entries == nil {
+			t.Error("expected non-nil entries")
+		}
+	})
+
+	t.Run("nil handler panics", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("expected panic for nil handler")
+			}
+		}()
+		mockfs.NewMockDirectory("testdir", time.Now(), nil, nil, nil, nil)
+	})
+}
+
+// TestMockFile_Read tests Read operation.
+func TestMockFile_Read(t *testing.T) {
 	tests := []struct {
-		name        string
-		data        string
-		injectError error
+		name     string
+		data     []byte
+		bufSize  int
+		wantN    int
+		wantData string
+		wantErr  error
 	}{
 		{
-			name: "write simple data",
-			data: "hello",
+			name:     "read full content",
+			data:     []byte("hello world"),
+			bufSize:  20,
+			wantN:    11,
+			wantData: "hello world",
+			wantErr:  nil,
 		},
 		{
-			name: "write empty data",
-			data: "",
+			name:     "read partial content",
+			data:     []byte("hello world"),
+			bufSize:  5,
+			wantN:    5,
+			wantData: "hello",
+			wantErr:  nil,
 		},
 		{
-			name: "write multiline data",
-			data: "line1\nline2\nline3",
-		},
-		{
-			name:        "write with injected error",
-			data:        "test",
-			injectError: mockfs.ErrDiskFull,
+			name:     "read empty file",
+			data:     []byte(""),
+			bufSize:  10,
+			wantN:    0,
+			wantData: "",
+			wantErr:  io.EOF,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testFS := createTestFS("")
-			underlyingFile, err := testFS.Open("test.txt")
-			if err != nil {
-				t.Fatalf("failed to open test file: %v", err)
-			}
-			defer underlyingFile.Close()
+			mapFile := &fstest.MapFile{Data: tt.data, Mode: 0644, ModTime: time.Now()}
+			file := mockfs.NewMockFileSimple(mapFile, "test.txt")
 
-			errorChecker := func(op mockfs.Operation, path string) error {
-				if tt.injectError != nil && op == mockfs.OpWrite {
-					return tt.injectError
-				}
-				return nil
-			}
+			buf := make([]byte, tt.bufSize)
+			n, err := file.Read(buf)
 
-			var written []byte
-			writeHandler := func(b []byte) (int, error) {
-				written = append(written, b...)
-				return len(b), nil
+			if err != tt.wantErr {
+				t.Errorf("error = %v, want %v", err, tt.wantErr)
 			}
-
-			f := mockfs.NewMockFile(underlyingFile, "test.txt", errorChecker, nil, nil, writeHandler)
-			defer f.Close()
-
-			n, err := f.Write([]byte(tt.data))
-
-			if tt.injectError != nil {
-				if !errors.Is(err, tt.injectError) {
-					t.Errorf("expected error %v, got %v", tt.injectError, err)
-				}
-				return
+			if n != tt.wantN {
+				t.Errorf("n = %d, want %d", n, tt.wantN)
 			}
-
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
-			if n != len(tt.data) {
-				t.Errorf("wrote %d bytes, expected %d", n, len(tt.data))
-			}
-			if string(written) != tt.data {
-				t.Errorf("written data %q, expected %q", string(written), tt.data)
+			if n > 0 && string(buf[:n]) != tt.wantData {
+				t.Errorf("data = %q, want %q", buf[:n], tt.wantData)
 			}
 		})
 	}
 }
 
-// TestMockFile_Write_Closed tests writing to a closed file.
-func TestMockFile_Write_Closed(t *testing.T) {
-	testFS := createTestFS("")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
+// TestMockFile_Read_position tests that read position advances.
+func TestMockFile_Read_position(t *testing.T) {
+	mapFile := &fstest.MapFile{
+		Data:    []byte("abcdefghij"),
+		Mode:    0644,
+		ModTime: time.Now(),
+	}
+	file := mockfs.NewMockFileSimple(mapFile, "test.txt")
+
+	// First read
+	buf1 := make([]byte, 3)
+	n, err := file.Read(buf1)
+	if err != nil || n != 3 || string(buf1) != "abc" {
+		t.Fatalf("first read: n=%d, data=%q, err=%v", n, buf1, err)
 	}
 
-	writeHandler := func(b []byte) (int, error) {
-		return len(b), nil
+	// Second read should continue from position
+	buf2 := make([]byte, 3)
+	n, err = file.Read(buf2)
+	if err != nil || n != 3 || string(buf2) != "def" {
+		t.Fatalf("second read: n=%d, data=%q, err=%v", n, buf2, err)
 	}
 
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, writeHandler)
-
-	if err := f.Close(); err != nil {
-		t.Fatalf("failed to close file: %v", err)
+	// Third read
+	buf3 := make([]byte, 10)
+	n, err = file.Read(buf3)
+	if err != nil || n != 4 || string(buf3[:n]) != "ghij" {
+		t.Fatalf("third read: n=%d, data=%q, err=%v", n, buf3[:n], err)
 	}
 
-	_, err = f.Write([]byte("data"))
-	if !errors.Is(err, fs.ErrClosed) {
-		t.Errorf("expected ErrClosed, got %v", err)
-	}
-}
-
-// TestMockFile_Write_NoHandler tests writing without a handler.
-func TestMockFile_Write_NoHandler(t *testing.T) {
-	testFS := createTestFS("")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, nil)
-	defer f.Close()
-
-	_, err = f.Write([]byte("data"))
-	if !errors.Is(err, fs.ErrInvalid) {
-		t.Errorf("expected ErrInvalid for no write handler, got %v", err)
+	// Fourth read should return EOF
+	buf4 := make([]byte, 10)
+	n, err = file.Read(buf4)
+	if err != io.EOF || n != 0 {
+		t.Fatalf("fourth read: n=%d, err=%v, want EOF", n, err)
 	}
 }
 
-// TestMockFile_Write_WithDelay tests write with simulated delay.
-func TestMockFile_Write_WithDelay(t *testing.T) {
-	testFS := createTestFS("")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	delayCalled := false
-	delaySimulator := func() {
-		delayCalled = true
-	}
-
-	writeHandler := func(b []byte) (int, error) {
-		return len(b), nil
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, delaySimulator, nil, writeHandler)
-	defer f.Close()
-
-	_, err = f.Write([]byte("data"))
-	if err != nil {
-		t.Fatalf("write failed: %v", err)
-	}
-
-	if !delayCalled {
-		t.Error("delay simulator was not called")
-	}
-}
-
-// TestMockFile_Write_WithCounter tests operation counting.
-func TestMockFile_Write_WithCounter(t *testing.T) {
-	testFS := createTestFS("")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	var writeCount int
-	var lastOp mockfs.Operation
-	counter := func(op mockfs.Operation) {
-		if op == mockfs.OpWrite {
-			writeCount++
-		}
-		lastOp = op
-	}
-
-	writeHandler := func(b []byte) (int, error) {
-		return len(b), nil
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, counter, writeHandler)
-	defer f.Close()
-
-	_, _ = f.Write([]byte("data"))
-
-	if writeCount != 1 {
-		t.Errorf("write count = %d, expected 1", writeCount)
-	}
-	if lastOp != mockfs.OpWrite {
-		t.Errorf("last operation = %v, expected OpWrite", lastOp)
-	}
-}
-
-// TestMockFile_ReadDir tests the ReadDir method.
-func TestMockFile_ReadDir(t *testing.T) {
-	tests := []struct {
-		name        string
-		setupFS     func() fstest.MapFS
-		openPath    string
-		readCount   int
-		injectError error
-		wantEntries int
-		wantErr     error
-		// A second read to test statefulness
-		secondReadCount   int
-		wantSecondEntries int
-		wantSecondErr     error
-	}{
-		{
-			name: "read directory all entries at once",
-			setupFS: func() fstest.MapFS {
-				return fstest.MapFS{
-					"dir":           {Mode: fs.ModeDir | 0755},
-					"dir/file1.txt": {Data: []byte("content1"), Mode: 0644},
-					"dir/file2.txt": {Data: []byte("content2"), Mode: 0644},
-					"dir/file3.txt": {Data: []byte("content3"), Mode: 0644},
-				}
-			},
-			openPath:    "dir",
-			readCount:   -1, // Read all
-			wantEntries: 3,
-			wantErr:     nil,
-		},
-		{
-			name: "read directory in chunks until EOF",
-			setupFS: func() fstest.MapFS {
-				return fstest.MapFS{
-					"dir":           {Mode: fs.ModeDir | 0755},
-					"dir/file1.txt": {Data: []byte("content1"), Mode: 0644},
-					"dir/file2.txt": {Data: []byte("content2"), Mode: 0644},
-				}
-			},
-			openPath:          "dir",
-			readCount:         1, // Read first entry
-			wantEntries:       1,
-			wantErr:           nil,
-			secondReadCount:   10,  // Try to read more
-			wantSecondEntries: 1,   // Should get the second entry
-			wantSecondErr:     nil, // A third read would give EOF
-		},
-		{
-			name: "read directory with zero count reads all",
-			setupFS: func() fstest.MapFS {
-				return fstest.MapFS{
-					"dir":           {Mode: fs.ModeDir | 0755},
-					"dir/file1.txt": {Data: []byte("content1"), Mode: 0644},
-					"dir/file2.txt": {Data: []byte("content2"), Mode: 0644},
-				}
-			},
-			openPath:    "dir",
-			readCount:   0, // Read all, same as -1
-			wantEntries: 2,
-			wantErr:     nil,
-		},
-		{
-			name: "read from empty directory with n>0 returns EOF",
-			setupFS: func() fstest.MapFS {
-				return fstest.MapFS{
-					"dir": {Mode: fs.ModeDir | 0755},
-				}
-			},
-			openPath:    "dir",
-			readCount:   1,
-			wantEntries: 0,
-			wantErr:     io.EOF,
-		},
-		{
-			name: "read all from empty directory returns no error",
-			setupFS: func() fstest.MapFS {
-				return fstest.MapFS{
-					"dir": {Mode: fs.ModeDir | 0755},
-				}
-			},
-			openPath:    "dir",
-			readCount:   -1,
-			wantEntries: 0,
-			wantErr:     nil,
-		},
-		{
-			name: "read non-directory returns error",
-			setupFS: func() fstest.MapFS {
-				return fstest.MapFS{
-					"file.txt": {Data: []byte("content"), Mode: 0644},
-				}
-			},
-			openPath:  "file.txt",
-			readCount: -1,
-			wantErr:   fs.ErrInvalid,
-		},
-		{
-			name: "read directory with injected error",
-			setupFS: func() fstest.MapFS {
-				return fstest.MapFS{
-					"dir":          {Mode: fs.ModeDir | 0755},
-					"dir/file.txt": {Data: []byte("content"), Mode: 0644},
-				}
-			},
-			openPath:    "dir",
-			readCount:   -1,
-			injectError: mockfs.ErrPermission,
-			wantErr:     mockfs.ErrPermission,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testFS := tt.setupFS()
-			underlyingFile, err := testFS.Open(tt.openPath)
-			if err != nil {
-				// This can happen in the "read non-directory" case if Open itself fails
-				if tt.wantErr != nil && errors.Is(err, tt.wantErr) {
-					return
-				}
-				t.Fatalf("test setup failed to open path %q: %v", tt.openPath, err)
-			}
-			defer underlyingFile.Close()
-
-			errorChecker := func(op mockfs.Operation, path string) error {
-				if tt.injectError != nil && op == mockfs.OpReadDir && path == tt.openPath {
-					return tt.injectError
-				}
-				return nil
-			}
-
-			f := mockfs.NewMockFile(underlyingFile, tt.openPath, errorChecker, nil, nil, nil)
-			defer f.Close()
-
-			// Perform the first read
-			entries, err := f.ReadDir(tt.readCount)
-
-			if !errors.Is(err, tt.wantErr) {
-				t.Errorf("ReadDir() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if err != nil {
-				return // Expected error occurred, no need to check entries
-			}
-
-			if len(entries) != tt.wantEntries {
-				t.Errorf("ReadDir() got %d entries, want %d", len(entries), tt.wantEntries)
-			}
-
-			// If a second read is specified in the test case, perform it
-			if tt.secondReadCount > 0 {
-				secondEntries, secondErr := f.ReadDir(tt.secondReadCount)
-				if !errors.Is(secondErr, tt.wantSecondErr) {
-					t.Errorf("Second ReadDir() error = %v, wantErr %v", secondErr, tt.wantSecondErr)
-					return
-				}
-				if secondErr != nil {
-					return
-				}
-				if len(secondEntries) != tt.wantSecondEntries {
-					t.Errorf("Second ReadDir() got %d entries, want %d", len(secondEntries), tt.wantSecondEntries)
-				}
-			}
-		})
-	}
-}
-
-// TestMockFile_ReadDir_Closed tests ReadDir on a closed file.
-func TestMockFile_ReadDir_Closed(t *testing.T) {
-	testFS := fstest.MapFS{
-		"dir":          {Mode: fs.ModeDir | 0755},
-		"dir/file.txt": {Data: []byte("content")},
-	}
-	underlyingFile, err := testFS.Open("dir")
-	if err != nil {
-		t.Fatalf("failed to open: %v", err)
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "dir", nil, nil, nil, nil)
-
-	if err := f.Close(); err != nil {
-		t.Fatalf("failed to close: %v", err)
-	}
-
-	_, err = f.ReadDir(-1)
-	if !errors.Is(err, fs.ErrClosed) {
-		t.Errorf("expected ErrClosed, got %v", err)
-	}
-}
-
-// TestMockFile_ReadDir_Multiple tests multiple ReadDir calls.
-func TestMockFile_ReadDir_Multiple(t *testing.T) {
-	testFS := fstest.MapFS{
-		"dir":           {Mode: fs.ModeDir | 0755},
-		"dir/file1.txt": {Data: []byte("1")},
-		"dir/file2.txt": {Data: []byte("2")},
-		"dir/file3.txt": {Data: []byte("3")},
-	}
-
-	underlyingFile, err := testFS.Open("dir")
-	if err != nil {
-		t.Fatalf("failed to open: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	f := mockfs.NewMockFile(underlyingFile, "dir", nil, nil, nil, nil)
-	defer f.Close()
-
-	// First read: get 2 entries
-	entries1, err := f.ReadDir(2)
-	if err != nil && err != io.EOF {
-		t.Fatalf("first ReadDir failed: %v", err)
-	}
-	if len(entries1) != 2 {
-		t.Errorf("first read: expected 2 entries, got %d", len(entries1))
-	}
-
-	// Second read: get remaining entries
-	entries2, err := f.ReadDir(-1)
-	if err != nil && err != io.EOF {
-		t.Fatalf("second ReadDir failed: %v", err)
-	}
-
-	totalEntries := len(entries1) + len(entries2)
-	if totalEntries != 3 {
-		t.Errorf("total entries = %d, expected 3", totalEntries)
-	}
-}
-
-// TestMockFile_ReadDir_WithDelay tests ReadDir with simulated delay.
-func TestMockFile_ReadDir_WithDelay(t *testing.T) {
-	testFS := fstest.MapFS{
-		"dir":          {Mode: fs.ModeDir | 0755},
-		"dir/file.txt": {Data: []byte("content")},
-	}
-	underlyingFile, err := testFS.Open("dir")
-	if err != nil {
-		t.Fatalf("failed to open: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	delayCalled := false
-	delaySimulator := func() {
-		delayCalled = true
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "dir", nil, delaySimulator, nil, nil)
-	defer f.Close()
-
-	_, _ = f.ReadDir(-1)
-
-	if !delayCalled {
-		t.Error("delay simulator was not called")
-	}
-}
-
-// TestMockFile_ReadDir_WithCounter tests operation counting.
-func TestMockFile_ReadDir_WithCounter(t *testing.T) {
-	testFS := fstest.MapFS{
-		"dir":          {Mode: fs.ModeDir | 0755},
-		"dir/file.txt": {Data: []byte("content")},
-	}
-	underlyingFile, err := testFS.Open("dir")
-	if err != nil {
-		t.Fatalf("failed to open: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	var readDirCount int
-	var lastOp mockfs.Operation
-	counter := func(op mockfs.Operation) {
-		if op == mockfs.OpReadDir {
-			readDirCount++
-		}
-		lastOp = op
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "dir", nil, nil, counter, nil)
-	defer f.Close()
-
-	_, _ = f.ReadDir(-1)
-
-	if readDirCount != 1 {
-		t.Errorf("readdir count = %d, expected 1", readDirCount)
-	}
-	if lastOp != mockfs.OpReadDir {
-		t.Errorf("last operation = %v, expected OpReadDir", lastOp)
-	}
-}
-
-// TestMockFile_Stat tests the Stat method.
-func TestMockFile_Stat(t *testing.T) {
-	content := "test content"
-	testFS := createTestFS(content)
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, nil)
-	defer f.Close()
-
-	info, err := f.Stat()
-	if err != nil {
-		t.Fatalf("Stat() error: %v", err)
-	}
-
-	if info.Name() != "test.txt" {
-		t.Errorf("name = %q, want 'test.txt'", info.Name())
-	}
-	if info.Size() != int64(len(content)) {
-		t.Errorf("size = %d, want %d", info.Size(), len(content))
-	}
-	if info.IsDir() {
-		t.Error("IsDir() = true, want false")
-	}
-}
-
-// TestMockFile_Stat_Closed tests Stat on a closed file.
-func TestMockFile_Stat_Closed(t *testing.T) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, nil)
-
-	if err := f.Close(); err != nil {
-		t.Fatalf("failed to close file: %v", err)
-	}
-
-	_, err = f.Stat()
-	if !errors.Is(err, fs.ErrClosed) {
-		t.Errorf("expected ErrClosed, got %v", err)
-	}
-}
-
-// TestMockFile_Close tests the Close method.
-func TestMockFile_Close(t *testing.T) {
-	tests := []struct {
-		name        string
-		injectError error
-	}{
-		{
-			name: "normal close",
-		},
-		{
-			name:        "close with injected error",
-			injectError: mockfs.ErrTimeout,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testFS := createTestFS("content")
-			underlyingFile, err := testFS.Open("test.txt")
-			if err != nil {
-				t.Fatalf("failed to open test file: %v", err)
-			}
-
-			errorChecker := func(op mockfs.Operation, path string) error {
-				if tt.injectError != nil && op == mockfs.OpClose {
-					return tt.injectError
-				}
-				return nil
-			}
-
-			f := mockfs.NewMockFile(underlyingFile, "test.txt", errorChecker, nil, nil, nil)
-
-			err = f.Close()
-
-			if tt.injectError != nil {
-				if !errors.Is(err, tt.injectError) {
-					t.Errorf("expected error %v, got %v", tt.injectError, err)
-				}
-			} else if err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
-
-			// verify file is closed
-			_, readErr := f.Read(make([]byte, 10))
-			if !errors.Is(readErr, fs.ErrClosed) {
-				t.Errorf("file should be closed, got error: %v", readErr)
-			}
-		})
-	}
-}
-
-// TestMockFile_Close_Multiple tests closing a file multiple times.
-func TestMockFile_Close_Multiple(t *testing.T) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, nil)
-
-	// first close
-	err = f.Close()
-	if err != nil {
-		t.Errorf("first close failed: %v", err)
-	}
-
-	// second close should return ErrClosed
-	err = f.Close()
-	if !errors.Is(err, fs.ErrClosed) {
-		t.Errorf("second close: expected ErrClosed, got %v", err)
-	}
-
-	// third close should also return ErrClosed
-	err = f.Close()
-	if !errors.Is(err, fs.ErrClosed) {
-		t.Errorf("third close: expected ErrClosed, got %v", err)
-	}
-}
-
-// TestMockFile_Close_WithInjectedError_StillCloses tests that
-// file is marked closed even when error is injected.
-func TestMockFile_Close_WithInjectedError_StillCloses(t *testing.T) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-
-	errorChecker := func(op mockfs.Operation, path string) error {
-		if op == mockfs.OpClose {
-			return mockfs.ErrTimeout
-		}
-		return nil
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", errorChecker, nil, nil, nil)
-
-	err = f.Close()
-	if !errors.Is(err, mockfs.ErrTimeout) {
-		t.Errorf("expected ErrTimeout, got %v", err)
-	}
-
-	// verify file is marked as closed despite error
-	_, readErr := f.Read(make([]byte, 10))
-	if !errors.Is(readErr, fs.ErrClosed) {
-		t.Errorf("file should be closed after error, got: %v", readErr)
-	}
-}
-
-// TestMockFile_Close_WithDelay tests close with simulated delay.
-func TestMockFile_Close_WithDelay(t *testing.T) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-
-	delayCalled := false
-	delaySimulator := func() {
-		delayCalled = true
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, delaySimulator, nil, nil)
-
-	err = f.Close()
-	if err != nil {
+// TestMockFile_Read_closed tests reading from closed file.
+func TestMockFile_Read_closed(t *testing.T) {
+	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+
+	if err := file.Close(); err != nil {
 		t.Fatalf("close failed: %v", err)
 	}
 
-	if !delayCalled {
-		t.Error("delay simulator was not called")
+	buf := make([]byte, 10)
+	_, err := file.Read(buf)
+	if err != fs.ErrClosed {
+		t.Errorf("error = %v, want ErrClosed", err)
 	}
 }
 
-// TestMockFile_Close_WithCounter tests operation counting.
-func TestMockFile_Close_WithCounter(t *testing.T) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
+// TestMockFile_Read_errorInjection tests error injection on read.
+func TestMockFile_Read_errorInjection(t *testing.T) {
+	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0644, ModTime: time.Now()}
+	wantErr := io.ErrUnexpectedEOF
 
-	var closeCount int
-	var lastOp mockfs.Operation
-	counter := func(op mockfs.Operation) {
-		if op == mockfs.OpClose {
-			closeCount++
-		}
-		lastOp = op
-	}
+	injector := mockfs.NewErrorInjector()
+	injector.AddExact(mockfs.OpRead, "test.txt", wantErr, mockfs.ErrorModeAlways, 0)
 
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, counter, nil)
+	file := mockfs.NewMockFile(mapFile, "test.txt", 0, injector, nil, nil, nil)
 
-	_ = f.Close()
-
-	if closeCount != 1 {
-		t.Errorf("close count = %d, expected 1", closeCount)
-	}
-	if lastOp != mockfs.OpClose {
-		t.Errorf("last operation = %v, expected OpClose", lastOp)
+	buf := make([]byte, 10)
+	_, err := file.Read(buf)
+	if err != wantErr {
+		t.Errorf("error = %v, want %v", err, wantErr)
 	}
 }
 
-// TestMockFile_Concurrent_Read tests concurrent reads from the same file.
-func TestMockFile_Concurrent_Read(t *testing.T) {
-	content := strings.Repeat("test content ", 100)
-	testFS := createTestFS(content)
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, nil)
-	defer f.Close()
-
-	var wg sync.WaitGroup
-	successCount := 0
-	var mu sync.Mutex
-
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			buf := make([]byte, 10)
-			_, err := f.Read(buf)
-			if err == nil || err == io.EOF {
-				mu.Lock()
-				successCount++
-				mu.Unlock()
-			}
-		}()
+// TestMockFile_Read_largeFile tests reading a large file.
+func TestMockFile_Read_largeFile(t *testing.T) {
+	size := 10 * 1024 * 1024 // 10MB
+	data := make([]byte, size)
+	for i := range data {
+		data[i] = byte(i % 256)
 	}
 
-	wg.Wait()
+	mapFile := &fstest.MapFile{Data: data, Mode: 0644, ModTime: time.Now()}
+	file := mockfs.NewMockFileSimple(mapFile, "large.bin")
 
-	if successCount == 0 {
-		t.Error("expected at least some successful concurrent reads")
-	}
-}
-
-// TestMockFile_Concurrent_Close tests concurrent closes.
-func TestMockFile_Concurrent_Close(t *testing.T) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, nil)
-
-	var wg sync.WaitGroup
-	successCount := 0
-	var mu sync.Mutex
-
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			err := f.Close()
-			if err == nil {
-				mu.Lock()
-				successCount++
-				mu.Unlock()
-			}
-		}()
-	}
-
-	wg.Wait()
-
-	// only one close should succeed
-	if successCount != 1 {
-		t.Errorf("expected 1 successful close, got %d", successCount)
-	}
-}
-
-// TestMockFile_Concurrent_ReadWrite tests concurrent reads and writes.
-func TestMockFile_Concurrent_ReadWrite(t *testing.T) {
-	content := strings.Repeat("x", 1000)
-	testFS := createTestFS(content)
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	writeHandler := func(b []byte) (int, error) {
-		return len(b), nil
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, writeHandler)
-	defer f.Close()
-
-	var wg sync.WaitGroup
-
-	// concurrent readers
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			buf := make([]byte, 10)
-			_, _ = f.Read(buf)
-		}()
-	}
-
-	// concurrent writers
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_, _ = f.Write([]byte("data"))
-		}()
-	}
-
-	wg.Wait()
-}
-
-// TestMockFile_LargeFile tests reading large files.
-func TestMockFile_LargeFile(t *testing.T) {
-	// create large content (1MB)
-	largeData := make([]byte, 1024*1024)
-	for i := range largeData {
-		largeData[i] = byte(i % 256)
-	}
-
-	testFS := fstest.MapFS{
-		"large.bin": &fstest.MapFile{
-			Data: largeData,
-			Mode: 0644,
-		},
-	}
-
-	underlyingFile, err := testFS.Open("large.bin")
-	if err != nil {
-		t.Fatalf("failed to open large file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	f := mockfs.NewMockFile(underlyingFile, "large.bin", nil, nil, nil, nil)
-	defer f.Close()
-
-	// read in chunks
-	buf := make([]byte, 4096)
+	bufSize := 4096
+	buf := make([]byte, bufSize)
 	totalRead := 0
+
 	for {
-		n, err := f.Read(buf)
+		n, err := file.Read(buf)
 		totalRead += n
+
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			t.Fatalf("read error at offset %d: %v", totalRead, err)
+			t.Fatalf("read failed at %d: %v", totalRead, err)
 		}
 	}
 
-	if totalRead != len(largeData) {
-		t.Errorf("read %d bytes, expected %d", totalRead, len(largeData))
+	if totalRead != size {
+		t.Errorf("totalRead = %d, want %d", totalRead, size)
 	}
 }
 
-// TestMockFile_EmptyFile tests operations on empty files.
-func TestMockFile_EmptyFile(t *testing.T) {
-	testFS := createTestFS("")
-	underlyingFile, err := testFS.Open("test.txt")
+// TestMockFile_Read_zeroByte tests reading with zero-length buffer.
+func TestMockFile_Read_zeroByte(t *testing.T) {
+	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+
+	buf := make([]byte, 0)
+	n, err := file.Read(buf)
 	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, nil)
-	defer f.Close()
-
-	buf := make([]byte, 10)
-	n, err := f.Read(buf)
-	if err != io.EOF {
-		t.Errorf("expected EOF for empty file, got %v", err)
+		t.Errorf("zero-byte read failed: %v", err)
 	}
 	if n != 0 {
-		t.Errorf("read %d bytes from empty file, expected 0", n)
-	}
-
-	info, err := f.Stat()
-	if err != nil {
-		t.Fatalf("Stat() error: %v", err)
-	}
-	if info.Size() != 0 {
-		t.Errorf("size = %d, expected 0", info.Size())
+		t.Errorf("n = %d, want 0", n)
 	}
 }
 
-// TestMockFile_ErrorInjection_AllOperations tests error injection for all operations.
-func TestMockFile_ErrorInjection_AllOperations(t *testing.T) {
-	tests := []struct {
-		name string
-		op   mockfs.Operation
-		exec func(*mockfs.MockFile) error
-	}{
-		{
-			name: "read error",
-			op:   mockfs.OpRead,
-			exec: func(f *mockfs.MockFile) error {
-				_, err := f.Read(make([]byte, 10))
-				return err
-			},
-		},
-		{
-			name: "write error",
-			op:   mockfs.OpWrite,
-			exec: func(f *mockfs.MockFile) error {
-				_, err := f.Write([]byte("data"))
-				return err
-			},
-		},
-		{
-			name: "close error",
-			op:   mockfs.OpClose,
-			exec: func(f *mockfs.MockFile) error {
-				return f.Close()
-			},
-		},
+// TestMockFile_Write_overwrite tests overwrite mode.
+func TestMockFile_Write_overwrite(t *testing.T) {
+	mapFile := &fstest.MapFile{
+		Data:    []byte("original content"),
+		Mode:    0644,
+		ModTime: time.Now(),
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			testFS := createTestFS("content")
-			underlyingFile, err := testFS.Open("test.txt")
-			if err != nil {
-				t.Fatalf("failed to open test file: %v", err)
-			}
-			defer underlyingFile.Close()
+	// writeModeOverwrite is what NewMockFileSimple uses
+	file := mockfs.NewMockFileSimple(mapFile, "test.txt")
 
-			expectedErr := mockfs.ErrCorrupted
-			errorChecker := func(op mockfs.Operation, path string) error {
-				if op == tt.op {
-					return expectedErr
-				}
-				return nil
-			}
-
-			writeHandler := func(b []byte) (int, error) {
-				return len(b), nil
-			}
-
-			f := mockfs.NewMockFile(underlyingFile, "test.txt", errorChecker, nil, nil, writeHandler)
-
-			err = tt.exec(f)
-			if !errors.Is(err, expectedErr) {
-				t.Errorf("expected %v, got %v", expectedErr, err)
-			}
-		})
-	}
-}
-
-// TestMockFile_BinaryData tests reading and writing binary data.
-func TestMockFile_BinaryData(t *testing.T) {
-	// create binary data with all byte values
-	binaryData := make([]byte, 256)
-	for i := range binaryData {
-		binaryData[i] = byte(i)
-	}
-
-	testFS := fstest.MapFS{
-		"binary.dat": &fstest.MapFile{
-			Data: binaryData,
-			Mode: 0644,
-		},
-	}
-
-	underlyingFile, err := testFS.Open("binary.dat")
-	if err != nil {
-		t.Fatalf("failed to open binary file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	f := mockfs.NewMockFile(underlyingFile, "binary.dat", nil, nil, nil, nil)
-	defer f.Close()
-
-	readData := make([]byte, 256)
-	n, err := f.Read(readData)
-	if err != nil && err != io.EOF {
-		t.Fatalf("read failed: %v", err)
-	}
-
-	if n != len(binaryData) {
-		t.Errorf("read %d bytes, expected %d", n, len(binaryData))
-	}
-
-	for i := range binaryData {
-		if readData[i] != binaryData[i] {
-			t.Errorf("byte %d: got %d, expected %d", i, readData[i], binaryData[i])
-			break
-		}
-	}
-}
-
-// TestMockFile_SpecialPaths tests files with special path characters.
-func TestMockFile_SpecialPaths(t *testing.T) {
-	tests := []struct {
-		name     string
-		filename string
-	}{
-		{"spaces", "file with spaces.txt"},
-		{"dashes", "file-with-dashes.txt"},
-		{"underscores", "file_with_underscores.txt"},
-		{"dots", "file.with.dots.txt"},
-		{"mixed", "file-name_test.v2.txt"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			content := "test content"
-			testFS := fstest.MapFS{
-				tt.filename: &fstest.MapFile{
-					Data: []byte(content),
-					Mode: 0644,
-				},
-			}
-
-			underlyingFile, err := testFS.Open(tt.filename)
-			if err != nil {
-				t.Fatalf("failed to open file: %v", err)
-			}
-			defer underlyingFile.Close()
-
-			f := mockfs.NewMockFile(underlyingFile, tt.filename, nil, nil, nil, nil)
-			defer f.Close()
-
-			buf := make([]byte, 100)
-			n, err := f.Read(buf)
-			if err != nil && err != io.EOF {
-				t.Fatalf("read failed: %v", err)
-			}
-
-			if string(buf[:n]) != content {
-				t.Errorf("read %q, expected %q", string(buf[:n]), content)
-			}
-		})
-	}
-}
-
-// TestMockFile_NilCallbacks tests MockFile with nil callbacks.
-func TestMockFile_NilCallbacks(t *testing.T) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	// all callbacks nil
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, nil)
-	defer f.Close()
-
-	// should not panic
-	buf := make([]byte, 10)
-	_, err = f.Read(buf)
-	if err != nil && err != io.EOF {
-		t.Errorf("read with nil callbacks failed: %v", err)
-	}
-
-	err = f.Close()
-	if err != nil {
-		t.Errorf("close with nil callbacks failed: %v", err)
-	}
-}
-
-// TestMockFile_ErrorChecker_CalledWithCorrectParams tests error checker receives correct parameters.
-func TestMockFile_ErrorChecker_CalledWithCorrectParams(t *testing.T) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	var capturedOp mockfs.Operation
-	var capturedPath string
-	errorChecker := func(op mockfs.Operation, path string) error {
-		capturedOp = op
-		capturedPath = path
-		return nil
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", errorChecker, nil, nil, nil)
-	defer f.Close()
-
-	_, _ = f.Read(make([]byte, 10))
-
-	if capturedOp != mockfs.OpRead {
-		t.Errorf("error checker received op %v, expected OpRead", capturedOp)
-	}
-	if capturedPath != "test.txt" {
-		t.Errorf("error checker received path %q, expected 'test.txt'", capturedPath)
-	}
-}
-
-// TestMockFile_MultipleOperations tests a sequence of operations.
-func TestMockFile_MultipleOperations(t *testing.T) {
-	testFS := createTestFS("hello world")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	var ops []mockfs.Operation
-	counter := func(op mockfs.Operation) {
-		ops = append(ops, op)
-	}
-
-	writeHandler := func(b []byte) (int, error) {
-		return len(b), nil
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, counter, writeHandler)
-
-	// perform operations
-	_, _ = f.Read(make([]byte, 5))
-	_, _ = f.Write([]byte("test"))
-	info, _ := f.Stat()
-	_ = info
-	_, _ = f.Read(make([]byte, 5))
-	_ = f.Close()
-
-	expected := []mockfs.Operation{
-		mockfs.OpRead,
-		mockfs.OpWrite,
-		mockfs.OpRead,
-		mockfs.OpClose,
-	}
-
-	if len(ops) != len(expected) {
-		t.Fatalf("captured %d operations, expected %d", len(ops), len(expected))
-	}
-
-	for i, op := range expected {
-		if ops[i] != op {
-			t.Errorf("operation %d: got %v, expected %v", i, ops[i], op)
-		}
-	}
-}
-
-// writerFile is a test helper that implements io.Writer.
-type writerFile struct {
-	fs.File
-	written []byte
-}
-
-func (wf *writerFile) Write(b []byte) (int, error) {
-	wf.written = append(wf.written, b...)
-	return len(b), nil
-}
-
-// writerFileWithFlag is a test helper that tracks if Write was called.
-type writerFileWithFlag struct {
-	fs.File
-	underlyingCalled bool
-}
-
-func (wf *writerFileWithFlag) Write(b []byte) (int, error) {
-	wf.underlyingCalled = true
-	return len(b), nil
-}
-
-// TestMockFile_WriteHandler_FromUnderlying tests that write handler from underlying file is used.
-func TestMockFile_WriteHandler_FromUnderlying(t *testing.T) {
-	baseFS := createTestFS("content")
-	baseFile, _ := baseFS.Open("test.txt")
-
-	wf := &writerFile{File: baseFile}
-
-	// NewMockFile should use the underlying file's Write method
-	f := mockfs.NewMockFile(wf, "test.txt", nil, nil, nil, nil)
-	defer f.Close()
-
-	data := []byte("test data")
-	n, err := f.Write(data)
+	newData := []byte("new")
+	n, err := file.Write(newData)
 	if err != nil {
 		t.Fatalf("write failed: %v", err)
 	}
-	if n != len(data) {
-		t.Errorf("wrote %d bytes, expected %d", n, len(data))
-	}
-	if string(wf.written) != string(data) {
-		t.Errorf("underlying writer got %q, expected %q", string(wf.written), string(data))
-	}
-}
-
-// TestMockFile_WriteHandler_Priority tests that explicit handler takes priority.
-func TestMockFile_WriteHandler_Priority(t *testing.T) {
-	baseFS := createTestFS("content")
-	baseFile, _ := baseFS.Open("test.txt")
-
-	wf := &writerFileWithFlag{File: baseFile}
-
-	explicitCalled := false
-	explicitHandler := func(b []byte) (int, error) {
-		explicitCalled = true
-		return len(b), nil
+	if n != len(newData) {
+		t.Errorf("n = %d, want %d", n, len(newData))
 	}
 
-	f := mockfs.NewMockFile(wf, "test.txt", nil, nil, nil, explicitHandler)
-	defer f.Close()
-
-	_, _ = f.Write([]byte("data"))
-
-	if !explicitCalled {
-		t.Error("explicit handler was not called")
-	}
-	if wf.underlyingCalled {
-		t.Error("underlying writer should not be called when explicit handler provided")
+	// Verify data was replaced by checking mapFile directly
+	if string(mapFile.Data) != "new" {
+		t.Errorf("data = %q, want %q", mapFile.Data, "new")
 	}
 }
 
-// TestMockFile_PathInErrorChecker tests that correct path is used in error checking.
-func TestMockFile_PathInErrorChecker(t *testing.T) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
+// TestMockFile_Write_append tests append mode.
+func TestMockFile_Write_append(t *testing.T) {
+	initialData := []byte("initial-")
+	mapFile := &fstest.MapFile{
+		Data:    append([]byte(nil), initialData...),
+		Mode:    0644,
+		ModTime: time.Now(),
+	}
+
+	// Pass 0 (untyped const) for writeModeAppend
+	file := mockfs.NewMockFile(mapFile, "test.txt", 0, nil, nil, nil, nil)
+
+	writeData := []byte("appended")
+	n, err := file.Write(writeData)
 	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
+		t.Fatalf("write failed: %v", err)
 	}
-	defer underlyingFile.Close()
-
-	expectedPath := "custom/path/file.txt"
-	var receivedPath string
-
-	errorChecker := func(op mockfs.Operation, path string) error {
-		receivedPath = path
-		return nil
+	if n != len(writeData) {
+		t.Errorf("n = %d, want %d", n, len(writeData))
 	}
 
-	f := mockfs.NewMockFile(underlyingFile, expectedPath, errorChecker, nil, nil, nil)
-	defer f.Close()
-
-	_, _ = f.Read(make([]byte, 10))
-
-	if receivedPath != expectedPath {
-		t.Errorf("error checker received path %q, expected %q", receivedPath, expectedPath)
+	wantData := "initial-appended"
+	if string(mapFile.Data) != wantData {
+		t.Errorf("data = %q, want %q", mapFile.Data, wantData)
 	}
 }
 
-// TestMockFile_Stat_NoErrorInjection tests that Stat doesn't inject errors.
-func TestMockFile_Stat_NoErrorInjection(t *testing.T) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	errorCheckerCalled := false
-	errorChecker := func(op mockfs.Operation, path string) error {
-		errorCheckerCalled = true
-		return mockfs.ErrCorrupted
+// TestMockFile_Write_readOnly tests read-only mode.
+func TestMockFile_Write_readOnly(t *testing.T) {
+	initialData := []byte("initial")
+	mapFile := &fstest.MapFile{
+		Data:    append([]byte(nil), initialData...),
+		Mode:    0644,
+		ModTime: time.Now(),
 	}
 
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", errorChecker, nil, nil, nil)
-	defer f.Close()
+	// Pass 2 (untyped const) for writeModeReadOnly
+	file := mockfs.NewMockFile(mapFile, "test.txt", 2, nil, nil, nil, nil)
 
-	_, err = f.Stat()
-	if err != nil {
-		t.Errorf("Stat() should not inject errors, got: %v", err)
-	}
-	if errorCheckerCalled {
-		t.Error("error checker should not be called for Stat()")
-	}
-}
+	_, err := file.Write([]byte("new data"))
 
-// Benchmark tests
-func BenchmarkMockFile_Read(b *testing.B) {
-	content := make([]byte, 4096)
-	testFS := fstest.MapFS{
-		"bench.txt": &fstest.MapFile{
-			Data: content,
-			Mode: 0644,
-		},
+	// Expect permission error
+	if !errors.Is(err, fs.ErrPermission) {
+		// fs.ErrPermission may be wrapped in fs.PathError
+		if err == nil || !strings.Contains(err.Error(), fs.ErrPermission.Error()) {
+			t.Errorf("error = %v, want %v (or wrapper)", err, fs.ErrPermission)
+		}
 	}
 
-	underlyingFile, err := testFS.Open("bench.txt")
-	if err != nil {
-		b.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	f := mockfs.NewMockFile(underlyingFile, "bench.txt", nil, nil, nil, nil)
-	defer f.Close()
-
-	buf := make([]byte, 4096)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = f.Read(buf)
+	// Data should not have changed
+	if string(mapFile.Data) != string(initialData) {
+		t.Errorf("data = %q, want %q", mapFile.Data, initialData)
 	}
 }
 
-func BenchmarkMockFile_Write(b *testing.B) {
-	testFS := createTestFS("")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		b.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	writeHandler := func(data []byte) (int, error) {
-		return len(data), nil
+// TestMockFile_Write_invalid tests that an invalid writeMode panics.
+func TestMockFile_Write_invalid(t *testing.T) {
+	mapFile := &fstest.MapFile{
+		Data: []byte("initial"),
+		Mode: 0644,
 	}
 
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, writeHandler)
-	defer f.Close()
+	// Pass 99 (untyped const) for an invalid writeMode
+	file := mockfs.NewMockFile(mapFile, "test.txt", 99, nil, nil, nil, nil)
 
-	data := make([]byte, 4096)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = f.Write(data)
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic for invalid writeMode, but did not panic")
+		}
+	}()
+
+	_, _ = file.Write([]byte("new data"))
+}
+
+// TestMockFile_Write_closed tests writing to closed file.
+func TestMockFile_Write_closed(t *testing.T) {
+	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+
+	if err := file.Close(); err != nil {
+		t.Fatalf("close failed: %v", err)
+	}
+
+	_, err := file.Write([]byte("new"))
+	if err != fs.ErrClosed {
+		t.Errorf("error = %v, want ErrClosed", err)
 	}
 }
 
-func BenchmarkMockFile_Stat(b *testing.B) {
-	testFS := createTestFS("content")
-	underlyingFile, err := testFS.Open("test.txt")
-	if err != nil {
-		b.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
+// TestMockFile_Write_errorInjection tests error injection on write.
+func TestMockFile_Write_errorInjection(t *testing.T) {
+	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0644, ModTime: time.Now()}
+	wantErr := fs.ErrPermission
 
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, nil)
-	defer f.Close()
+	injector := mockfs.NewErrorInjector()
+	injector.AddExact(mockfs.OpWrite, "test.txt", wantErr, mockfs.ErrorModeAlways, 0)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = f.Stat()
+	file := mockfs.NewMockFile(mapFile, "test.txt", 0, injector, nil, nil, nil)
+
+	_, err := file.Write([]byte("data"))
+	if err != wantErr {
+		t.Errorf("error = %v, want %v", err, wantErr)
 	}
 }
 
-func BenchmarkMockFile_Close(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		testFS := createTestFS("content")
-		underlyingFile, err := testFS.Open("test.txt")
+// TestMockFile_Write_modTimeUpdate tests that ModTime is updated on write.
+func TestMockFile_Write_modTimeUpdate(t *testing.T) {
+	initialTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	mapFile := &fstest.MapFile{
+		Data:    []byte("old"),
+		Mode:    0644,
+		ModTime: initialTime,
+	}
+
+	file := mockfs.NewMockFileSimple(mapFile, "test.txt")
+
+	// Wait a bit to ensure time difference
+	time.Sleep(10 * time.Millisecond)
+
+	_, err := file.Write([]byte("new"))
+	if err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	if !mapFile.ModTime.After(initialTime) {
+		t.Errorf("ModTime not updated: %v should be after %v", mapFile.ModTime, initialTime)
+	}
+}
+
+// TestMockFile_Write_zeroByte tests writing zero bytes.
+func TestMockFile_Write_zeroByte(t *testing.T) {
+	file := mockfs.NewMockFileFromData("test.txt", []byte("initial"))
+
+	n, err := file.Write([]byte{})
+	if err != nil {
+		t.Errorf("zero-byte write failed: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("n = %d, want 0", n)
+	}
+}
+
+// TestMockFile_ReadDir_valid tests valid directory reading.
+func TestMockFile_ReadDir_valid(t *testing.T) {
+	entries := []fs.DirEntry{
+		&mockDirEntry{name: "file1.txt", isDir: false},
+		&mockDirEntry{name: "file2.txt", isDir: false},
+	}
+
+	handler := func(n int) ([]fs.DirEntry, error) {
+		if n < 0 {
+			return entries, nil
+		}
+		if n > len(entries) {
+			n = len(entries)
+		}
+		return entries[:n], nil
+	}
+
+	dir := mockfs.NewMockDirectory("testdir", time.Now(), handler, nil, nil, nil)
+
+	result, err := dir.ReadDir(-1)
+	if err != nil {
+		t.Fatalf("readdir failed: %v", err)
+	}
+	if len(result) != 2 {
+		t.Errorf("len = %d, want 2", len(result))
+	}
+}
+
+// TestMockFile_ReadDir_nilHandler tests ReadDir on a directory mock
+// created with NewMockFile (which allows a nil handler).
+func TestMockFile_ReadDir_nilHandler(t *testing.T) {
+	// This tests the case where a file is created with ModeDir using
+	// NewMockFile (which allows a nil handler), rather than NewMockDirectory
+	// (which panics).
+	mapFile := &fstest.MapFile{
+		Mode: fs.ModeDir | 0755,
+	}
+
+	// Create file with nil readDirHandler
+	file := mockfs.NewMockFile(mapFile, "testdir", 0, nil, nil, nil, nil)
+
+	_, err := file.ReadDir(-1)
+
+	// Expect an error because the handler is nil
+	if !errors.Is(err, fs.ErrInvalid) {
+		// fs.ErrInvalid may be wrapped
+		if err == nil || !strings.Contains(err.Error(), fs.ErrInvalid.Error()) {
+			t.Errorf("error = %v, want %v (or wrapper)", err, fs.ErrInvalid)
+		}
+	}
+}
+
+// TestMockFile_ReadDir_closed tests closed directory.
+func TestMockFile_ReadDir_closed(t *testing.T) {
+	handler := func(n int) ([]fs.DirEntry, error) {
+		return []fs.DirEntry{}, nil
+	}
+
+	dir := mockfs.NewMockDirectory("testdir", time.Now(), handler, nil, nil, nil)
+	_ = dir.Close()
+
+	_, err := dir.ReadDir(-1)
+	if err != fs.ErrClosed {
+		t.Errorf("error = %v, want ErrClosed", err)
+	}
+}
+
+// TestMockFile_ReadDir_notDirectory tests file not directory error.
+func TestMockFile_ReadDir_notDirectory(t *testing.T) {
+	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+
+	_, err := file.ReadDir(-1)
+	if err == nil {
+		t.Error("expected error for non-directory")
+	}
+}
+
+// TestMockFile_ReadDir_errorInjection tests error injection on readdir.
+func TestMockFile_ReadDir_errorInjection(t *testing.T) {
+	wantErr := fs.ErrPermission
+
+	handler := func(n int) ([]fs.DirEntry, error) {
+		return []fs.DirEntry{}, nil
+	}
+
+	injector := mockfs.NewErrorInjector()
+	injector.AddExact(mockfs.OpReadDir, "testdir", wantErr, mockfs.ErrorModeAlways, 0)
+
+	dir := mockfs.NewMockDirectory("testdir", time.Now(), handler, injector, nil, nil)
+
+	_, err := dir.ReadDir(-1)
+	if err != wantErr {
+		t.Errorf("error = %v, want %v", err, wantErr)
+	}
+}
+
+// TestMockFile_ReadDir_pagination tests reading directory entries in pages.
+func TestMockFile_ReadDir_pagination(t *testing.T) {
+	entries := []fs.DirEntry{
+		&mockDirEntry{name: "file1", isDir: false},
+		&mockDirEntry{name: "file2", isDir: false},
+		&mockDirEntry{name: "file3", isDir: false},
+		&mockDirEntry{name: "file4", isDir: false},
+	}
+
+	pos := 0
+	handler := func(n int) ([]fs.DirEntry, error) {
+		if pos >= len(entries) {
+			return []fs.DirEntry{}, nil
+		}
+
+		if n <= 0 {
+			result := entries[pos:]
+			pos = len(entries)
+			return result, nil
+		}
+
+		end := pos + n
+		if end > len(entries) {
+			end = len(entries)
+		}
+
+		result := entries[pos:end]
+		pos = end
+		return result, nil
+	}
+
+	dir := mockfs.NewMockDirectory("testdir", time.Now(), handler, nil, nil, nil)
+
+	// Read 2 entries at a time
+	result1, err := dir.ReadDir(2)
+	if err != nil {
+		t.Fatalf("readdir 1 failed: %v", err)
+	}
+	if len(result1) != 2 {
+		t.Errorf("readdir 1: len = %d, want 2", len(result1))
+	}
+
+	result2, err := dir.ReadDir(2)
+	if err != nil {
+		t.Fatalf("readdir 2 failed: %v", err)
+	}
+	if len(result2) != 2 {
+		t.Errorf("readdir 2: len = %d, want 2", len(result2))
+	}
+
+	// Next read should return empty
+	result3, err := dir.ReadDir(2)
+	if err != nil {
+		t.Fatalf("readdir 3 failed: %v", err)
+	}
+	if len(result3) != 0 {
+		t.Errorf("readdir 3: len = %d, want 0", len(result3))
+	}
+}
+
+// TestMockFile_Stat tests Stat operation.
+func TestMockFile_Stat(t *testing.T) {
+	mapFile := &fstest.MapFile{
+		Data:    []byte("test data content"),
+		Mode:    0644,
+		ModTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	file := mockfs.NewMockFileSimple(mapFile, "testdir/test.txt")
+
+	info, err := file.Stat()
+	if err != nil {
+		t.Fatalf("stat failed: %v", err)
+	}
+
+	if info.Name() != "test.txt" {
+		t.Errorf("name = %q, want %q", info.Name(), "test.txt")
+	}
+	if info.Size() != 17 {
+		t.Errorf("size = %d, want 17", info.Size())
+	}
+	if info.Mode() != 0644 {
+		t.Errorf("mode = %v, want 0644", info.Mode())
+	}
+	if info.IsDir() {
+		t.Error("IsDir = true, want false")
+	}
+}
+
+// TestMockFile_Stat_closed tests stat on closed file.
+func TestMockFile_Stat_closed(t *testing.T) {
+	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+
+	if err := file.Close(); err != nil {
+		t.Fatalf("close failed: %v", err)
+	}
+
+	_, err := file.Stat()
+	if err != fs.ErrClosed {
+		t.Errorf("error = %v, want ErrClosed", err)
+	}
+}
+
+// TestMockFile_Stat_errorInjection tests error injection on stat.
+func TestMockFile_Stat_errorInjection(t *testing.T) {
+	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0644, ModTime: time.Now()}
+	wantErr := fs.ErrPermission
+
+	injector := mockfs.NewErrorInjector()
+	injector.AddExact(mockfs.OpStat, "test.txt", wantErr, mockfs.ErrorModeAlways, 0)
+
+	file := mockfs.NewMockFile(mapFile, "test.txt", 0, injector, nil, nil, nil)
+
+	_, err := file.Stat()
+	if err != wantErr {
+		t.Errorf("error = %v, want %v", err, wantErr)
+	}
+}
+
+// TestMockFile_Stat_basename tests correct basename extraction.
+func TestMockFile_Stat_basename(t *testing.T) {
+	tests := []struct {
+		path     string
+		wantName string
+	}{
+		{"test.txt", "test.txt"},
+		{"dir/test.txt", "test.txt"},
+		{"a/b/c/file.dat", "file.dat"},
+		{"/absolute/path/file", "file"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0644, ModTime: time.Now()}
+			file := mockfs.NewMockFileSimple(mapFile, tt.path)
+
+			info, err := file.Stat()
+			if err != nil {
+				t.Fatalf("stat failed: %v", err)
+			}
+
+			if info.Name() != tt.wantName {
+				t.Errorf("Name() = %q, want %q", info.Name(), tt.wantName)
+			}
+		})
+	}
+}
+
+// TestMockFile_Stat_directoryMode tests directory vs file detection.
+func TestMockFile_Stat_directoryMode(t *testing.T) {
+	t.Run("directory", func(t *testing.T) {
+		handler := func(n int) ([]fs.DirEntry, error) {
+			return []fs.DirEntry{}, nil
+		}
+		dir := mockfs.NewMockDirectory("testdir", time.Now(), handler, nil, nil, nil)
+
+		info, err := dir.Stat()
 		if err != nil {
-			b.Fatalf("failed to open test file: %v", err)
+			t.Fatalf("stat failed: %v", err)
 		}
 
-		f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, nil, nil)
-		b.StartTimer()
+		if !info.IsDir() {
+			t.Error("IsDir() = false, want true")
+		}
+	})
 
-		_ = f.Close()
+	t.Run("regular file", func(t *testing.T) {
+		file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+
+		info, err := file.Stat()
+		if err != nil {
+			t.Fatalf("stat failed: %v", err)
+		}
+
+		if info.IsDir() {
+			t.Error("IsDir() = true, want false")
+		}
+	})
+}
+
+// TestMockFile_Stat_permissions tests different file modes.
+func TestMockFile_Stat_permissions(t *testing.T) {
+	modes := []fs.FileMode{
+		0644,
+		0755,
+		0400,
+		0777,
+	}
+
+	for _, mode := range modes {
+		t.Run(mode.String(), func(t *testing.T) {
+			mapFile := &fstest.MapFile{
+				Data:    []byte("test"),
+				Mode:    mode,
+				ModTime: time.Now(),
+			}
+			file := mockfs.NewMockFileSimple(mapFile, "test.txt")
+
+			info, err := file.Stat()
+			if err != nil {
+				t.Fatalf("stat failed: %v", err)
+			}
+
+			if info.Mode() != mode {
+				t.Errorf("mode = %v, want %v", info.Mode(), mode)
+			}
+		})
 	}
 }
 
-func BenchmarkMockFile_ReadWithErrorCheck(b *testing.B) {
-	testFS := createTestFS(string(make([]byte, 4096)))
-	underlyingFile, err := testFS.Open("test.txt")
+// TestMockFile_Close tests Close operation.
+func TestMockFile_Close(t *testing.T) {
+	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+
+	err := file.Close()
 	if err != nil {
-		b.Fatalf("failed to open test file: %v", err)
-	}
-	defer underlyingFile.Close()
-
-	errorChecker := func(op mockfs.Operation, path string) error {
-		return nil
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", errorChecker, nil, nil, nil)
-	defer f.Close()
-
-	buf := make([]byte, 4096)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = f.Read(buf)
+		t.Errorf("close failed: %v", err)
 	}
 }
 
-func BenchmarkMockFile_ReadWithDelay(b *testing.B) {
-	testFS := createTestFS(string(make([]byte, 4096)))
-	underlyingFile, err := testFS.Open("test.txt")
+// TestMockFile_Close_double tests double close returns error.
+func TestMockFile_Close_double(t *testing.T) {
+	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+
+	_ = file.Close()
+	err := file.Close()
+	if err != fs.ErrClosed {
+		t.Errorf("error = %v, want ErrClosed", err)
+	}
+}
+
+// TestMockFile_Close_errorInjection tests error injection on close.
+func TestMockFile_Close_errorInjection(t *testing.T) {
+	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0644, ModTime: time.Now()}
+	wantErr := fs.ErrPermission
+
+	injector := mockfs.NewErrorInjector()
+	injector.AddExact(mockfs.OpClose, "test.txt", wantErr, mockfs.ErrorModeAlways, 0)
+
+	file := mockfs.NewMockFile(mapFile, "test.txt", 0, injector, nil, nil, nil)
+
+	err := file.Close()
+	if err != wantErr {
+		t.Errorf("error = %v, want %v", err, wantErr)
+	}
+
+	// File should still be closed even with error
+	err = file.Close()
+	if err != fs.ErrClosed {
+		t.Errorf("second close: error = %v, want ErrClosed", err)
+	}
+}
+
+// TestMockFile_Counters tests operation counting.
+func TestMockFile_Counters(t *testing.T) {
+	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+
+	stats := file.Stats()
+	if stats == nil {
+		t.Fatal("stats is nil")
+	}
+
+	// Perform operations
+	buf := make([]byte, 4)
+	_, _ = file.Read(buf)
+	_, _ = file.Write([]byte("new"))
+	_, _ = file.Stat()
+	_ = file.Close()
+
+	// Verify stats tracked operations
+	if stats.Count(mockfs.OpRead) == 0 {
+		t.Error("OpRead not counted")
+	}
+	if stats.Count(mockfs.OpWrite) == 0 {
+		t.Error("OpWrite not counted")
+	}
+	if stats.Count(mockfs.OpStat) == 0 {
+		t.Error("OpStat not counted")
+	}
+	if stats.Count(mockfs.OpClose) == 0 {
+		t.Error("OpClose not counted")
+	}
+}
+
+// TestMockFile_ErrorInjector tests error injector access.
+func TestMockFile_ErrorInjector(t *testing.T) {
+	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+
+	injector := file.ErrorInjector()
+	if injector == nil {
+		t.Fatal("injector is nil")
+	}
+
+	// Configure and verify injection works
+	injector.AddExact(mockfs.OpRead, "test.txt", io.ErrUnexpectedEOF, mockfs.ErrorModeOnce, 0)
+
+	buf := make([]byte, 4)
+	_, err := file.Read(buf)
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("error = %v, want %v", err, io.ErrUnexpectedEOF)
+	}
+}
+
+// TestMockFile_LatencySimulator tests latency simulator access.
+func TestMockFile_LatencySimulator(t *testing.T) {
+	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+
+	sim := file.LatencySimulator()
+	if sim == nil {
+		t.Fatal("latency simulator is nil")
+	}
+}
+
+// TestMockFile_latencySimulation tests that latency is properly applied.
+func TestMockFile_latencySimulation(t *testing.T) {
+	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0644, ModTime: time.Now()}
+	latencySim := mockfs.NewLatencySimulator(testDuration)
+
+	file := mockfs.NewMockFile(mapFile, "test.txt", 0, nil, latencySim, nil, nil)
+
+	operations := []struct {
+		name string
+		fn   func() error
+	}{
+		{"read", func() error {
+			buf := make([]byte, 4)
+			_, err := file.Read(buf)
+			return err
+		}},
+		{"write", func() error {
+			_, err := file.Write([]byte("new"))
+			return err
+		}},
+		{"stat", func() error {
+			_, err := file.Stat()
+			return err
+		}},
+		{"close", func() error {
+			return file.Close()
+		}},
+	}
+
+	for _, op := range operations {
+		t.Run(op.name, func(t *testing.T) {
+			start := time.Now()
+			if err := op.fn(); err != nil && err != fs.ErrClosed {
+				t.Fatalf("operation failed: %v", err)
+			}
+			assertDuration(t, start, testDuration, op.name)
+		})
+	}
+}
+
+// TestMockFile_latencyReset tests that latency state is reset on close.
+func TestMockFile_latencyReset(t *testing.T) {
+	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0644, ModTime: time.Now()}
+	latencySim := mockfs.NewLatencySimulator(testDuration)
+
+	file := mockfs.NewMockFile(mapFile, "test.txt", 0, nil, latencySim, nil, nil)
+
+	// Read with latency
+	buf := make([]byte, 4)
+	start := time.Now()
+	_, _ = file.Read(buf)
+	assertDuration(t, start, testDuration, "first read")
+
+	// Close should reset
+	_ = file.Close()
+}
+
+// TestMockFile_latencyOnceMode tests Once latency mode behavior.
+func TestMockFile_latencyOnceMode(t *testing.T) {
+	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0644, ModTime: time.Now()}
+	latencySim := mockfs.NewLatencySimulator(testDuration)
+
+	file := mockfs.NewMockFile(mapFile, "test.txt", 0, nil, latencySim, nil, nil)
+
+	// First read - should have latency
+	buf := make([]byte, 4)
+	start := time.Now()
+	_, err := file.Read(buf)
 	if err != nil {
-		b.Fatalf("failed to open test file: %v", err)
+		t.Fatalf("first read failed: %v", err)
 	}
-	defer underlyingFile.Close()
+	elapsed := time.Since(start)
 
-	delaySimulator := func() {
-		// no-op delay for benchmark
-	}
-
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, delaySimulator, nil, nil)
-	defer f.Close()
-
-	buf := make([]byte, 4096)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = f.Read(buf)
+	// We expect latency on first call
+	if elapsed < testDuration-tolerance {
+		t.Errorf("first read: expected latency ~%v, got %v", testDuration, elapsed)
 	}
 }
 
-func BenchmarkMockFile_ReadWithCounter(b *testing.B) {
-	testFS := createTestFS(string(make([]byte, 4096)))
-	underlyingFile, err := testFS.Open("test.txt")
+// TestMockFile_latencySharedSimulator tests sharing latency simulator between files.
+func TestMockFile_latencySharedSimulator(t *testing.T) {
+	sharedLatency := mockfs.NewLatencySimulator(testDuration)
+
+	mapFile1 := &fstest.MapFile{Data: []byte("file1"), Mode: 0644, ModTime: time.Now()}
+	mapFile2 := &fstest.MapFile{Data: []byte("file2"), Mode: 0644, ModTime: time.Now()}
+
+	file1 := mockfs.NewMockFile(mapFile1, "file1.txt", 0, nil, sharedLatency, nil, nil)
+	file2 := mockfs.NewMockFile(mapFile2, "file2.txt", 0, nil, sharedLatency, nil, nil)
+
+	// Both files should experience latency
+	buf := make([]byte, 5)
+
+	start := time.Now()
+	_, err := file1.Read(buf)
 	if err != nil {
-		b.Fatalf("failed to open test file: %v", err)
+		t.Fatalf("file1 read failed: %v", err)
 	}
-	defer underlyingFile.Close()
+	assertDuration(t, start, testDuration, "file1 read")
 
-	counter := func(op mockfs.Operation) {
-		// no-op counter for benchmark
+	start = time.Now()
+	_, err = file2.Read(buf)
+	if err != nil {
+		t.Fatalf("file2 read failed: %v", err)
+	}
+	assertDuration(t, start, testDuration, "file2 read")
+}
+
+// TestMockFile_concurrentReads tests concurrent read operations.
+func TestMockFile_concurrentReads(t *testing.T) {
+	data := make([]byte, 1000)
+	for i := range data {
+		data[i] = byte(i % 256)
 	}
 
-	f := mockfs.NewMockFile(underlyingFile, "test.txt", nil, nil, counter, nil)
-	defer f.Close()
+	mapFile := &fstest.MapFile{Data: data, Mode: 0644, ModTime: time.Now()}
+	file := mockfs.NewMockFileSimple(mapFile, "test.txt")
 
-	buf := make([]byte, 4096)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, _ = f.Read(buf)
+	var wg sync.WaitGroup
+	errors := make(chan error, 10)
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			buf := make([]byte, 10)
+			_, err := file.Read(buf)
+			if err != nil && err != io.EOF {
+				errors <- err
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errors)
+
+	for err := range errors {
+		t.Errorf("concurrent read error: %v", err)
 	}
 }
 
-// BenchmarkMockFile_ReadDir benchmarks the ReadDir operation.
-func BenchmarkMockFile_ReadDir(b *testing.B) {
-	testFS := fstest.MapFS{
-		"dir": {Mode: fs.ModeDir | 0755},
+// TestMockFile_concurrentWrites tests concurrent write operations.
+func TestMockFile_concurrentWrites(t *testing.T) {
+	mapFile := &fstest.MapFile{Data: []byte(""), Mode: 0644, ModTime: time.Now()}
+	file := mockfs.NewMockFileSimple(mapFile, "test.txt")
+
+	var wg sync.WaitGroup
+	errors := make(chan error, 10)
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(val int) {
+			defer wg.Done()
+			data := []byte{byte(val)}
+			_, err := file.Write(data)
+			if err != nil {
+				errors <- err
+			}
+		}(i)
 	}
-	for i := 0; i < 100; i++ {
-		testFS[fmt.Sprintf("dir/file%d.txt", i)] = &fstest.MapFile{
-			Data: []byte("content"),
-			Mode: 0644,
+
+	wg.Wait()
+	close(errors)
+
+	for err := range errors {
+		t.Errorf("concurrent write error: %v", err)
+	}
+}
+
+// TestMockFile_concurrentCloses tests that concurrent closes are safe.
+func TestMockFile_concurrentCloses(t *testing.T) {
+	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+
+	var wg sync.WaitGroup
+	closedCount := 0
+	var mu sync.Mutex
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := file.Close()
+			mu.Lock()
+			if err == nil {
+				closedCount++
+			}
+			mu.Unlock()
+		}()
+	}
+
+	wg.Wait()
+
+	// Only one close should succeed
+	if closedCount != 1 {
+		t.Errorf("closedCount = %d, want 1", closedCount)
+	}
+}
+
+// TestMockFile_readWriteSequence tests mixed read/write operations.
+func TestMockFile_readWriteSequence(t *testing.T) {
+	mapFile := &fstest.MapFile{
+		Data:    []byte("initial"),
+		Mode:    0644,
+		ModTime: time.Now(),
+	}
+	file := mockfs.NewMockFileSimple(mapFile, "test.txt")
+
+	// Read initial content
+	buf := make([]byte, 7)
+	n, err := file.Read(buf)
+	if err != nil || n != 7 || string(buf) != "initial" {
+		t.Fatalf("initial read failed: n=%d, data=%q, err=%v", n, buf, err)
+	}
+
+	// Write new content (overwrite mode)
+	_, err = file.Write([]byte("replaced"))
+	if err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	// Position should be at end after write in overwrite mode
+	n, err = file.Read(buf)
+	if err != io.EOF {
+		t.Errorf("read after write: expected EOF, got n=%d, err=%v", n, err)
+	}
+}
+
+// TestMockFile_errorInjectorInvoked tests error injector invocation.
+func TestMockFile_errorInjectorInvoked(t *testing.T) {
+	injector := mockfs.NewErrorInjector()
+
+	// Add error rules that we'll track
+	for _, op := range []mockfs.Operation{mockfs.OpRead, mockfs.OpWrite, mockfs.OpStat, mockfs.OpClose} {
+		// Use a custom rule that tracks invocations but returns no error
+		rule := mockfs.NewErrorRule(nil, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
+		injector.Add(op, rule)
+	}
+
+	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0644, ModTime: time.Now()}
+	file := mockfs.NewMockFile(mapFile, "test.txt", 0, injector, nil, nil, nil)
+
+	// Perform operations
+	buf := make([]byte, 4)
+	_, _ = file.Read(buf)
+	_, _ = file.Write([]byte("new"))
+	_, _ = file.Stat()
+	_ = file.Close()
+
+	// Verify through stats instead
+	stats := file.Stats()
+	expectedOps := []mockfs.Operation{
+		mockfs.OpRead,
+		mockfs.OpWrite,
+		mockfs.OpStat,
+		mockfs.OpClose,
+	}
+
+	for _, op := range expectedOps {
+		if stats.Count(op) == 0 {
+			t.Errorf("operation %v was not executed", op)
+		}
+	}
+}
+
+// TestMockFile_emptyFile tests operations on empty file.
+func TestMockFile_emptyFile(t *testing.T) {
+	mapFile := &fstest.MapFile{
+		Data:    []byte{},
+		Mode:    0644,
+		ModTime: time.Now(),
+	}
+	file := mockfs.NewMockFileSimple(mapFile, "empty.txt")
+
+	// Read should return EOF immediately
+	buf := make([]byte, 10)
+	n, err := file.Read(buf)
+	if err != io.EOF || n != 0 {
+		t.Errorf("read empty: n=%d, err=%v, want 0, EOF", n, err)
+	}
+
+	// Stat should work
+	info, err := file.Stat()
+	if err != nil {
+		t.Fatalf("stat failed: %v", err)
+	}
+	if info.Size() != 0 {
+		t.Errorf("size = %d, want 0", info.Size())
+	}
+
+	// Write should work
+	_, err = file.Write([]byte("content"))
+	if err != nil {
+		t.Errorf("write failed: %v", err)
+	}
+}
+
+// TestMockFile_multipleFilesIndependent tests that files have independent state.
+func TestMockFile_multipleFilesIndependent(t *testing.T) {
+	file1 := mockfs.NewMockFileFromData("file1.txt", []byte("content1"))
+	file2 := mockfs.NewMockFileFromData("file2.txt", []byte("content2"))
+
+	// Read from file1
+	buf1 := make([]byte, 8)
+	n1, err := file1.Read(buf1)
+	if err != nil || string(buf1[:n1]) != "content1" {
+		t.Fatalf("file1 read failed: n=%d, err=%v", n1, err)
+	}
+
+	// Read from file2
+	buf2 := make([]byte, 8)
+	n2, err := file2.Read(buf2)
+	if err != nil || string(buf2[:n2]) != "content2" {
+		t.Fatalf("file2 read failed: n=%d, err=%v", n2, err)
+	}
+
+	// Close file1 should not affect file2
+	if err := file1.Close(); err != nil {
+		t.Fatalf("file1 close failed: %v", err)
+	}
+
+	// file2 should still be readable
+	buf3 := make([]byte, 8)
+	_, err = file2.Read(buf3)
+	if err != io.EOF {
+		t.Errorf("file2 should still be open: err=%v", err)
+	}
+}
+
+// TestMockFile_partialReads tests continuing reads.
+func TestMockFile_partialReads(t *testing.T) {
+	mapFile := &fstest.MapFile{
+		Data:    []byte("0123456789"),
+		Mode:    0644,
+		ModTime: time.Now(),
+	}
+	file := mockfs.NewMockFileSimple(mapFile, "test.txt")
+
+	// Read in chunks
+	chunks := []string{"012", "345", "6789"}
+	for i, want := range chunks {
+		buf := make([]byte, len(want))
+		n, err := file.Read(buf)
+		if err != nil {
+			t.Fatalf("read %d failed: %v", i, err)
+		}
+		if n != len(want) {
+			t.Errorf("read %d: n = %d, want %d", i, n, len(want))
+		}
+		if string(buf) != want {
+			t.Errorf("read %d: data = %q, want %q", i, buf, want)
 		}
 	}
 
-	underlyingFile, err := testFS.Open("dir")
-	if err != nil {
-		b.Fatalf("failed to open: %v", err)
+	// Next read should return EOF
+	buf := make([]byte, 10)
+	n, err := file.Read(buf)
+	if err != io.EOF {
+		t.Errorf("final read: n=%d, err=%v, want EOF", n, err)
 	}
-	defer underlyingFile.Close()
+}
 
-	f := mockfs.NewMockFile(underlyingFile, "dir", nil, nil, nil, nil)
-	defer f.Close()
+// TestMockFile_interfaceCompliance verifies interface compliance.
+func TestMockFile_interfaceCompliance(t *testing.T) {
+	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+
+	// Verify interfaces
+	var _ fs.File = file
+	var _ fs.ReadDirFile = file
+	var _ io.Reader = file
+	var _ io.Writer = file
+	var _ io.Closer = file
+
+	t.Log("all interfaces implemented correctly")
+}
+
+// mockDirEntry is a test helper for directory entries.
+type mockDirEntry struct {
+	name  string
+	isDir bool
+}
+
+func (m *mockDirEntry) Name() string               { return m.name }
+func (m *mockDirEntry) IsDir() bool                { return m.isDir }
+func (m *mockDirEntry) Type() fs.FileMode          { return 0 }
+func (m *mockDirEntry) Info() (fs.FileInfo, error) { return nil, nil }
+
+// BenchmarkMockFile_Read benchmarks read performance
+func BenchmarkMockFile_Read(b *testing.B) {
+	data := make([]byte, 1024)
+	mapFile := &fstest.MapFile{Data: data, Mode: 0644, ModTime: time.Now()}
+	file := mockfs.NewMockFileSimple(mapFile, "test.txt")
+	buf := make([]byte, 1024)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = f.ReadDir(-1)
+		_, _ = file.Read(buf)
+	}
+}
+
+// BenchmarkMockFile_Write benchmarks write performance.
+func BenchmarkMockFile_Write(b *testing.B) {
+	mapFile := &fstest.MapFile{Data: []byte{}, Mode: 0644, ModTime: time.Now()}
+	file := mockfs.NewMockFileSimple(mapFile, "test.txt")
+	data := []byte("benchmark data")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = file.Write(data)
+	}
+}
+
+// BenchmarkMockFile_Stat benchmarks stat performance.
+func BenchmarkMockFile_Stat(b *testing.B) {
+	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0644, ModTime: time.Now()}
+	file := mockfs.NewMockFileSimple(mapFile, "test.txt")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = file.Stat()
 	}
 }
