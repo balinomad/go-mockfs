@@ -299,7 +299,7 @@ func TestStats_Snapshot(t *testing.T) {
 	s.Record(mockfs.OpWrite, 240, errors.New("err"))
 	s.Set(mockfs.OpStat, 5, 2)
 
-	want := mockfs.Snapshot{
+	want := mockfs.StatsSnapshot{
 		BytesRead:    120,
 		BytesWritten: 240,
 		Operations:   [mockfs.NumOperations]mockfs.OpCount{},
@@ -408,7 +408,7 @@ func TestStats_Clone(t *testing.T) {
 	s.Set(mockfs.OpOpen, 1, 0)
 
 	// Create the snapshot we expect the clone to still have
-	wantCloneSnap := mockfs.Snapshot{
+	wantCloneSnap := mockfs.StatsSnapshot{
 		BytesRead:    123,
 		BytesWritten: 456,
 		Operations:   [mockfs.NumOperations]mockfs.OpCount{},

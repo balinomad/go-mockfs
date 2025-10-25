@@ -17,8 +17,8 @@ type Stats struct {
 	mu sync.RWMutex // Protects all fields
 }
 
-// Snapshot represents a read-only point-in-time copy of Stats.
-type Snapshot struct {
+// StatsSnapshot represents a read-only point-in-time copy of Stats.
+type StatsSnapshot struct {
 	BytesRead    int
 	BytesWritten int
 	Operations   [NumOperations]OpCount
@@ -120,11 +120,11 @@ func (s *Stats) GetBytesWritten() int {
 
 // Snapshot returns a point-in-time copy of all counters.
 // The snapshot is consistent: all operation counts reflect the same moment in time.
-func (s *Stats) Snapshot() Snapshot {
+func (s *Stats) Snapshot() StatsSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var snap Snapshot
+	var snap StatsSnapshot
 	snap.BytesRead = int(s.bytesRead)
 	snap.BytesWritten = int(s.bytesWritten)
 	for i := 0; i < int(NumOperations); i++ {
