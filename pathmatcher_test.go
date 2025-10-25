@@ -1,6 +1,8 @@
 package mockfs_test
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/balinomad/go-mockfs"
@@ -643,6 +645,303 @@ func TestRegexpMatcher_SafeCompilation(t *testing.T) {
 	}
 }
 
+// TestGlobMatcher_Matches tests glob pattern matching.
+func TestGlobMatcher_Matches(t *testing.T) {
+	tests := []struct {
+		name     string
+		pattern  string
+		input    string
+		expected bool
+		wantErr  bool
+	}{
+		{"simple wildcard", "*.txt", "file.txt", true, false},
+		{"no match extension", "*.txt", "file.go", false, false},
+		{"question mark single", "test?.txt", "test1.txt", true, false},
+		{"question mark no match", "test?.txt", "test12.txt", false, false},
+		{"character class", "[abc].txt", "a.txt", true, false},
+		{"character class no match", "[abc].txt", "d.txt", false, false},
+		{"range", "[0-9].txt", "5.txt", true, false},
+		{"negated class caret", "[^0-9].txt", "a.txt", true, false},
+		{"negated class no match", "[^0-9].txt", "5.txt", false, false},
+		{"path component only", "*.txt", "file.txt", true, false},
+		{"slash in input no match", "*.txt", "dir/file.txt", false, false},
+		{"exact match", "test.txt", "test.txt", true, false},
+		{"empty pattern empty path", "", "", true, false},
+		{"empty pattern non-empty", "", "anything", false, false},
+		{"trailing slash", "dir/", "dir/", true, false},
+		{"escape star", "test\\*.txt", "test*.txt", true, false},
+		{"invalid pattern unclosed", "[", "", false, true},
+		{"invalid pattern escape", "test\\", "", false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := mockfs.NewGlobMatcher(tt.pattern)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewGlobMatcher() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
+				return
+			}
+
+			got := m.Matches(tt.input)
+			if got != tt.expected {
+				t.Errorf("Matches(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestGlobMatcher_CloneForSub tests glob matcher cloning for sub-filesystems.
+func TestGlobMatcher_CloneForSub(t *testing.T) {
+	tests := []struct {
+		name        string
+		pattern     string
+		prefix      string
+		testPath    string
+		expected    bool
+		origCheck   string
+		origCheckOK bool
+	}{
+		{
+			name:        "component pattern with prefix",
+			pattern:     "file.txt",
+			prefix:      "subdir",
+			testPath:    "file.txt",
+			expected:    false, // "subdir/file.txt" doesn't match "file.txt"
+			origCheck:   "file.txt",
+			origCheckOK: true,
+		},
+		{
+			name:        "exact full path pattern",
+			pattern:     "subdir/file.txt",
+			prefix:      "subdir",
+			testPath:    "file.txt",
+			expected:    true,
+			origCheck:   "subdir/file.txt",
+			origCheckOK: true,
+		},
+		{
+			name:        "empty prefix no-op",
+			pattern:     "*.go",
+			prefix:      "",
+			testPath:    "main.go",
+			expected:    true,
+			origCheck:   "main.go",
+			origCheckOK: true,
+		},
+		{
+			name:        "dot prefix no-op",
+			pattern:     "test*",
+			prefix:      ".",
+			testPath:    "test.txt",
+			expected:    true,
+			origCheck:   "test.txt",
+			origCheckOK: true,
+		},
+		{
+			name:     "dot path matches exact prefix",
+			pattern:  "subdir",
+			prefix:   "subdir",
+			testPath: ".",
+			expected: true,
+		},
+		{
+			name:     "empty string matches exact prefix",
+			pattern:  "subdir",
+			prefix:   "subdir",
+			testPath: "",
+			expected: true,
+		},
+		{
+			name:        "wildcard pattern no match after prefix",
+			pattern:     "*.txt",
+			prefix:      "dir",
+			testPath:    "file.txt",
+			expected:    false, // "dir/file.txt" doesn't match "*.txt"
+			origCheck:   "test.txt",
+			origCheckOK: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := mockfs.NewGlobMatcher(tt.pattern)
+			if err != nil {
+				t.Fatalf("NewGlobMatcher() error: %v", err)
+			}
+
+			cloned := m.CloneForSub(tt.prefix)
+			got := cloned.Matches(tt.testPath)
+			if got != tt.expected {
+				t.Errorf("CloneForSub().Matches(%q) = %v, want %v", tt.testPath, got, tt.expected)
+			}
+
+			if tt.origCheck != "" {
+				if got := m.Matches(tt.origCheck); got != tt.origCheckOK {
+					t.Errorf("original Matches(%q) = %v, want %v", tt.origCheck, got, tt.origCheckOK)
+				}
+			}
+		})
+	}
+}
+
+// TestGlobMatcher_NestedClone tests nested CloneForSub calls.
+func TestGlobMatcher_NestedClone(t *testing.T) {
+	// path.Match doesn't support multi-component patterns with /,
+	// so we test with exact path patterns
+	m, err := mockfs.NewGlobMatcher("dir/subdir/file.txt")
+	if err != nil {
+		t.Fatalf("NewGlobMatcher() error: %v", err)
+	}
+
+	cloned1 := m.CloneForSub("dir")
+	cloned2 := cloned1.CloneForSub("subdir")
+
+	// Should match when full path is reconstructed
+	if !cloned2.Matches("file.txt") {
+		t.Error("nested clone should match file.txt (full path: dir/subdir/file.txt)")
+	}
+
+	if cloned2.Matches("other.txt") {
+		t.Error("nested clone should not match other.txt")
+	}
+}
+
+// TestGlobMatcher_Concurrent tests concurrent access to glob matcher.
+func TestGlobMatcher_Concurrent(t *testing.T) {
+	m, err := mockfs.NewGlobMatcher("*.txt")
+	if err != nil {
+		t.Fatalf("NewGlobMatcher() error: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				_ = m.Matches("test.txt")
+				_ = m.CloneForSub("dir")
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// TestPathMatcher_PathValidation tests edge cases in path validation.
+func TestPathMatcher_PathValidation(t *testing.T) {
+	tests := []struct {
+		name  string
+		path  string
+		match bool
+	}{
+		{"trailing slash", "dir/", false},
+		{"double slash", "dir//file", false},
+		{"leading dot slash", "./file", false},
+		{"parent reference", "../file", false},
+		{"multiple dots", "dir/.../file", false},
+		{"only dots", "...", false},
+		{"absolute unix path", "/absolute/path", true},
+		{"backslash", "dir\\file", true},
+	}
+
+	exact := mockfs.NewExactMatcher("test")
+	wildcard := mockfs.NewWildcardMatcher()
+	regexp, _ := mockfs.NewRegexpMatcher(".*")
+	glob, _ := mockfs.NewGlobMatcher("*")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matchers := []struct {
+				name    string
+				matcher mockfs.PathMatcher
+			}{
+				{"exact", exact},
+				{"wildcard", wildcard},
+				{"regexp", regexp},
+				{"glob", glob},
+			}
+
+			for _, m := range matchers {
+				// Just verify matchers handle these paths without panic
+				_ = m.matcher.Matches(tt.path)
+			}
+		})
+	}
+}
+
+// TestExactMatcher_EmptyPath tests empty path edge cases.
+func TestExactMatcher_EmptyPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		stored   string
+		input    string
+		expected bool
+	}{
+		{"both empty", "", "", true},
+		{"stored empty input not", "", "test", false},
+		{"input empty stored not", "test", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := mockfs.NewExactMatcher(tt.stored)
+			got := m.Matches(tt.input)
+			if got != tt.expected {
+				t.Errorf("Matches(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+// TestRegexpMatcher_EmptyPattern tests empty pattern behavior.
+func TestRegexpMatcher_EmptyPattern(t *testing.T) {
+	m, err := mockfs.NewRegexpMatcher("")
+	if err != nil {
+		t.Fatalf("NewRegexpMatcher(\"\") error: %v", err)
+	}
+
+	tests := []string{"", "anything", "test.txt", "dir/file.go"}
+	for _, path := range tests {
+		if !m.Matches(path) {
+			t.Errorf("empty pattern should match %q", path)
+		}
+	}
+}
+
+// TestGlobParentMatcher_EdgeCases tests globParentMatcher edge cases.
+func TestGlobParentMatcher_EdgeCases(t *testing.T) {
+	m, err := mockfs.NewGlobMatcher("dir/*.txt")
+	if err != nil {
+		t.Fatalf("NewGlobMatcher() error: %v", err)
+	}
+
+	pm := m.CloneForSub("dir")
+
+	tests := []struct {
+		name     string
+		path     string
+		expected bool
+	}{
+		{"simple match", "file.txt", true},
+		{"no match", "file.go", false},
+		{"dot path", ".", false},
+		{"empty path", "", false},
+		{"nested no match", "sub/file.txt", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := pm.Matches(tt.path)
+			if got != tt.expected {
+				t.Errorf("Matches(%q) = %v, want %v", tt.path, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestWildcardMatcher_Matches(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -689,6 +988,30 @@ func TestWildcardMatcher_CloneForSub(t *testing.T) {
 			// ensure original still works
 			if got := m.Matches(tt.testPath); !got {
 				t.Errorf("original matcher affected by clone")
+			}
+		})
+	}
+}
+
+// TestWildcardMatcher_EdgeCases tests wildcard matcher with unusual inputs.
+func TestWildcardMatcher_EdgeCases(t *testing.T) {
+	m := mockfs.NewWildcardMatcher()
+
+	tests := []string{
+		"",
+		".",
+		"..",
+		"...",
+		"/",
+		"//",
+		"null\x00byte",
+		string([]byte{0xff, 0xfe, 0xfd}),
+	}
+
+	for _, path := range tests {
+		t.Run(fmt.Sprintf("path=%q", path), func(t *testing.T) {
+			if !m.Matches(path) {
+				t.Errorf("WildcardMatcher should match %q", path)
 			}
 		})
 	}

@@ -1,6 +1,7 @@
 package mockfs
 
 import (
+	"path"
 	"regexp"
 	"strings"
 )
@@ -14,6 +15,15 @@ type PathMatcher interface {
 	// The returned matcher should match the relative path inside the sub filesystem.
 	CloneForSub(prefix string) PathMatcher
 }
+
+// Ensure interface implementations.
+var (
+	_ PathMatcher = (*RegexpMatcher)(nil)
+	_ PathMatcher = (*GlobMatcher)(nil)
+	_ PathMatcher = (*ExactMatcher)(nil)
+	_ PathMatcher = (*noneMatcher)(nil)
+	_ PathMatcher = (*WildcardMatcher)(nil)
+)
 
 // ExactMatcher matches a single path exactly.
 type ExactMatcher struct {
@@ -110,6 +120,73 @@ func (r *regexpParentMatcher) CloneForSub(prefix string) PathMatcher {
 	// Compose prefixes: existingPrefix + "/" + newPrefix
 	combined := r.prefix + "/" + prefix
 	return &regexpParentMatcher{re: r.re, prefix: combined}
+}
+
+// GlobMatcher matches a path against a glob pattern (e.g., "dir/*.txt").
+// It uses [path.Match] semantics.
+type GlobMatcher struct {
+	pattern string
+}
+
+// NewGlobMatcher creates a matcher for a glob pattern.
+// Returns path.ErrBadPattern if the pattern is malformed.
+func NewGlobMatcher(pattern string) (PathMatcher, error) {
+	// Validate the pattern
+	if _, err := path.Match(pattern, ""); err == path.ErrBadPattern {
+		return nil, path.ErrBadPattern
+	}
+	return &GlobMatcher{pattern: pattern}, nil
+}
+
+// Matches returns true if the path matches the glob pattern.
+func (m *GlobMatcher) Matches(candidatePath string) bool {
+	// Error is ignored because it was already validated in NewGlobMatcher.
+	matched, _ := path.Match(m.pattern, candidatePath)
+	return matched
+}
+
+// CloneForSub returns a matcher adjusted for a sub-namespace (used by SubFS).
+// The returned matcher will test the original glob pattern against the full parent path
+// assembled from the prefix and the candidate path inside the sub filesystem.
+func (m *GlobMatcher) CloneForSub(prefix string) PathMatcher {
+	if prefix == "" || prefix == "." {
+		return m
+	}
+	// Use the same parent-matching strategy as RegexpMatcher
+	return &globParentMatcher{pattern: m.pattern, prefix: prefix}
+}
+
+// globParentMatcher matches by assembling prefix + "/" + candidatePath,
+// then applying the original glob pattern against that assembled string.
+type globParentMatcher struct {
+	pattern string
+	prefix  string // normalized, without trailing slash
+}
+
+func (g *globParentMatcher) Matches(subPath string) bool {
+	var parentPath string
+	// If the candidate path represents the directory root inside the sub-FS,
+	// treat it as the prefix itself (equivalent to ".")
+	if subPath == "." || subPath == "" {
+		parentPath = g.prefix
+	} else {
+		// Compose parent path and test original glob.
+		parentPath = g.prefix + "/" + subPath
+	}
+
+	// Error is ignored because it was already validated in NewGlobMatcher.
+	matched, _ := path.Match(g.pattern, parentPath)
+	return matched
+}
+
+func (g *globParentMatcher) CloneForSub(prefix string) PathMatcher {
+	prefix = strings.TrimSuffix(prefix, "/")
+	if prefix == "" || prefix == "." {
+		return g
+	}
+	// Compose prefixes: existingPrefix + "/" + newPrefix
+	combined := g.prefix + "/" + prefix
+	return &globParentMatcher{pattern: g.pattern, prefix: combined}
 }
 
 // WildcardMatcher matches all paths.
