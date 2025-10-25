@@ -20,8 +20,11 @@ const (
 
 // fileBackend is an interface for accessing the underlying file, stats, and error injector.
 type fileBackend interface {
-	// Stats returns the operation statistics for this file.
-	Stats() *Stats
+	// Stats returns a snapshot of operation statistics for this file handle.
+	// This includes only operations performed on this specific file handle
+	// (Read, Write, Close, Stat, ReadDir). It does NOT include filesystem-level
+	// operations. Use MockFS.Stats() to inspect filesystem-level operations.
+	Stats() StatsSnapshot
 
 	// ErrorInjector returns the error injector for this file.
 	ErrorInjector() ErrorInjector
@@ -61,7 +64,92 @@ var (
 	_ fileBackend    = (*mockFile)(nil)
 )
 
-// NewMockFile constructs a MockFile with full configuration.
+// fileOptions holds the configurable state for a new mockFile.
+type fileOptions struct {
+	writeMode      writeMode
+	injector       ErrorInjector
+	latency        LatencySimulator
+	readDirHandler func(int) ([]fs.DirEntry, error)
+	stats          *Stats
+}
+
+// MockFileOption is a function type for configuring a new MockFile.
+type MockFileOption func(*fileOptions)
+
+// WithFileAppend sets the file to append data on write.
+func WithFileAppend() MockFileOption {
+	return func(o *fileOptions) {
+		o.writeMode = writeModeAppend
+	}
+}
+
+// WithFileOverwrite sets the file to overwrite content on write (default).
+func WithFileOverwrite() MockFileOption {
+	return func(o *fileOptions) {
+		o.writeMode = writeModeOverwrite
+	}
+}
+
+// WithFileReadOnly sets the file to reject all writes.
+func WithFileReadOnly() MockFileOption {
+	return func(o *fileOptions) {
+		o.writeMode = writeModeReadOnly
+	}
+}
+
+// WithFileErrorInjector sets the error injector for the file.
+func WithFileErrorInjector(injector ErrorInjector) MockFileOption {
+	return func(o *fileOptions) {
+		if injector != nil {
+			o.injector = injector
+		}
+	}
+}
+
+// WithFileLatency sets a uniform simulated latency for all operations.
+func WithFileLatency(duration time.Duration) MockFileOption {
+	return func(o *fileOptions) {
+		o.latency = NewLatencySimulator(duration)
+	}
+}
+
+// WithFileLatencySimulator sets a custom latency simulator.
+func WithFileLatencySimulator(sim LatencySimulator) MockFileOption {
+	return func(o *fileOptions) {
+		if sim != nil {
+			o.latency = sim
+		}
+	}
+}
+
+// WithFilePerOperationLatency sets different latencies for different operations.
+func WithFilePerOperationLatency(durations map[Operation]time.Duration) MockFileOption {
+	return func(o *fileOptions) {
+		o.latency = NewLatencySimulatorPerOp(durations)
+	}
+}
+
+// WithFileReadDirHandler sets the handler for ReadDir operations.
+// The purpose of this handler is to simulate directory contents.
+// If nil, an empty directory will be created.
+func WithFileReadDirHandler(handler func(int) ([]fs.DirEntry, error)) MockFileOption {
+	return func(o *fileOptions) {
+		o.readDirHandler = handler
+	}
+}
+
+// WithFileStats sets the stats recorder for the file handle.
+// If nil, a new one is created.
+func WithFileStats(stats *Stats) MockFileOption {
+	return func(o *fileOptions) {
+		if stats != nil {
+			o.stats = stats
+		}
+	}
+}
+
+// newMockFile is the internal constructor with full configuration.
+// It is called by MockFS.Open() and the public constructors.
 //
 // Parameters:
 //   - mapFile: the fstest.MapFile containing file data and metadata.
@@ -70,11 +158,8 @@ var (
 //   - injector: the error injector to use (may be nil to use a new, empty injector).
 //   - latencySimulator: simulator for operation latency (may be nil for no latency).
 //   - readDirHandler: handler for ReadDir operations on directories (may be nil).
-//   - stats: operation stats recorder. If nil, a new one is created.
-//
-// This is the most flexible constructor. For simpler use cases, consider using
-// NewMockFileSimple, NewMockFileForReadWrite, or NewMockFileFromData.
-func NewMockFile(
+//   - stats: operation stats recorder. If nil, a new one is created for this file handle.
+func newMockFile(
 	mapFile *fstest.MapFile,
 	name string,
 	writeMode writeMode,
@@ -109,68 +194,83 @@ func NewMockFile(
 	}
 }
 
-// NewMockFileSimple constructs a MockFile with no error injection or latency simulation.
-// The file is writable in overwrite mode.
-func NewMockFileSimple(mapFile *fstest.MapFile, name string) MockFile {
-	return NewMockFile(mapFile, name, writeModeOverwrite, nil, nil, nil, nil)
+// NewMockFile constructs a MockFile with the given MapFile and options.
+// This is the primary constructor if you already have a *fstest.MapFile.
+// By default, the file is writable in overwrite mode.
+func NewMockFile(mapFile *fstest.MapFile, name string, opts ...MockFileOption) MockFile {
+	if mapFile == nil {
+		panic("mockfs: mapFile cannot be nil")
+	}
+
+	// Set defaults
+	options := &fileOptions{
+		writeMode: writeModeOverwrite,
+		// newMockFile will default the rest
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	return newMockFile(
+		mapFile,
+		name,
+		options.writeMode,
+		options.injector,
+		options.latency,
+		options.readDirHandler,
+		options.stats,
+	)
 }
 
-// NewMockFileFromData constructs a MockFile from raw data with no error injection or latency.
-// The file is created with mode 0644 and current time as ModTime.
-func NewMockFileFromData(name string, data []byte) MockFile {
+// NewMockFileFromData creates a writable file from raw data and options.
+// The data is copied, so subsequent modifications to the input slice
+// will not affect the file's content.
+func NewMockFileFromData(name string, data []byte, opts ...MockFileOption) MockFile {
 	mapFile := &fstest.MapFile{
 		Data:    append([]byte(nil), data...), // Copy data
 		Mode:    0644,
 		ModTime: time.Now(),
 	}
-	return NewMockFileSimple(mapFile, name)
+
+	return NewMockFile(mapFile, name, opts...)
 }
 
-// NewMockFileWithLatency constructs a MockFile with uniform latency for all operations.
-// The file is writable in overwrite mode.
-func NewMockFileWithLatency(mapFile *fstest.MapFile, name string, latency time.Duration) MockFile {
-	return NewMockFile(mapFile, name, writeModeOverwrite, nil, NewLatencySimulator(latency), nil, nil)
-}
+// NewMockFileFromString creates a writable file from string content and options.
+func NewMockFileFromString(name string, content string, opts ...MockFileOption) MockFile {
+	mapFile := &fstest.MapFile{
+		Data:    []byte(content),
+		Mode:    0644,
+		ModTime: time.Now(),
+	}
 
-// NewMockFileForReadWrite constructs a MockFile with error injection and latency
-// only for Read and Write operations. Other operations (Open, Close, Stat) are fast
-// and error-free. This is useful for testing I/O error handling without complicating
-// the test setup.
-func NewMockFileForReadWrite(
-	mapFile *fstest.MapFile,
-	name string,
-	latency time.Duration,
-	injector ErrorInjector,
-) MockFile {
-	// Create per-operation latency with only Read/Write having delays
-	perOpLatency := NewLatencySimulatorPerOp(map[Operation]time.Duration{
-		OpRead:  latency,
-		OpWrite: latency,
-	})
-
-	return NewMockFile(mapFile, name, writeModeOverwrite, injector, perOpLatency, nil, nil)
+	return NewMockFile(mapFile, name, opts...)
 }
 
 // NewMockDirectory constructs a MockFile representing a directory.
 // The readDirHandler is required for ReadDir operations.
+// Additional options (like latency) can be passed.
 func NewMockDirectory(
 	name string,
-	modTime time.Time,
 	readDirHandler func(int) ([]fs.DirEntry, error),
-	injector ErrorInjector,
-	latencySimulator LatencySimulator,
-	stats *Stats,
+	opts ...MockFileOption,
 ) MockFile {
 	mapFile := &fstest.MapFile{
 		Mode:    fs.ModeDir | 0755,
-		ModTime: modTime,
+		ModTime: time.Now(),
 	}
 
-	if readDirHandler == nil {
-		panic("mockfs: readDirHandler required for directories")
-	}
+	// Prepend mandatory options for a directory
+	allOptions := append(
+		[]MockFileOption{
+			WithFileReadOnly(), // Directories are read-only for Write()
+			WithFileReadDirHandler(readDirHandler),
+		},
+		opts...,
+	)
 
-	return NewMockFile(mapFile, name, writeModeReadOnly, injector, latencySimulator, readDirHandler, stats)
+	return NewMockFile(mapFile, name, allOptions...)
 }
 
 // Read implements io.Reader for MockFile.
@@ -272,8 +372,11 @@ func (f *mockFile) ReadDir(n int) (entries []fs.DirEntry, err error) {
 	}
 
 	if f.readDirHandler == nil {
-		err = &fs.PathError{Op: "ReadDir", Path: f.name, Err: fs.ErrInvalid}
-		return nil, err
+		// No handler provided; this is a standalone, empty directory.
+		if n <= 0 {
+			return []fs.DirEntry{}, nil
+		}
+		return []fs.DirEntry{}, io.EOF
 	}
 
 	// Simulate latency before checking for errors (models real I/O timing)
@@ -361,12 +464,61 @@ func (f *mockFile) ErrorInjector() ErrorInjector {
 	return f.injector
 }
 
-// Stats returns the operation statistics for the MockFile.
-func (f *mockFile) Stats() *Stats {
-	return f.stats
+// Stats returns the operation statistics for this file handle.
+// This includes only operations performed on this specific file handle
+// (Read, Write, Close, Stat, ReadDir). It does NOT include filesystem-level
+// operations like MockFS.Open or MockFS.Stat.
+func (f *mockFile) Stats() StatsSnapshot {
+	return f.stats.Snapshot()
 }
 
 // LatencySimulator returns the latency simulator for the MockFile.
 func (f *mockFile) LatencySimulator() LatencySimulator {
 	return f.latency
+}
+
+// NewDirHandler creates a stateful fs.ReadDirFile handler from a static list of entries.
+// The returned handler correctly implements pagination and returns io.EOF
+// when no more entries are available, as required by fs.ReadDirFile.
+//
+// Example usage:
+//
+//	entries := []fs.DirEntry{
+//	    mockfs.NewMockFileFromData("file1.txt", nil).Stat(), // Helper to get a fs.FileInfo
+//	    mockfs.NewMockFileFromData("file2.txt", nil).Stat(),
+//	}
+//	handler := mockfs.NewDirHandler(entries)
+//	dir := mockfs.NewMockDirectory("my-dir", handler)
+func NewDirHandler(entries []fs.DirEntry) func(int) ([]fs.DirEntry, error) {
+	var offset int
+	return func(n int) ([]fs.DirEntry, error) {
+		// Check if we are already at the end
+		if offset >= len(entries) {
+			// As per fs.ReadDirFile specification,
+			// return io.EOF *with* an empty slice if n > 0
+			if n > 0 {
+				return []fs.DirEntry{}, io.EOF
+			}
+			return []fs.DirEntry{}, nil
+		}
+
+		// Calculate the end of the batch
+		end := offset + n
+		if n <= 0 { // Read all remaining
+			end = len(entries)
+		}
+		if end > len(entries) {
+			end = len(entries)
+		}
+
+		batch := entries[offset:end]
+		offset = end
+
+		// If n > 0 and we've reached the end, return io.EOF with the last batch
+		if n > 0 && offset >= len(entries) {
+			return batch, io.EOF
+		}
+
+		return batch, nil
+	}
 }
