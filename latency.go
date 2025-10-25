@@ -23,6 +23,9 @@ type LatencySimulator interface {
 	// Reset clears the internal "seen" state for all operations.
 	// Must be called when no other goroutines are calling Simulate().
 	Reset()
+
+	// Clone returns a copy of the simulator with reset state.
+	Clone() LatencySimulator
 }
 
 type simOptions struct {
@@ -158,4 +161,19 @@ func (ls *latencySimulator) Reset() {
 	defer ls.mu.Unlock()
 
 	ls.seen = [NumOperations]bool{}
+}
+
+// Clone returns a copy of the simulator with reset state.
+// The returned simulator has the same duration configuration but
+// fresh Once() tracking state.
+func (ls *latencySimulator) Clone() LatencySimulator {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+
+	clone := &latencySimulator{
+		durations: ls.durations,
+		// seen is zero-initialized
+	}
+
+	return clone
 }
