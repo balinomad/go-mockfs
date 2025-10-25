@@ -13,7 +13,7 @@ type Stats struct {
 	ops          [NumOperations]struct {
 		total   uint64
 		failure uint64
-	} // Holds the atomic counters for each operation
+	} // Operation counters
 	mu sync.RWMutex // Protects all fields
 }
 

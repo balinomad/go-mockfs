@@ -23,17 +23,38 @@
 //	data, err := fs.ReadFile(mfs, "file.txt")
 //	entries, err := fs.ReadDir(mfs, "dir")
 //
+// # File Handles vs Filesystem Operations
+//
+// MockFS tracks filesystem-level operations (Open, Stat, Mkdir, Remove, etc.).
+// MockFile tracks file-handle operations (Read, Write, Close, ReadDir).
+// Use MockFS.Stats() for filesystem stats, MockFile.Stats() for per-handle stats.
+//
+// Files created via MockFS.Open() share the filesystem's error injector but
+// have independent operation statistics and latency state (each file gets a
+// cloned latency simulator with the "seen" state reset).
+//
 // # Error Injection
 //
-// Inject errors for specific operations and paths using the simple helpers:
+// Inject an error to simulate I/O failure on a file handle or a filesystem operation.
 //
-//	mfs.FailOpen("file.txt", fs.ErrPermission)            // Always fail to open file.txt
-//	mfs.FailReadAfter("data.bin", io.ErrUnexpectedEOF, 3) // Fail after 3 successful reads
-//	mfs.FailOpenOnce("config.json", fs.ErrNotExist)       // Fail once, then succeed
+//	// Simulate an error for every call to 'Open' on 'bad.txt'.
+//	mfs.ErrorInjector().Add(mockfs.OpOpen, mockfs.NewPathErrorRule(
+//		mockfs.ErrPermission,
+//		mockfs.NewExactMatcher("bad.txt"),
+//	))
 //
-// Mark files as non-existent for all operations:
+//	// Simulate io.EOF after 5 successful reads from "flaky.txt".
+//	// (Note: This rule must be added before the file is opened.)
+//	mfs.ErrorInjector().Add(mockfs.OpRead, mockfs.NewPathErrorRule(
+//		io.EOF,
+//		mockfs.NewExactMatcher("flaky.txt"),
+//		mockfs.WithMode(mockfs.ErrorModeAfterSuccesses, 5),
+//	))
 //
-//	mfs.MarkNonExistent("missing.txt")
+// To simulate permission errors:
+//
+//	mfs.FailWrite("readonly.txt", fs.ErrPermission)
+//	mfs.FailOpen("secret.dat", fs.ErrPermission)// # Operation Counters
 //
 // # Latency Simulation
 //
@@ -48,22 +69,11 @@
 //	    mockfs.OpWrite: 500 * time.Millisecond,
 //	}))
 //
-// # Operation Counters
-//
 // Track filesystem operations to verify test behavior:
 //
 //	stats := mfs.Stats()
 //	fmt.Printf("Opens: %d, Reads: %d\n", stats.Count(mockfs.OpOpen), stats.Count(mockfs.OpRead))
 //	mfs.ResetStats()
-//
-// # Write Operations
-//
-// MockFS implements WritableFS for mutation testing:
-//
-//	err := mfs.WriteFile("new.txt", []byte("data"), 0644)
-//	err = mfs.Mkdir("newdir", 0755)
-//	err = mfs.Rename("old.txt", "new.txt")
-//	err = mfs.Remove("file.txt")
 //
 // # Advanced Error Injection
 //
@@ -86,6 +96,8 @@
 // # Limitations
 //
 //   - Symlinks are not supported (mode can be set, but not followed).
+//   - File permissions (MapFile.Mode) are metadata only and not enforced.
+//     Use ErrorInjector to simulate permission errors explicitly.
 //   - Path cleaning uses lexical processing only (no filesystem queries).
 //   - Operations on open files may succeed even if the file is removed from the filesystem
 //     (matching real filesystem behavior).
@@ -97,6 +109,9 @@
 //   - Read from different files simultaneously
 //   - Perform operations on the same filesystem
 //   - Modify the filesystem structure (add/remove files)
+//
+// Each file handle clones the latency simulator on Open(), ensuring independent
+// Once() state even when multiple files are opened concurrently.
 //
 // Note: Like real filesystems, concurrent modifications and reads may produce
 // non-deterministic ordering. Use synchronization in tests if order matters.
