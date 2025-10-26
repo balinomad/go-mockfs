@@ -73,7 +73,7 @@ func TestNewMockFile_defaults(t *testing.T) {
 		t.Error("expected non-nil default LatencySimulator")
 	}
 	stats := file.Stats()
-	if stats.BytesRead != 0 || stats.BytesWritten != 0 {
+	if stats.BytesRead() != 0 || stats.BytesWritten() != 0 {
 		t.Error("expected zero-initialized stats")
 	}
 }
@@ -99,7 +99,7 @@ func TestNewMockFileOverwrite(t *testing.T) {
 // TestNewMockFileFromData tests creating file from data.
 func TestNewMockFileFromData(t *testing.T) {
 	data := []byte("test content")
-	file := mockfs.NewMockFileFromData("test.txt", data)
+	file := mockfs.NewMockFileFromBytes("test.txt", data)
 
 	if file == nil {
 		t.Fatal("expected non-nil file")
@@ -231,7 +231,7 @@ func TestMockFile_Read(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			file := mockfs.NewMockFileFromData("test.txt", tt.data)
+			file := mockfs.NewMockFileFromBytes("test.txt", tt.data)
 
 			buf := make([]byte, tt.bufSize)
 			n, err := file.Read(buf)
@@ -284,7 +284,7 @@ func TestMockFile_Read_position(t *testing.T) {
 
 // TestMockFile_Read_closed tests reading from closed file.
 func TestMockFile_Read_closed(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	if err := file.Close(); err != nil {
 		t.Fatalf("close failed: %v", err)
@@ -321,7 +321,7 @@ func TestMockFile_Read_largeFile(t *testing.T) {
 		data[i] = byte(i % 256)
 	}
 
-	file := mockfs.NewMockFileFromData("large.bin", data)
+	file := mockfs.NewMockFileFromBytes("large.bin", data)
 
 	bufSize := 4096
 	buf := make([]byte, bufSize)
@@ -346,7 +346,7 @@ func TestMockFile_Read_largeFile(t *testing.T) {
 
 // TestMockFile_Read_zeroByte tests reading with zero-length buffer.
 func TestMockFile_Read_zeroByte(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	buf := make([]byte, 0)
 	n, err := file.Read(buf)
@@ -440,7 +440,7 @@ func TestMockFile_Write_readOnly(t *testing.T) {
 
 // TestMockFile_Write_closed tests writing to closed file.
 func TestMockFile_Write_closed(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	if err := file.Close(); err != nil {
 		t.Fatalf("close failed: %v", err)
@@ -494,7 +494,7 @@ func TestMockFile_Write_modTimeUpdate(t *testing.T) {
 
 // TestMockFile_Write_zeroByte tests writing zero bytes.
 func TestMockFile_Write_zeroByte(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("initial"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("initial"))
 
 	n, err := file.Write([]byte{})
 	if err != nil {
@@ -563,7 +563,7 @@ func TestMockFile_ReadDir_closed(t *testing.T) {
 
 // TestMockFile_ReadDir_notDirectory tests file not directory error.
 func TestMockFile_ReadDir_notDirectory(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	_, err := file.ReadDir(-1)
 	if err == nil {
@@ -681,7 +681,7 @@ func TestMockFile_Stat(t *testing.T) {
 
 // TestMockFile_Stat_closed tests stat on closed file.
 func TestMockFile_Stat_closed(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	if err := file.Close(); err != nil {
 		t.Fatalf("close failed: %v", err)
@@ -723,7 +723,7 @@ func TestMockFile_Stat_basename(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
-			file := mockfs.NewMockFileFromData(tt.path, []byte("test"))
+			file := mockfs.NewMockFileFromBytes(tt.path, []byte("test"))
 
 			info, err := file.Stat()
 			if err != nil {
@@ -756,7 +756,7 @@ func TestMockFile_Stat_directoryMode(t *testing.T) {
 	})
 
 	t.Run("regular file", func(t *testing.T) {
-		file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+		file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 		info, err := file.Stat()
 		if err != nil {
@@ -801,7 +801,7 @@ func TestMockFile_Stat_permissions(t *testing.T) {
 
 // TestMockFile_Close tests Close operation.
 func TestMockFile_Close(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	err := file.Close()
 	if err != nil {
@@ -811,7 +811,7 @@ func TestMockFile_Close(t *testing.T) {
 
 // TestMockFile_Close_double tests double close returns error.
 func TestMockFile_Close_double(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	_ = file.Close()
 	err := file.Close()
@@ -844,7 +844,7 @@ func TestMockFile_Close_errorInjection(t *testing.T) {
 
 // TestMockFile_Stats tests operation statistics.
 func TestMockFile_Stats(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	// Perform operations
 	buf := make([]byte, 4)
@@ -856,48 +856,48 @@ func TestMockFile_Stats(t *testing.T) {
 	// Get stats after operations
 	stats := file.Stats()
 
-	if stats.Operations[mockfs.OpRead].Total == 0 {
+	if stats.Count(mockfs.OpRead) == 0 {
 		t.Error("OpRead not counted")
 	}
-	if stats.Operations[mockfs.OpWrite].Total == 0 {
+	if stats.Count(mockfs.OpWrite) == 0 {
 		t.Error("OpWrite not counted")
 	}
-	if stats.Operations[mockfs.OpStat].Total == 0 {
+	if stats.Count(mockfs.OpStat) == 0 {
 		t.Error("OpStat not counted")
 	}
-	if stats.Operations[mockfs.OpClose].Total == 0 {
+	if stats.Count(mockfs.OpClose) == 0 {
 		t.Error("OpClose not counted")
 	}
 }
 
 // TestMockFile_Stats_snapshot tests that Stats returns a snapshot.
 func TestMockFile_Stats_snapshot(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	buf := make([]byte, 4)
 	_, _ = file.Read(buf)
 
 	snap1 := file.Stats()
-	reads1 := snap1.Operations[mockfs.OpRead].Total
+	reads1 := snap1.Count(mockfs.OpRead)
 
 	// Perform another read
 	_, _ = file.Read(buf)
 
 	// First snapshot should be unchanged
-	if snap1.Operations[mockfs.OpRead].Total != reads1 {
+	if snap1.Count(mockfs.OpRead) != reads1 {
 		t.Error("snapshot was modified after file operation")
 	}
 
 	// New snapshot should reflect new read
 	snap2 := file.Stats()
-	if snap2.Operations[mockfs.OpRead].Total != reads1+1 {
-		t.Errorf("new snapshot reads = %d, want %d", snap2.Operations[mockfs.OpRead].Total, reads1+1)
+	if snap2.Count(mockfs.OpRead) != reads1+1 {
+		t.Errorf("new snapshot reads = %d, want %d", snap2.Count(mockfs.OpRead), reads1+1)
 	}
 }
 
 // TestMockFile_ErrorInjector tests error injector access.
 func TestMockFile_ErrorInjector(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	injector := file.ErrorInjector()
 	if injector == nil {
@@ -916,7 +916,7 @@ func TestMockFile_ErrorInjector(t *testing.T) {
 
 // TestMockFile_LatencySimulator tests latency simulator access.
 func TestMockFile_LatencySimulator(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	sim := file.LatencySimulator()
 	if sim == nil {
@@ -1032,7 +1032,7 @@ func TestMockFile_concurrentReads(t *testing.T) {
 		data[i] = byte(i % 256)
 	}
 
-	file := mockfs.NewMockFileFromData("test.txt", data)
+	file := mockfs.NewMockFileFromBytes("test.txt", data)
 
 	var wg sync.WaitGroup
 	errors := make(chan error, 10)
@@ -1059,7 +1059,7 @@ func TestMockFile_concurrentReads(t *testing.T) {
 
 // TestMockFile_concurrentWrites tests concurrent write operations.
 func TestMockFile_concurrentWrites(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte(""))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte(""))
 
 	var wg sync.WaitGroup
 	errors := make(chan error, 10)
@@ -1086,7 +1086,7 @@ func TestMockFile_concurrentWrites(t *testing.T) {
 
 // TestMockFile_concurrentCloses tests that concurrent closes are safe.
 func TestMockFile_concurrentCloses(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	var wg sync.WaitGroup
 	closedCount := int32(0)
@@ -1136,7 +1136,7 @@ func TestMockFile_readWriteSequence(t *testing.T) {
 
 // TestMockFile_emptyFile tests operations on empty file.
 func TestMockFile_emptyFile(t *testing.T) {
-	file := mockfs.NewMockFileFromData("empty.txt", []byte{})
+	file := mockfs.NewMockFileFromBytes("empty.txt", []byte{})
 
 	// Read should return EOF immediately
 	buf := make([]byte, 10)
@@ -1163,8 +1163,8 @@ func TestMockFile_emptyFile(t *testing.T) {
 
 // TestMockFile_multipleFilesIndependent tests that files have independent state.
 func TestMockFile_multipleFilesIndependent(t *testing.T) {
-	file1 := mockfs.NewMockFileFromData("file1.txt", []byte("content1"))
-	file2 := mockfs.NewMockFileFromData("file2.txt", []byte("content2"))
+	file1 := mockfs.NewMockFileFromBytes("file1.txt", []byte("content1"))
+	file2 := mockfs.NewMockFileFromBytes("file2.txt", []byte("content2"))
 
 	// Read from file1
 	buf1 := make([]byte, 8)
@@ -1223,7 +1223,7 @@ func TestMockFile_partialReads(t *testing.T) {
 
 // TestMockFile_concurrentReadWrite tests race conditions in concurrent read/write.
 func TestMockFile_concurrentReadWrite(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("initial data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("initial data"))
 
 	var wg sync.WaitGroup
 	done := make(chan bool)
@@ -1266,7 +1266,7 @@ func TestMockFile_concurrentReadWrite(t *testing.T) {
 
 // TestMockFile_statsRaceCondition tests stats tracking under concurrent operations.
 func TestMockFile_statsRaceCondition(t *testing.T) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("data"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -1284,8 +1284,8 @@ func TestMockFile_statsRaceCondition(t *testing.T) {
 	wg.Wait()
 
 	stats := file.Stats()
-	if stats.Operations[mockfs.OpRead].Total != 1000 {
-		t.Errorf("read count = %d, want 1000", stats.Operations[mockfs.OpRead].Total)
+	if stats.Count(mockfs.OpRead) != 1000 {
+		t.Errorf("read count = %d, want 1000", stats.Count(mockfs.OpRead))
 	}
 }
 
@@ -1336,7 +1336,7 @@ func (m *mockDirEntry) Info() (fs.FileInfo, error) { return nil, nil }
 // BenchmarkMockFile_Read benchmarks read performance.
 func BenchmarkMockFile_Read(b *testing.B) {
 	data := make([]byte, 1024)
-	file := mockfs.NewMockFileFromData("test.txt", data)
+	file := mockfs.NewMockFileFromBytes("test.txt", data)
 	buf := make([]byte, 1024)
 
 	b.ResetTimer()
@@ -1347,7 +1347,7 @@ func BenchmarkMockFile_Read(b *testing.B) {
 
 // BenchmarkMockFile_Write benchmarks write performance.
 func BenchmarkMockFile_Write(b *testing.B) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte{})
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte{})
 	data := []byte("benchmark data")
 
 	b.ResetTimer()
@@ -1358,7 +1358,7 @@ func BenchmarkMockFile_Write(b *testing.B) {
 
 // BenchmarkMockFile_Stat benchmarks stat performance.
 func BenchmarkMockFile_Stat(b *testing.B) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("test"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("test"))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -1368,7 +1368,7 @@ func BenchmarkMockFile_Stat(b *testing.B) {
 
 // BenchmarkMockFile_Stats benchmarks stats snapshot performance.
 func BenchmarkMockFile_Stats(b *testing.B) {
-	file := mockfs.NewMockFileFromData("test.txt", []byte("test"))
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("test"))
 	buf := make([]byte, 4)
 	_, _ = file.Read(buf)
 

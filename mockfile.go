@@ -24,7 +24,7 @@ type fileBackend interface {
 	// This includes only operations performed on this specific file handle
 	// (Read, Write, Close, Stat, ReadDir). It does NOT include filesystem-level
 	// operations. Use MockFS.Stats() to inspect filesystem-level operations.
-	Stats() StatsSnapshot
+	Stats() Stats
 
 	// ErrorInjector returns the error injector for this file.
 	ErrorInjector() ErrorInjector
@@ -50,7 +50,7 @@ type mockFile struct {
 	writeMode      writeMode                        // How writes modify the file data.
 	readDirHandler func(int) ([]fs.DirEntry, error) // Handler for ReadDir operations (directories only).
 	latency        LatencySimulator                 // Latency simulator for this file.
-	stats          *Stats                           // Operation statistics.
+	stats          StatsRecorder                    // Operation statistics.
 	injector       ErrorInjector                    // Error injector for operations on this file.
 }
 
@@ -70,7 +70,7 @@ type fileOptions struct {
 	injector       ErrorInjector
 	latency        LatencySimulator
 	readDirHandler func(int) ([]fs.DirEntry, error)
-	stats          *Stats
+	stats          StatsRecorder
 }
 
 // MockFileOption is a function type for configuring a new MockFile.
@@ -140,7 +140,7 @@ func WithFileReadDirHandler(handler func(int) ([]fs.DirEntry, error)) MockFileOp
 
 // WithFileStats sets the stats recorder for the file handle.
 // If nil, a new one is created.
-func WithFileStats(stats *Stats) MockFileOption {
+func WithFileStats(stats StatsRecorder) MockFileOption {
 	return func(o *fileOptions) {
 		if stats != nil {
 			o.stats = stats
@@ -166,7 +166,7 @@ func newMockFile(
 	injector ErrorInjector,
 	latencySimulator LatencySimulator,
 	readDirHandler func(int) ([]fs.DirEntry, error),
-	stats *Stats,
+	stats StatsRecorder,
 ) MockFile {
 	if mapFile == nil {
 		panic("mockfs: mapFile cannot be nil")
@@ -180,7 +180,7 @@ func newMockFile(
 		latencySimulator = NewNoopLatencySimulator()
 	}
 	if stats == nil {
-		stats = NewStats()
+		stats = NewStatsRecorder(nil)
 	}
 
 	return &mockFile{
@@ -224,10 +224,10 @@ func NewMockFile(mapFile *fstest.MapFile, name string, opts ...MockFileOption) M
 	)
 }
 
-// NewMockFileFromData creates a writable file from raw data and options.
+// NewMockFileFromBytes creates a writable file from raw data and options.
 // The data is copied, so subsequent modifications to the input slice
 // will not affect the file's content.
-func NewMockFileFromData(name string, data []byte, opts ...MockFileOption) MockFile {
+func NewMockFileFromBytes(name string, data []byte, opts ...MockFileOption) MockFile {
 	mapFile := &fstest.MapFile{
 		Data:    append([]byte(nil), data...), // Copy data
 		Mode:    0644,
@@ -468,7 +468,7 @@ func (f *mockFile) ErrorInjector() ErrorInjector {
 // This includes only operations performed on this specific file handle
 // (Read, Write, Close, Stat, ReadDir). It does NOT include filesystem-level
 // operations like MockFS.Open or MockFS.Stat.
-func (f *mockFile) Stats() StatsSnapshot {
+func (f *mockFile) Stats() Stats {
 	return f.stats.Snapshot()
 }
 
@@ -484,8 +484,8 @@ func (f *mockFile) LatencySimulator() LatencySimulator {
 // Example usage:
 //
 //	entries := []fs.DirEntry{
-//	    mockfs.NewMockFileFromData("file1.txt", nil).Stat(), // Helper to get a fs.FileInfo
-//	    mockfs.NewMockFileFromData("file2.txt", nil).Stat(),
+//	    mockfs.NewMockFileFromBytes("file1.txt", nil).Stat(), // Helper to get a fs.FileInfo
+//	    mockfs.NewMockFileFromBytes("file2.txt", nil).Stat(),
 //	}
 //	handler := mockfs.NewDirHandler(entries)
 //	dir := mockfs.NewMockDirectory("my-dir", handler)
