@@ -81,6 +81,18 @@ func TestExactMatcher_Matches(t *testing.T) {
 			input:    "file-name_test.v2.txt",
 			expected: true,
 		},
+		{
+			name:     "unicode path",
+			stored:   "файл.txt",
+			input:    "файл.txt",
+			expected: true,
+		},
+		{
+			name:     "unicode no match",
+			stored:   "файл.txt",
+			input:    "file.txt",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -141,6 +153,13 @@ func TestExactMatcher_CloneForSub(t *testing.T) {
 			stored:     "dir",
 			prefix:     "dir",
 			inputInSub: ".",
+			expected:   true,
+		},
+		{
+			name:       "prefix with trailing slash normalized",
+			stored:     "dir/file.txt",
+			prefix:     "dir/",
+			inputInSub: "file.txt",
 			expected:   true,
 		},
 		{
@@ -991,8 +1010,8 @@ func TestWildcardMatcher_EdgeCases(t *testing.T) {
 	}
 }
 
-// TestCloneIndependence tests that matchers work correctly after cloning.
-func TestCloneIndependence(t *testing.T) {
+// TestPathMatcher_CloneIndependence tests that matchers work correctly after cloning.
+func TestPathMatcher_CloneIndependence(t *testing.T) {
 	// test ExactMatcher: original stores parent path, cloned should match relative path
 	t.Run("exact matcher", func(t *testing.T) {
 		original := mockfs.NewExactMatcher("dir/file.txt")
@@ -1083,6 +1102,7 @@ func BenchmarkMatchers(b *testing.B) {
 	path := "dir/subdir/file.txt"
 	mExact := mockfs.NewExactMatcher("dir/subdir/file.txt")
 	mRegexp, _ := mockfs.NewRegexpMatcher("^dir/.*/.*\\.txt$")
+	mGlob, _ := mockfs.NewGlobMatcher("dir/subdir/*.txt")
 	mWildcard := mockfs.NewWildcardMatcher()
 
 	b.Run("ExactMatcher", func(b *testing.B) {
@@ -1103,6 +1123,13 @@ func BenchmarkMatchers(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			_ = mWildcard.Matches(path)
+		}
+	})
+
+	b.Run("GlobMatcher", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = mGlob.Matches(path)
 		}
 	})
 }

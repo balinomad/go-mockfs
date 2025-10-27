@@ -659,25 +659,97 @@ func TestErrorInjector_AddGlob(t *testing.T) {
 			t.Error("expected error for invalid glob pattern")
 		}
 	})
+
+	t.Run("invalid pattern for all ops", func(t *testing.T) {
+		em := mockfs.NewErrorInjector()
+		err := em.AddRegexpForAllOps("[invalid", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
+		if err == nil {
+			t.Fatal("expected error for malformed regexp in AddRegexpForAllOps, got nil")
+		}
+		// verify no rules were added
+		all := em.GetAll()
+		if len(all) != 0 {
+			t.Fatalf("expected no rules after failed AddRegexpForAllOps, got %d operations", len(all))
+		}
+	})
+
 }
 
-func TestErrorInjector_AddForPathAllOps(t *testing.T) {
-	em := mockfs.NewErrorInjector()
-	em.AddGlobForAllOps("test.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
+// TestErrorInjector_AddGlobForAllOps verifies AddGlobForAllOps registers a rule for
+// every operation and that malformed glob patterns return an error and make no changes.
+func TestErrorInjector_AddGlobForAllOps(t *testing.T) {
+	t.Parallel()
 
-	expectedOps := []mockfs.Operation{
-		mockfs.OpStat, mockfs.OpOpen, mockfs.OpRead, mockfs.OpWrite, mockfs.OpClose,
-		mockfs.OpReadDir, mockfs.OpMkdir, mockfs.OpMkdirAll, mockfs.OpRemove,
-		mockfs.OpRemoveAll, mockfs.OpRename,
+	t.Run("valid pattern", func(t *testing.T) {
+		t.Parallel()
+		em := mockfs.NewErrorInjector()
+		if err := em.AddGlobForAllOps("test.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0); err != nil {
+			t.Fatalf("AddGlobForAllOps() returned unexpected error: %v", err)
+		}
+
+		expectedOps := []mockfs.Operation{
+			mockfs.OpStat, mockfs.OpOpen, mockfs.OpRead, mockfs.OpWrite, mockfs.OpClose,
+			mockfs.OpReadDir, mockfs.OpMkdir, mockfs.OpMkdirAll, mockfs.OpRemove,
+			mockfs.OpRemoveAll, mockfs.OpRename,
+		}
+
+		for _, op := range expectedOps {
+			op := op // capture
+			t.Run(op.String(), func(t *testing.T) {
+				t.Parallel()
+				err := em.CheckAndApply(op, "test.txt")
+				if !errors.Is(err, mockfs.ErrPermission) {
+					t.Errorf("expected ErrPermission for %v, got %v", op, err)
+				}
+			})
+		}
+	})
+
+	t.Run("invalid pattern", func(t *testing.T) {
+		t.Parallel()
+		em := mockfs.NewErrorInjector()
+
+		// malformed glob should cause AddGlobForAllOps to return an error immediately
+		err := em.AddGlobForAllOps("[invalid", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
+		if err == nil {
+			t.Fatal("expected error for malformed glob pattern, got nil")
+		}
+
+		// confirm injector state unchanged
+		all := em.GetAll()
+		if len(all) != 0 {
+			t.Fatalf("expected no rules after failed AddGlobForAllOps, got %d operations", len(all))
+		}
+	})
+}
+
+func TestErrorInjector_AddAll_ThenExact(t *testing.T) {
+	em := mockfs.NewErrorInjector()
+	em.AddAll(mockfs.OpOpen, mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0)
+	em.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
+
+	// AddAll added first, so it matches first
+	err := em.CheckAndApply(mockfs.OpOpen, "test.txt")
+	if !errors.Is(err, mockfs.ErrTimeout) {
+		t.Errorf("expected ErrTimeout from first AddAll rule, got %v", err)
+	}
+}
+
+func TestErrorInjector_Exact_ThenAddAll(t *testing.T) {
+	em := mockfs.NewErrorInjector()
+	em.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
+	em.AddAll(mockfs.OpOpen, mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0)
+
+	// AddExact added first, so it matches first
+	err := em.CheckAndApply(mockfs.OpOpen, "test.txt")
+	if !errors.Is(err, mockfs.ErrNotExist) {
+		t.Errorf("expected ErrNotExist from first AddExact rule, got %v", err)
 	}
 
-	for _, op := range expectedOps {
-		t.Run(op.String(), func(t *testing.T) {
-			err := em.CheckAndApply(op, "test.txt")
-			if !errors.Is(err, mockfs.ErrPermission) {
-				t.Errorf("expected ErrPermission for %v, got %v", op, err)
-			}
-		})
+	// Other paths match AddAll (added second, but first rule doesn't match)
+	err = em.CheckAndApply(mockfs.OpOpen, "other.txt")
+	if !errors.Is(err, mockfs.ErrTimeout) {
+		t.Errorf("expected ErrTimeout from AddAll, got %v", err)
 	}
 }
 
@@ -1054,31 +1126,32 @@ func TestErrorInjector_Concurrent_MixedOperations(t *testing.T) {
 	em := mockfs.NewErrorInjector()
 	var wg sync.WaitGroup
 
-	// concurrent mixed operations
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	ops := []func(){
+		func() {
 			for j := 0; j < 50; j++ {
 				em.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 			}
-		}()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		},
+		func() {
 			for j := 0; j < 50; j++ {
 				_ = em.CheckAndApply(mockfs.OpOpen, "test.txt")
 			}
-		}()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		},
+		func() {
 			for j := 0; j < 50; j++ {
 				_ = em.GetAll()
 			}
-		}()
+		},
+	}
+
+	for i := 0; i < 5; i++ {
+		for _, op := range ops {
+			wg.Add(1)
+			go func(fn func()) {
+				defer wg.Done()
+				fn()
+			}(op)
+		}
 	}
 
 	wg.Wait()
