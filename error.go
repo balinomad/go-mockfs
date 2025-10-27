@@ -90,7 +90,7 @@ func (r *ErrorRule) shouldReturnError() bool {
 		hits := r.hits.Add(1)
 		return hits > r.AfterN
 	default:
-		return false
+		panic(fmt.Sprintf("mockfs: invalid ErrorMode: %d", r.Mode))
 	}
 }
 

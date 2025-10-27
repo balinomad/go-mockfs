@@ -212,6 +212,23 @@ func TestErrorRule_ModeAfterSuccesses(t *testing.T) {
 	}
 }
 
+func TestErrorRule_InvalidModePanic(t *testing.T) {
+	// Create a rule with an invalid mode by casting
+	rule := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorMode(999), 0, mockfs.NewWildcardMatcher())
+
+	em := mockfs.NewErrorInjector()
+	em.Add(mockfs.OpRead, rule)
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for invalid ErrorMode")
+		}
+	}()
+
+	// This should trigger shouldReturnError which will panic on invalid mode
+	_ = em.CheckAndApply(mockfs.OpRead, "test.txt")
+}
+
 func TestErrorRule_CloneForSub(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -621,6 +638,27 @@ func TestErrorInjector_AddRegexp(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestErrorInjector_AddGlob(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid pattern", func(t *testing.T) {
+		em := mockfs.NewErrorInjector()
+		err := em.AddGlob(mockfs.OpOpen, "*.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
+		requireNoError(t, err)
+
+		err = em.CheckAndApply(mockfs.OpOpen, "test.txt")
+		assertError(t, err, mockfs.ErrNotExist)
+	})
+
+	t.Run("invalid pattern", func(t *testing.T) {
+		em := mockfs.NewErrorInjector()
+		err := em.AddGlob(mockfs.OpOpen, "[invalid", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
+		if err == nil {
+			t.Error("expected error for invalid glob pattern")
+		}
+	})
 }
 
 func TestErrorInjector_AddForPathAllOps(t *testing.T) {
