@@ -8,8 +8,8 @@ import (
 	"github.com/balinomad/go-mockfs"
 )
 
-// TestFileInfoInterface checks that exported functions return types
-// that implement fs.FileInfo and fs.DirEntry.
+// TestFileInfoInterface verifies that MockFS returns concrete types implementing
+// fs.FileInfo and fs.DirEntry interfaces at compile time.
 func TestFileInfoInterface(t *testing.T) {
 	now := time.Now()
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
@@ -72,18 +72,9 @@ func TestFileInfoInterface(t *testing.T) {
 	var _ fs.DirEntry = dirEntries[0] // Compile-time check
 }
 
-// fileInfoTest represents the expected properties of a fileInfo object.
-type fileInfoTest struct {
-	name    string
-	size    int64
-	mode    fs.FileMode
-	modTime time.Time
-	isDir   bool
-}
-
-// TestFileInfoMethods_FromStat tests properties of fs.FileInfo
-// objects returned by Stat() calls.
-func TestFileInfoMethods_FromStat(t *testing.T) {
+// TestFileInfoMethods_Stat verifies fs.FileInfo properties returned by
+// MockFS.Stat() and MockFile.Stat() match expected file metadata.
+func TestFileInfoMethods_Stat(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	hourAgo := now.Add(-1 * time.Hour)
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
@@ -104,69 +95,71 @@ func TestFileInfoMethods_FromStat(t *testing.T) {
 	})
 
 	// Define test cases
-	tests := map[string]struct {
-		// getInfo is the operation to get the fs.FileInfo
-		getInfo func(t *testing.T) (fs.FileInfo, error)
-		// want is the expected result
-		want fileInfoTest
+	tests := []struct {
+		name string
+		path string
+		via  string // "mfs.Stat" or "file.Stat"
+		want expectedFileInfo
 	}{
-		"mfs.stat file": {
-			getInfo: func(t *testing.T) (fs.FileInfo, error) {
-				return mfs.Stat("file.txt")
-			},
-			want: fileInfoTest{name: "file.txt", size: 9, mode: 0644, modTime: now},
+		{
+			name: "file via mfs.Stat",
+			path: "file.txt",
+			via:  "mfs.Stat",
+			want: expectedFileInfo{name: "file.txt", size: 9, mode: 0644, modTime: now},
 		},
-		"mfs.stat dir": {
-			getInfo: func(t *testing.T) (fs.FileInfo, error) {
-				return mfs.Stat("src")
-			},
-			want: fileInfoTest{name: "src", size: 0, mode: fs.ModeDir | 0755, modTime: hourAgo, isDir: true},
+		{
+			name: "dir via mfs.Stat",
+			path: "src",
+			via:  "mfs.Stat",
+			want: expectedFileInfo{name: "src", size: 0, mode: fs.ModeDir | 0755, modTime: hourAgo, isDir: true},
 		},
-		"mfs.stat symlink": {
-			getInfo: func(t *testing.T) (fs.FileInfo, error) {
-				return mfs.Stat("src/link.go")
-			},
-			want: fileInfoTest{name: "link.go", size: 4, mode: fs.ModeSymlink | 0644, modTime: now},
+		{
+			name: "symlink via mfs.Stat",
+			path: "src/link.go",
+			via:  "mfs.Stat",
+			want: expectedFileInfo{name: "link.go", size: 4, mode: fs.ModeSymlink | 0644, modTime: now},
 		},
-		"file.stat file": {
-			getInfo: func(t *testing.T) (fs.FileInfo, error) {
-				f, err := mfs.Open("file.txt")
-				if err != nil {
-					return nil, err
-				}
-				defer f.Close()
-				return f.Stat()
-			},
-			want: fileInfoTest{name: "file.txt", size: 9, mode: 0644, modTime: now},
+		{
+			name: "file via file.Stat",
+			path: "file.txt",
+			via:  "file.Stat",
+			want: expectedFileInfo{name: "file.txt", size: 9, mode: 0644, modTime: now},
 		},
-		"file.stat symlink": {
-			getInfo: func(t *testing.T) (fs.FileInfo, error) {
-				f, err := mfs.Open("src/link.go")
-				if err != nil {
-					return nil, err
-				}
-				defer f.Close()
-				return f.Stat()
-			},
-			want: fileInfoTest{name: "link.go", size: 4, mode: fs.ModeSymlink | 0644, modTime: now},
+		{
+			name: "symlink via file.Stat",
+			path: "src/link.go",
+			via:  "file.Stat",
+			want: expectedFileInfo{name: "link.go", size: 4, mode: fs.ModeSymlink | 0644, modTime: now},
 		},
 	}
 
-	// Run tests
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			info, err := tt.getInfo(t)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var info fs.FileInfo
+			var err error
+
+			if tt.via == "file.Stat" {
+				f, openErr := mfs.Open(tt.path)
+				if openErr != nil {
+					t.Fatalf("Open(%q) failed: %v", tt.path, openErr)
+				}
+				defer f.Close()
+				info, err = f.Stat()
+			} else {
+				info, err = mfs.Stat(tt.path)
+			}
+
 			if err != nil {
-				t.Fatalf("getInfo() error = %v", err)
+				t.Fatalf("%s(%q) failed: %v", tt.via, tt.path, err)
 			}
 			assertFileInfoMatches(t, info, tt.want)
 		})
 	}
 }
 
-// TestFileInfoMethods_FromReadDir tests properties of fs.DirEntry
-// objects returned by ReadDir() calls.
-func TestFileInfoMethods_FromReadDir(t *testing.T) {
+// TestFileInfoMethods_ReadDir verifies fs.DirEntry properties returned by
+// MockFS.ReadDir() and MockFile.ReadDir() match expected directory entries.
+func TestFileInfoMethods_ReadDir(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	hourAgo := now.Add(-1 * time.Hour)
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
@@ -175,65 +168,81 @@ func TestFileInfoMethods_FromReadDir(t *testing.T) {
 		"src":      {Mode: fs.ModeDir | 0755, ModTime: hourAgo},
 	})
 
-	// Define test cases
-	tests := map[string]struct {
-		// getEntry finds the specific entry to test
-		getEntry func(t *testing.T) (fs.DirEntry, error)
-		// want is the expected result
-		want fileInfoTest
+	tests := []struct {
+		name     string
+		dir      string
+		via      string // "mfs.ReadDir" or "file.ReadDir"
+		findName string
+		want     expectedFileInfo
 	}{
-		"mfs.readdir file": {
-			getEntry: func(t *testing.T) (fs.DirEntry, error) {
-				entries, err := mfs.ReadDir(".")
-				if err != nil {
-					return nil, err
-				}
-				return findEntry(entries, "file.txt")
-			},
-			want: fileInfoTest{name: "file.txt", size: 3, mode: 0644, modTime: now},
+		{
+			name:     "file via mfs.ReadDir",
+			dir:      ".",
+			via:      "mfs.ReadDir",
+			findName: "file.txt",
+			want:     expectedFileInfo{name: "file.txt", size: 3, mode: 0644, modTime: now},
 		},
-		"mfs.readdir dir": {
-			getEntry: func(t *testing.T) (fs.DirEntry, error) {
-				entries, err := mfs.ReadDir(".")
-				if err != nil {
-					return nil, err
-				}
-				return findEntry(entries, "src")
-			},
-			want: fileInfoTest{name: "src", size: 0, mode: fs.ModeDir | 0755, modTime: hourAgo, isDir: true},
+		{
+			name:     "dir via mfs.ReadDir",
+			dir:      ".",
+			via:      "mfs.ReadDir",
+			findName: "src",
+			want:     expectedFileInfo{name: "src", size: 0, mode: fs.ModeDir | 0755, modTime: hourAgo, isDir: true},
 		},
-		"file.readdir file": {
-			getEntry: func(t *testing.T) (fs.DirEntry, error) {
-				d, err := mfs.Open(".")
-				if err != nil {
-					return nil, err
-				}
-				defer d.Close()
-				rd, _ := d.(fs.ReadDirFile)
-				entries, err := rd.ReadDir(-1)
-				if err != nil {
-					return nil, err
-				}
-				return findEntry(entries, "file.txt")
-			},
-			want: fileInfoTest{name: "file.txt", size: 3, mode: 0644, modTime: now},
+		{
+			name:     "file via file.ReadDir",
+			dir:      ".",
+			via:      "file.ReadDir",
+			findName: "file.txt",
+			want:     expectedFileInfo{name: "file.txt", size: 3, mode: 0644, modTime: now},
 		},
 	}
 
-	// Run tests
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			entry, err := tt.getEntry(t)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var entries []fs.DirEntry
+			var err error
+
+			if tt.via == "file.ReadDir" {
+				d, openErr := mfs.Open(tt.dir)
+				if openErr != nil {
+					t.Fatalf("Open(%q) failed: %v", tt.dir, openErr)
+				}
+				defer d.Close()
+				rd, ok := d.(fs.ReadDirFile)
+				if !ok {
+					t.Fatalf("Open(%q) did not return fs.ReadDirFile", tt.dir)
+				}
+				entries, err = rd.ReadDir(-1)
+			} else {
+				entries, err = mfs.ReadDir(tt.dir)
+			}
+
 			if err != nil {
-				t.Fatalf("getEntry() error = %v", err)
+				t.Fatalf("%s(%q) failed: %v", tt.via, tt.dir, err)
+			}
+
+			entry, findErr := findEntry(entries, tt.findName)
+			if findErr != nil {
+				t.Fatalf("entry %q not found in %s(%q): %v", tt.findName, tt.via, tt.dir, findErr)
 			}
 			assertDirEntryMatches(t, entry, tt.want)
 		})
 	}
 }
 
-// assertFileInfoMatches is a helper to check fs.FileInfo properties.
-func assertFileInfoMatches(t *testing.T, info fs.FileInfo, want fileInfoTest) {
+// expectedFileInfo defines expected fs.FileInfo/fs.DirEntry properties for test assertions.
+// Used by assertFileInfoMatches and assertDirEntryMatches to verify returned values.
+type expectedFileInfo struct {
+	name    string      // Expected value from Name()
+	size    int64       // Expected value from Size()
+	mode    fs.FileMode // Expected value from Mode()
+	modTime time.Time   // Expected value from ModTime()
+	isDir   bool        // Expected value from IsDir()
+}
+
+// assertFileInfoMatches verifies fs.FileInfo properties match expected values.
+func assertFileInfoMatches(t *testing.T, info fs.FileInfo, want expectedFileInfo) {
 	t.Helper()
 	if info.Name() != want.name {
 		t.Errorf("Name() = %q, want %q", info.Name(), want.name)
@@ -255,8 +264,8 @@ func assertFileInfoMatches(t *testing.T, info fs.FileInfo, want fileInfoTest) {
 	}
 }
 
-// assertDirEntryMatches is a helper to check fs.DirEntry properties.
-func assertDirEntryMatches(t *testing.T, entry fs.DirEntry, want fileInfoTest) {
+// assertDirEntryMatches verifies fs.DirEntry properties match expected values.
+func assertDirEntryMatches(t *testing.T, entry fs.DirEntry, want expectedFileInfo) {
 	t.Helper()
 	if entry.Name() != want.name {
 		t.Errorf("Name() = %q, want %q", entry.Name(), want.name)
@@ -276,7 +285,7 @@ func assertDirEntryMatches(t *testing.T, entry fs.DirEntry, want fileInfoTest) {
 	assertFileInfoMatches(t, info, want)
 }
 
-// findEntry is a test helper to find a DirEntry by name.
+// findEntry finds a DirEntry by name in a slice of entries.
 func findEntry(entries []fs.DirEntry, name string) (fs.DirEntry, error) {
 	for _, e := range entries {
 		if e.Name() == name {
