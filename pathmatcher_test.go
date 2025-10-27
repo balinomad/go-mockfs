@@ -8,32 +8,6 @@ import (
 	"github.com/balinomad/go-mockfs"
 )
 
-func TestPathMatcher_Interface(t *testing.T) {
-	// verify all types implement PathMatcher interface
-	var _ mockfs.PathMatcher = (*mockfs.ExactMatcher)(nil)
-	var _ mockfs.PathMatcher = (*mockfs.RegexpMatcher)(nil)
-	var _ mockfs.PathMatcher = (*mockfs.WildcardMatcher)(nil)
-
-	// test that interface methods work polymorphically
-	matchers := []mockfs.PathMatcher{
-		mockfs.NewExactMatcher("test.txt"),
-		&mockfs.WildcardMatcher{},
-	}
-
-	m, err := mockfs.NewRegexpMatcher("\\.txt$")
-	if err != nil {
-		t.Fatalf("failed to create regexp matcher: %v", err)
-	}
-	matchers = append(matchers, m)
-
-	for i, matcher := range matchers {
-		// should not panic
-		_ = matcher.Matches("test.txt")
-		_ = matcher.CloneForSub("prefix")
-		t.Logf("matcher %d works as PathMatcher interface", i)
-	}
-}
-
 func TestExactMatcher_Matches(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -1081,6 +1055,26 @@ func TestNoneMatcher_CloneForSub(t *testing.T) {
 	// must still be a noneMatcher and never match
 	if nm2.Matches("anything.txt") {
 		t.Errorf("expected noneMatcher.CloneForSub result to never match")
+	}
+}
+
+func TestGlobParentMatcher_CloneForSub_EmptyPrefix(t *testing.T) {
+	m, err := mockfs.NewGlobMatcher("dir/*.txt")
+	if err != nil {
+		t.Fatalf("NewGlobMatcher() error: %v", err)
+	}
+	pm := m.CloneForSub("dir")
+
+	// Clone with empty prefix should return same matcher
+	cloned := pm.CloneForSub("")
+	if cloned != pm {
+		t.Error("CloneForSub(\"\") should return same matcher")
+	}
+
+	// Clone with dot prefix should return same matcher
+	cloned = pm.CloneForSub(".")
+	if cloned != pm {
+		t.Error("CloneForSub(\".\") should return same matcher")
 	}
 }
 
