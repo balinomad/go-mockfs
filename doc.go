@@ -102,6 +102,8 @@
 //   - Operations on open files may succeed even if the file is removed from the filesystem
 //     (matching real filesystem behavior).
 //   - This package is not optimized for large filesystems.
+//   - ReadFile on a directory returns empty data without error (matches MapFS behaviour).
+//     Use Stat or Open+ReadDir to distinguish directories from empty files.
 //
 // # Concurrency
 //
