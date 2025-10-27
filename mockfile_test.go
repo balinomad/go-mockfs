@@ -58,6 +58,19 @@ func TestNewMockFile(t *testing.T) {
 		})
 	}
 }
+func TestMockFile_WithFileStats(t *testing.T) {
+	t.Parallel()
+
+	sharedStats := mockfs.NewStatsRecorder(nil)
+	file := mockfs.NewMockFileFromString("test.txt", "data", mockfs.WithFileStats(sharedStats))
+
+	buf := make([]byte, 4)
+	_, _ = file.Read(buf)
+
+	if sharedStats.Count(mockfs.OpRead) != 1 {
+		t.Errorf("shared stats not updated: count = %d, want 1", sharedStats.Count(mockfs.OpRead))
+	}
+}
 
 // TestNewMockFile_defaults tests that nil arguments to NewMockFile are
 // initialized with non-nil default implementations.
@@ -78,8 +91,8 @@ func TestNewMockFile_defaults(t *testing.T) {
 	}
 }
 
-// TestNewMockFileOverwrite tests the simple constructor.
-func TestNewMockFileOverwrite(t *testing.T) {
+// TestNewMockFileFromString tests creating file from string.
+func TestNewMockFileFromString(t *testing.T) {
 	file := mockfs.NewMockFileFromString("test.txt", "hello")
 	if file == nil {
 		t.Fatal("expected non-nil file")
@@ -96,8 +109,8 @@ func TestNewMockFileOverwrite(t *testing.T) {
 	}
 }
 
-// TestNewMockFileFromData tests creating file from data.
-func TestNewMockFileFromData(t *testing.T) {
+// TestNewMockFileFromBytes tests creating file from bytes.
+func TestNewMockFileFromBytes(t *testing.T) {
 	data := []byte("test content")
 	file := mockfs.NewMockFileFromBytes("test.txt", data)
 
@@ -1320,6 +1333,61 @@ func TestMockFile_latencyCloning(t *testing.T) {
 	start = time.Now()
 	_, _ = f2.Read(buf)
 	assertDuration(t, start, testDuration, "file2 first read")
+}
+
+func TestNewDirHandler(t *testing.T) {
+	t.Parallel()
+
+	info1, _ := mockfs.NewMockFileFromString("file1.txt", "").Stat()
+	info2, _ := mockfs.NewMockFileFromString("file2.txt", "").Stat()
+	entries := []fs.DirEntry{info1.(fs.DirEntry), info2.(fs.DirEntry)}
+
+	handler := mockfs.NewDirHandler(entries)
+
+	t.Run("read all with negative n", func(t *testing.T) {
+		result, err := handler(-1)
+		requireNoError(t, err)
+		if len(result) != 2 {
+			t.Errorf("len = %d, want 2", len(result))
+		}
+	})
+
+	t.Run("read with pagination", func(t *testing.T) {
+		handler := mockfs.NewDirHandler(entries)
+		result, err := handler(1)
+		if err != nil {
+			t.Fatalf("first page failed: %v", err)
+		}
+		if len(result) != 1 {
+			t.Errorf("first page len = %d, want 1", len(result))
+		}
+
+		result, err = handler(1)
+		if err != io.EOF {
+			t.Errorf("second page err = %v, want io.EOF", err)
+		}
+		if len(result) != 1 {
+			t.Errorf("second page len = %d, want 1", len(result))
+		}
+
+		result, err = handler(1)
+		if err != io.EOF {
+			t.Errorf("beyond end err = %v, want io.EOF", err)
+		}
+		if len(result) != 0 {
+			t.Errorf("beyond end len = %d, want 0", len(result))
+		}
+	})
+
+	t.Run("read all after exhausted", func(t *testing.T) {
+		handler := mockfs.NewDirHandler(entries)
+		_, _ = handler(-1)
+		result, err := handler(-1)
+		requireNoError(t, err)
+		if len(result) != 0 {
+			t.Errorf("after exhausted len = %d, want 0", len(result))
+		}
+	})
 }
 
 // mockDirEntry is a test helper for directory entries.
