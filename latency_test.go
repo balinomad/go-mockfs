@@ -9,31 +9,6 @@ import (
 	"github.com/balinomad/go-mockfs"
 )
 
-const (
-	testDurationShort = 25 * time.Millisecond
-	testDuration      = 50 * time.Millisecond
-	testDurationLong  = 100 * time.Millisecond
-	tolerance         = 20 * time.Millisecond // Timing tolerance for test flakiness
-)
-
-// assertDuration checks if elapsed time is within expected range.
-func assertDuration(t *testing.T, start time.Time, expected time.Duration, name string) {
-	t.Helper()
-	elapsed := time.Since(start)
-	if elapsed < expected-tolerance || elapsed > expected+tolerance {
-		t.Errorf("%s: expected ~%v, got %v", name, expected, elapsed)
-	}
-}
-
-// assertNoDuration checks that operation completed quickly (no sleep).
-func assertNoDuration(t *testing.T, start time.Time, name string) {
-	t.Helper()
-	elapsed := time.Since(start)
-	if elapsed > tolerance {
-		t.Errorf("%s: expected no latency, but it took %v", name, elapsed)
-	}
-}
-
 func TestNewLatencySimulator(t *testing.T) {
 	t.Run("zero duration", func(t *testing.T) {
 		ls := mockfs.NewLatencySimulator(0)
