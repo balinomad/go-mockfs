@@ -5,7 +5,7 @@ package mockfs
 import (
 	"io"
 	"io/fs"
-	"path/filepath"
+	"path"
 	"strings"
 	"sync"
 	"testing/fstest"
@@ -41,15 +41,15 @@ type WritableFS interface {
 	WriteFile(path string, data []byte, perm fs.FileMode) error
 }
 
-// MockFS wraps fstest.MapFS to inject errors for specific paths and operations.
+// MockFS wraps a file map to inject errors for specific paths and operations.
 type MockFS struct {
-	fsys         fstest.MapFS                         // Internal MapFS.
-	mu           sync.RWMutex                         // Mutex for concurrent file structure operations.
-	injector     ErrorInjector                        // Error injector.
-	counters     *Counters                            // Internal statistics.
-	latency      time.Duration                        // Simulated latency.
-	allowWrites  bool                                 // Flag to enable simulated writes.
-	writeHandler func(path string, data []byte) error // Callback for write operations.
+	files           map[string]*fstest.MapFile // Internal file storage.
+	mu              sync.RWMutex               // Mutex for concurrent file structure operations.
+	injector        ErrorInjector              // Shared error injector.
+	stats           StatsRecorder              // Filesystem-level operation statistics.
+	latency         LatencySimulator           // Shared latency simulator.
+	createIfMissing bool                       // Whether to create files on write if missing.
+	writeMode       writeMode                  // How to apply data to files.
 }
 
 // Ensure interface implementations.
@@ -62,63 +62,109 @@ var (
 	_ WritableFS    = (*MockFS)(nil)
 )
 
-// Option is a function type for configuring MockFS.
-type Option func(*MockFS)
+// MockFSOption is a function type for configuring MockFS.
+type MockFSOption func(*MockFS)
 
-// WithInjector sets the error injector for the MockFS.
-func WithInjector(i ErrorInjector) Option {
+// WithErrorInjector sets the error injector for the MockFS.
+func WithErrorInjector(injector ErrorInjector) MockFSOption {
 	return func(m *MockFS) {
-		if i != nil {
-			m.injector = i
+		if injector != nil {
+			m.injector = injector
 		}
 	}
 }
 
-// WithWritesEnabled allows write operations, simulating them by modifying the internal MapFS.
-// If handler is nil, a default handler that updates the internal map is used.
-//
-// Note: This modifies the underlying map, use with caution if the original map data is important.
-func WithWritesEnabled(handler func(path string, data []byte) error) Option {
+// WithCreateIfMissing sets whether writes should create files when missing.
+// Default behavior is to return an error.
+func WithCreateIfMissing(create bool) MockFSOption {
 	return func(m *MockFS) {
-		m.allowWrites = true
+		m.createIfMissing = create
+	}
+}
 
-		if handler == nil {
-			m.writeHandler = m.defaultWriteHandler
-		} else {
-			m.writeHandler = handler
+// WithReadOnly explicitly marks the filesystem as read-only.
+func WithReadOnly() MockFSOption {
+	return func(m *MockFS) {
+		m.writeMode = writeModeReadOnly
+	}
+}
+
+// WithOverwrite sets the write policy to overwrite existing contents.
+// The existing contents will be replaced by the new data.
+func WithOverwrite() MockFSOption {
+	return func(m *MockFS) {
+		m.writeMode = writeModeOverwrite
+	}
+}
+
+// WithAppend sets the write policy to append data to existing contents.
+// The new data will be appended to the existing contents.
+func WithAppend() MockFSOption {
+	return func(m *MockFS) {
+		m.writeMode = writeModeAppend
+	}
+}
+
+// WithLatency sets the simulated latency for all operations.
+func WithLatency(duration time.Duration) MockFSOption {
+	return func(m *MockFS) {
+		m.latency = NewLatencySimulator(duration)
+	}
+}
+
+// WithLatencySimulator sets a custom latency simulator for operations.
+func WithLatencySimulator(sim LatencySimulator) MockFSOption {
+	return func(m *MockFS) {
+		if sim != nil {
+			m.latency = sim
 		}
 	}
 }
 
-// WithLatency sets the simulated latency for operations.
-func WithLatency(d time.Duration) Option {
+// WithPerOperationLatency sets different latencies for different operations.
+func WithPerOperationLatency(durations map[Operation]time.Duration) MockFSOption {
 	return func(m *MockFS) {
-		m.latency = d
+		m.latency = NewLatencySimulatorPerOp(durations)
 	}
 }
 
-// NewMockFS creates a new MockFS with the given MapFS data and options.
-func NewMockFS(initial map[string]*MapFile, opts ...Option) *MockFS {
-	mapFS := make(fstest.MapFS)
+// NewMockFS creates a new MockFS with the given MapFile data and options.
+// Nil MapFile entries in the initial map are ignored.
+// If no root directory (".") is provided, one is created automatically.
+func NewMockFS(initial map[string]*MapFile, opts ...MockFSOption) *MockFS {
+	files := make(map[string]*fstest.MapFile)
 
-	// Create a copy of the input map to avoid external modifications
-	for path, file := range initial {
-		cleanPath := filepath.Clean(path)
-		if file != nil {
-			newFile := *file
+	// Create a deep copy of the input map to avoid external modifications
+	for p, file := range initial {
+		if file == nil {
+			continue // Skip nil entries
+		}
+		cleanPath := cleanPath(p)
+		newFile := *file
+		if file.Data != nil {
 			newFile.Data = append([]byte(nil), file.Data...)
-			mapFS[cleanPath] = &newFile
-		} else {
-			mapFS[cleanPath] = nil
+		}
+		files[cleanPath] = &newFile
+	}
+
+	// Ensure root directory exists if not explicitly provided
+	if _, exists := files["."]; !exists {
+		files["."] = &fstest.MapFile{
+			Mode:    fs.ModeDir | 0755,
+			ModTime: time.Now(),
 		}
 	}
 
 	m := &MockFS{
-		fsys:     mapFS,
-		injector: NewErrorManager(),
-		counters: NewCounters(),
+		files:           files,
+		injector:        NewErrorInjector(),
+		stats:           NewStatsRecorder(nil),
+		latency:         NewNoopLatencySimulator(),
+		createIfMissing: false,
+		writeMode:       writeModeOverwrite,
 	}
 
+	// Apply options
 	for _, opt := range opts {
 		opt(m)
 	}
@@ -126,118 +172,253 @@ func NewMockFS(initial map[string]*MapFile, opts ...Option) *MockFS {
 	return m
 }
 
-// GetInjector returns the error injector for advanced configuration.
-func (m *MockFS) GetInjector() ErrorInjector {
+// ErrorInjector returns the error injector for advanced configuration.
+func (m *MockFS) ErrorInjector() ErrorInjector {
 	return m.injector
 }
 
-// GetStats returns the current operation counts.
-func (m *MockFS) GetStats() *Counters {
-	return m.counters.Clone()
+// Stats returns a snapshot of filesystem-level operation statistics.
+// This includes operations like Open, Stat, ReadDir, Mkdir, Remove, Rename, and WriteFile.
+// It does NOT include file-handle operations (Read, Write, Close on open files).
+// Use MockFile.Stats() to inspect per-file-handle operations.
+func (m *MockFS) Stats() Stats {
+	return m.stats.Snapshot()
 }
 
-// ResetStats resets all operation counters to zero.
+// ResetStats resets all operation statistics to zero.
 func (m *MockFS) ResetStats() {
-	m.counters.ResetAll()
+	m.stats.Reset()
 }
 
-// Stat intercepts the Stat call and returns configured errors for paths.
+// Stat returns file information for the given path.
 // It implements the fs.StatFS interface.
-func (m *MockFS) Stat(name string) (fs.FileInfo, error) {
-	cleanName := filepath.Clean(name)
+// This is a filesystem-level operation that does not open the file.
+func (m *MockFS) Stat(name string) (info fs.FileInfo, err error) {
+	// Record the result of this operation on exit
+	defer func() { m.stats.Record(OpStat, 0, err) }()
 
-	m.counters.inc(OpStat)
-
-	if err := m.checkAndInjectError(OpStat, cleanName); err != nil {
+	cleanName, err := m.validateAndCleanPath(name, OpStat)
+	if err != nil {
 		return nil, err
 	}
 
-	m.simulateLatency()
+	if err = m.injector.CheckAndApply(OpStat, cleanName); err != nil {
+		return nil, err
+	}
+
+	m.latency.Simulate(OpStat)
 
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	mapFile, exists := m.files[cleanName]
+	m.mu.RUnlock()
 
-	return m.fsys.Stat(cleanName)
+	if !exists {
+		err = &fs.PathError{Op: "Stat", Path: name, Err: fs.ErrNotExist}
+		return nil, err
+	}
+
+	// Build FileInfo from MapFile
+	return &fileInfo{
+		name:    path.Base(cleanName),
+		size:    int64(len(mapFile.Data)),
+		mode:    mapFile.Mode,
+		modTime: mapFile.ModTime,
+	}, nil
 }
 
-// Open intercepts the Open call and returns configured errors for paths.
+// Open opens the named file and returns a MockFile.
 // It implements the fs.FS interface.
-func (m *MockFS) Open(name string) (fs.File, error) {
-	cleanName := filepath.Clean(name)
+// This is a filesystem-level operation. The returned MockFile handles file-level operations.
+func (m *MockFS) Open(name string) (file fs.File, err error) {
+	// Record the result of this operation on exit
+	defer func() { m.stats.Record(OpOpen, 0, err) }()
 
-	m.counters.inc(OpOpen)
-	if err := m.checkAndInjectError(OpOpen, cleanName); err != nil {
+	cleanName, err := m.validateAndCleanPath(name, OpOpen)
+	if err != nil {
 		return nil, err
 	}
 
-	m.simulateLatency()
+	if err = m.injector.CheckAndApply(OpOpen, cleanName); err != nil {
+		return nil, err
+	}
+
+	m.latency.Simulate(OpOpen)
 
 	m.mu.RLock()
-	file, openErr := m.fsys.Open(cleanName)
+	mapFile, exists := m.files[cleanName]
 	m.mu.RUnlock()
-	if openErr != nil {
-		return nil, openErr
+
+	if !exists {
+		err = &fs.PathError{Op: "Open", Path: name, Err: fs.ErrNotExist}
+		return nil, err
 	}
 
-	var writeHandler func([]byte) (int, error)
-	if m.allowWrites {
-		// If the underlying file supports io.Writer, use it.
-		if writer, ok := file.(io.Writer); ok {
-			writeHandler = writer.Write
-		} else if m.writeHandler != nil {
-			// Capture cleanName in closure
-			writeHandler = func(data []byte) (int, error) {
-				if err := m.writeHandler(cleanName, data); err != nil {
-					return 0, err
-				}
-				return len(data), nil
-			}
-		}
+	// Create ReadDir handler for directories
+	var readDirHandler func(int) ([]fs.DirEntry, error)
+	if mapFile.Mode.IsDir() {
+		readDirHandler = m.createReadDirHandler(cleanName)
 	}
 
-	return NewMockFile(
-		file,
+	// Clone latency simulator to give each file handle independent Once() state
+	// while preserving duration configuration
+	clonedLatency := m.latency.Clone()
+
+	// Create MockFile with its own Stats for file-handle operations
+	return newMockFile(
+		mapFile,
 		cleanName,
-		m.checkAndInjectError,
-		m.simulateLatency,
-		m.counters.inc,
-		writeHandler,
+		m.writeMode,
+		m.injector,    // Share error injector
+		clonedLatency, // Independent per file
+		readDirHandler,
+		nil, // Each file gets its own Stats
 	), nil
 }
 
+// createReadDirHandler generates a ReadDir handler for a directory.
+// The handler returns fs.DirEntry implementations that delegate to MockFile.Stat().
+func (m *MockFS) createReadDirHandler(dirPath string) func(int) ([]fs.DirEntry, error) {
+	m.mu.RLock()
+
+	var entries []fs.DirEntry
+	prefix := dirPrefix(dirPath)
+	seen := make(map[string]bool)
+
+	// Collect immediate children only
+	for p, file := range m.files {
+		if p == dirPath {
+			continue // Skip the directory itself
+		}
+
+		var relative string
+		if prefix == "" {
+			relative = p
+		} else if strings.HasPrefix(p, prefix) {
+			relative = p[len(prefix):]
+		} else {
+			continue
+		}
+
+		// Only immediate children (no subdirectories)
+		if idx := strings.Index(relative, "/"); idx != -1 {
+			// This is in a subdirectory, only add the subdirectory once
+			subdirName := relative[:idx]
+			if !seen[subdirName] {
+				seen[subdirName] = true
+				// Look up the actual subdirectory entry
+				subdirPath := joinPath(dirPath, subdirName)
+				if subdir, exists := m.files[subdirPath]; exists {
+					entries = append(entries, &fileInfo{
+						name:    subdirName,
+						mode:    subdir.Mode,
+						modTime: subdir.ModTime,
+						size:    0,
+					})
+				}
+			}
+			continue
+		}
+
+		// Direct child file
+		if !seen[relative] {
+			seen[relative] = true
+			entries = append(entries, &fileInfo{
+				name:    relative,
+				mode:    file.Mode,
+				modTime: file.ModTime,
+				size:    int64(len(file.Data)),
+			})
+		}
+	}
+	m.mu.RUnlock()
+
+	// Return the stateful handler
+	var offset int
+	return func(n int) ([]fs.DirEntry, error) {
+		// Check if we are already at the end
+		if offset >= len(entries) {
+			if n > 0 {
+				return []fs.DirEntry{}, io.EOF
+			}
+			return []fs.DirEntry{}, nil
+		}
+
+		// Calculate the end of the batch
+		end := offset + n
+		if n <= 0 {
+			end = len(entries)
+		}
+		if end > len(entries) {
+			end = len(entries)
+		}
+
+		// Return the batch
+		batch := entries[offset:end]
+		offset = end
+
+		// Handle EOF
+		if n > 0 && offset >= len(entries) {
+			return batch, io.EOF
+		}
+
+		return batch, nil
+	}
+}
+
 // ReadFile implements the fs.ReadFileFS interface.
+// It opens the file, reads it, and closes it.
+// Note: OpOpen is recorded by Open(), OpRead and OpClose by MockFile.
 func (m *MockFS) ReadFile(name string) ([]byte, error) {
-	cleanName := filepath.Clean(name)
+	cleanName, err := m.validateAndCleanPath(name, OpRead)
+	if err != nil {
+		return nil, err
+	}
+
+	// Open delegates to Open() which handles OpOpen tracking
+	// MockFile.Read() and Close() handle their own tracking
 	file, err := m.Open(cleanName)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = file.Close() }()
 
-	data, err := io.ReadAll(file)
+	return io.ReadAll(file)
+}
+
+// ReadDir implements the fs.ReadDirFS interface.
+// This is a filesystem-level operation.
+func (m *MockFS) ReadDir(name string) (entries []fs.DirEntry, err error) {
+	// Record the result of this operation on exit
+	defer func() { m.stats.Record(OpReadDir, 0, err) }()
+
+	cleanName, err := m.validateAndCleanPath(name, OpReadDir)
 	if err != nil {
 		return nil, err
 	}
 
-	return data, nil
-}
-
-// ReadDir implements the fs.ReadDirFS interface.
-func (m *MockFS) ReadDir(name string) ([]fs.DirEntry, error) {
-	cleanName := filepath.Clean(name)
-
-	m.counters.inc(OpReadDir)
-
-	if err := m.checkAndInjectError(OpReadDir, cleanName); err != nil {
+	if err = m.injector.CheckAndApply(OpReadDir, cleanName); err != nil {
 		return nil, err
 	}
 
-	m.simulateLatency()
+	m.latency.Simulate(OpReadDir)
 
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	mapFile, exists := m.files[cleanName]
+	m.mu.RUnlock()
 
-	return m.fsys.ReadDir(cleanName)
+	if !exists {
+		err = &fs.PathError{Op: "ReadDir", Path: name, Err: fs.ErrNotExist}
+		return nil, err
+	}
+
+	if !mapFile.Mode.IsDir() {
+		err = &fs.PathError{Op: "ReadDir", Path: name, Err: ErrNotDir}
+		return nil, err
+	}
+
+	// Use the same handler logic
+	handler := m.createReadDirHandler(cleanName)
+	return handler(-1)
 }
 
 // Sub implements fs.SubFS to return a sub-filesystem.
@@ -249,8 +430,9 @@ func (m *MockFS) Sub(dir string) (fs.FS, error) {
 
 	subFS := NewMockFS(nil)
 	subFS.latency = m.latency
-	subFS.allowWrites = m.allowWrites
-	subFS.writeHandler = m.writeHandler
+	subFS.writeMode = m.writeMode
+	subFS.createIfMissing = m.createIfMissing
+	// Sub filesystem gets its own Stats (not shared with parent)
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -265,20 +447,31 @@ func (m *MockFS) Sub(dir string) (fs.FS, error) {
 
 // validateSubdir cleans and validates the target directory path for Sub.
 func (m *MockFS) validateSubdir(dir string) (cleanDir string, info fs.FileInfo, err error) {
-	cleanDir = filepath.Clean(dir)
-
-	// Validate the directory itself using the parent filesystem's Stat wrapper
-	info, err = m.Stat(cleanDir)
-	if err != nil {
-		return "", nil, &fs.PathError{Op: "sub", Path: dir, Err: err}
+	// Special case: fs.Sub() has specific behavior for ".", which we must replicate
+	// by disallowing it here, as it doesn't make sense for our mock SubFS
+	if dir == "." || dir == "/" || !fs.ValidPath(dir) {
+		return "", nil, &fs.PathError{Op: "Sub", Path: dir, Err: fs.ErrInvalid}
 	}
-	if !info.IsDir() {
-		return "", nil, &fs.PathError{Op: "sub", Path: dir, Err: ErrNotDir}
+	cleanDir = cleanPath(dir)
+
+	// Check if directory exists
+	m.mu.RLock()
+	mapFile, exists := m.files[cleanDir]
+	m.mu.RUnlock()
+
+	if !exists {
+		return "", nil, &fs.PathError{Op: "Sub", Path: dir, Err: fs.ErrNotExist}
 	}
 
-	// Although Stat would likely fail for these cases, we check them here as well
-	if !fs.ValidPath(cleanDir) || cleanDir == "." || cleanDir == "/" {
-		return "", nil, &fs.PathError{Op: "sub", Path: dir, Err: fs.ErrInvalid}
+	if !mapFile.Mode.IsDir() {
+		return "", nil, &fs.PathError{Op: "Sub", Path: dir, Err: ErrNotDir}
+	}
+
+	info = &fileInfo{
+		name:    path.Base(cleanDir),
+		size:    0,
+		mode:    mapFile.Mode,
+		modTime: mapFile.ModTime,
 	}
 
 	return cleanDir, info, nil
@@ -287,29 +480,27 @@ func (m *MockFS) validateSubdir(dir string) (cleanDir string, info fs.FileInfo, 
 // copyFilesToSubFS populates the sub-filesystem's file map from the parent.
 // It assumes the caller has acquired the necessary read lock on the parent MockFS.
 func (m *MockFS) copyFilesToSubFS(subFS *MockFS, cleanDir string, dirInfo fs.FileInfo) {
-	prefix := cleanDir
-	if !strings.HasSuffix(prefix, "/") {
-		prefix += "/"
-	}
+	prefix := cleanDir + "/"
 
 	// Map the directory itself to "." in the sub-filesystem
-	subFS.fsys["."] = &fstest.MapFile{
+	subFS.files["."] = &fstest.MapFile{
 		Mode:    dirInfo.Mode() | fs.ModeDir,
 		ModTime: dirInfo.ModTime(),
-		Sys:     dirInfo.Sys(),
 	}
 
-	// Copy all descendant files from the parent's underlying fsys
-	for path, file := range m.fsys {
-		if strings.HasPrefix(path, prefix) {
+	// Copy all descendant files
+	for p, file := range m.files {
+		if strings.HasPrefix(p, prefix) {
 			// Get path relative to subDir
-			subPath := path[len(prefix):]
+			subPath := p[len(prefix):]
 
-			// Copy the MapFile to the sub filesystem, ensuring data is a deep copy
+			// Deep copy the MapFile to the sub filesystem
 			if file != nil {
 				newFile := *file
-				newFile.Data = append([]byte(nil), file.Data...)
-				subFS.fsys[subPath] = &newFile
+				if file.Data != nil {
+					newFile.Data = append([]byte(nil), file.Data...)
+				}
+				subFS.files[subPath] = &newFile
 			}
 		}
 	}
@@ -317,125 +508,211 @@ func (m *MockFS) copyFilesToSubFS(subFS *MockFS, cleanDir string, dirInfo fs.Fil
 
 // --- File/Directory Management ---
 
-// AddFileString adds a text file to the mock filesystem. Overwrites if exists.
-func (m *MockFS) AddFileString(path string, content string, mode fs.FileMode) {
+// AddFile adds a text file to the mock filesystem.
+// If the file already exists, it is overwritten.
+// Returns an error if the path is invalid.
+func (m *MockFS) AddFile(filePath string, content string, mode fs.FileMode) error {
+	return m.addFile(filePath, []byte(content), mode)
+}
+
+// AddFileBytes adds a binary file to the mock filesystem.
+// If the file already exists, it is overwritten.
+// Returns an error if the path is invalid.
+func (m *MockFS) AddFileBytes(filePath string, content []byte, mode fs.FileMode) error {
+	return m.addFile(filePath, content, mode)
+}
+
+// addFile is the internal implementation for adding files.
+func (m *MockFS) addFile(filePath string, content []byte, mode fs.FileMode) error {
+	// Validate original path first; it should not have a trailing slash
+	if !fs.ValidPath(filePath) || strings.HasSuffix(filePath, "/") {
+		return &fs.PathError{Op: "AddFile", Path: filePath, Err: fs.ErrInvalid}
+	}
+
+	cleanPath := cleanPath(filePath)
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	cleanPath := filepath.Clean(path)
-	if !fs.ValidPath(cleanPath) || strings.HasSuffix(cleanPath, "/") {
-		return
-	}
-	m.fsys[cleanPath] = &fstest.MapFile{
-		Data:    []byte(content),
+	m.files[cleanPath] = &fstest.MapFile{
+		Data:    append([]byte(nil), content...), // Deep copy
 		Mode:    mode &^ fs.ModeDir,
 		ModTime: time.Now(),
 	}
+	return nil
 }
 
-// AddFileBytes adds a binary file to the mock filesystem. Overwrites if exists.
-func (m *MockFS) AddFileBytes(path string, content []byte, mode fs.FileMode) {
+// AddDir adds a directory to the mock filesystem.
+// If the directory already exists, it is overwritten.
+// Returns an error if the path is invalid.
+func (m *MockFS) AddDir(dirPath string, mode fs.FileMode) error {
+	// Disallow adding "." as a directory explicitly
+	if !fs.ValidPath(dirPath) || dirPath == "." {
+		return &fs.PathError{Op: "AddDir", Path: dirPath, Err: fs.ErrInvalid}
+	}
+
+	cleanPath := cleanPath(dirPath)
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	cleanPath := filepath.Clean(path)
-	if !fs.ValidPath(cleanPath) || strings.HasSuffix(cleanPath, "/") {
-		return
-	}
-	dataCopy := append([]byte(nil), content...)
-	m.fsys[cleanPath] = &fstest.MapFile{
-		Data:    dataCopy,
-		Mode:    mode &^ fs.ModeDir,
-		ModTime: time.Now(),
-	}
-}
-
-// AddDirectory adds a directory to the mock filesystem. Overwrites if exists.
-func (m *MockFS) AddDirectory(path string, mode fs.FileMode) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	cleanPath := filepath.Clean(path)
-	if !fs.ValidPath(cleanPath) || cleanPath == "." {
-		return
-	}
-	m.fsys[cleanPath] = &fstest.MapFile{
+	m.files[cleanPath] = &fstest.MapFile{
 		Mode:    (mode & fs.ModePerm) | fs.ModeDir,
 		ModTime: time.Now(),
 		// Data should be nil for directory
 	}
+	return nil
 }
 
 // RemovePath removes a file or directory from the mock filesystem.
 // Note: This does not recursively remove directory contents.
-func (m *MockFS) RemovePath(path string) {
+// Returns an error if the path is invalid.
+func (m *MockFS) RemovePath(filePath string) error {
+	if !fs.ValidPath(filePath) {
+		return &fs.PathError{Op: "RemovePath", Path: filePath, Err: fs.ErrInvalid}
+	}
+
+	cleanPath := cleanPath(filePath)
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	cleanPath := filepath.Clean(path)
-	delete(m.fsys, cleanPath)
+	delete(m.files, cleanPath)
+	return nil
 }
 
-// --- Error Injection Configuration (Convenience Methods) ---
+// --- Error Injection Configuration ---
 
-// AddStatError configures a path to return the specified error on Stat.
-// It is a convenience method for AddErrorExactMatch with ErrorModeAlways mode.
-func (m *MockFS) AddStatError(path string, err error) {
+// FailStat configures a path to return the specified error on Stat operations.
+func (m *MockFS) FailStat(path string, err error) {
 	m.injector.AddExact(OpStat, path, err, ErrorModeAlways, 0)
 }
 
-// AddOpenError configures a path to return the specified error on Open calls.
-// It is a convenience method for AddErrorExactMatch with ErrorModeAlways mode.
-func (m *MockFS) AddOpenError(path string, err error) {
+// FailStatOnce configures a path to return the specified error once on Stat operations.
+func (m *MockFS) FailStatOnce(path string, err error) {
+	m.injector.AddExact(OpStat, path, err, ErrorModeOnce, 0)
+}
+
+// FailOpen configures a path to return the specified error on Open operations.
+func (m *MockFS) FailOpen(path string, err error) {
 	m.injector.AddExact(OpOpen, path, err, ErrorModeAlways, 0)
 }
 
-// AddReadError configures a path to return the specified error on Read calls.
-// It is a convenience method for AddErrorExactMatch with ErrorModeAlways mode.
-func (m *MockFS) AddReadError(path string, err error) {
-	m.injector.AddExact(OpRead, path, err, ErrorModeAlways, 0)
-}
-
-// AddWriteError configures a path to return the specified error on Write calls.
-// It is a convenience method for AddErrorExactMatch with ErrorModeAlways mode.
-func (m *MockFS) AddWriteError(path string, err error) {
-	m.injector.AddExact(OpWrite, path, err, ErrorModeAlways, 0)
-}
-
-// AddReadDirError configures a path to return the specified error on ReadDir calls.
-// It is a convenience method for AddErrorExactMatch with ErrorModeAlways mode.
-func (m *MockFS) AddReadDirError(path string, err error) {
-	m.injector.AddExact(OpReadDir, path, err, ErrorModeAlways, 0)
-}
-
-// AddCloseError configures a path to return the specified error on Close calls.
-// It is a convenience method for AddErrorExactMatch with ErrorModeAlways mode.
-func (m *MockFS) AddCloseError(path string, err error) {
-	m.injector.AddExact(OpClose, path, err, ErrorModeAlways, 0)
-}
-
-// AddOpenErrorOnce configures a path to return the specified error once on Open calls.
-// It is a convenience method for AddErrorExactMatch with ErrorModeOnce mode.
-func (m *MockFS) AddOpenErrorOnce(path string, err error) {
+// FailOpenOnce configures a path to return the specified error once on Open operations.
+func (m *MockFS) FailOpenOnce(path string, err error) {
 	m.injector.AddExact(OpOpen, path, err, ErrorModeOnce, 0)
 }
 
-// AddReadErrorAfterN configures a read error after N successful reads.
-// It is a convenience method for AddErrorExactMatch with ErrorModeAfterSuccesses mode.
-func (m *MockFS) AddReadErrorAfterN(path string, err error, successes uint64) {
+// FailRead configures a path to return the specified error on Read operations.
+func (m *MockFS) FailRead(path string, err error) {
+	m.injector.AddExact(OpRead, path, err, ErrorModeAlways, 0)
+}
+
+// FailReadOnce configures a path to return the specified error once on Read operations.
+func (m *MockFS) FailReadOnce(path string, err error) {
+	m.injector.AddExact(OpRead, path, err, ErrorModeOnce, 0)
+}
+
+// FailReadAfter configures a read error after N successful reads.
+func (m *MockFS) FailReadAfter(path string, err error, successes int) {
 	m.injector.AddExact(OpRead, path, err, ErrorModeAfterSuccesses, successes)
 }
 
-// MarkNonExistent injects ErrNotExist for all operations on the given paths.
+// FailWrite configures a path to return the specified error on Write operations.
+func (m *MockFS) FailWrite(path string, err error) {
+	m.injector.AddExact(OpWrite, path, err, ErrorModeAlways, 0)
+}
+
+// FailWriteOnce configures a path to return the specified error once on Write operations.
+func (m *MockFS) FailWriteOnce(path string, err error) {
+	m.injector.AddExact(OpWrite, path, err, ErrorModeOnce, 0)
+}
+
+// FailReadDir configures a path to return the specified error on ReadDir operations.
+func (m *MockFS) FailReadDir(path string, err error) {
+	m.injector.AddExact(OpReadDir, path, err, ErrorModeAlways, 0)
+}
+
+// FailReadDirOnce configures a path to return the specified error once on ReadDir operations.
+func (m *MockFS) FailReadDirOnce(path string, err error) {
+	m.injector.AddExact(OpReadDir, path, err, ErrorModeOnce, 0)
+}
+
+// FailClose configures a path to return the specified error on Close operations.
+func (m *MockFS) FailClose(path string, err error) {
+	m.injector.AddExact(OpClose, path, err, ErrorModeAlways, 0)
+}
+
+// FailCloseOnce configures a path to return the specified error once on Close operations.
+func (m *MockFS) FailCloseOnce(path string, err error) {
+	m.injector.AddExact(OpClose, path, err, ErrorModeOnce, 0)
+}
+
+// FailMkdir configures a path to return the specified error on Mkdir operations.
+func (m *MockFS) FailMkdir(path string, err error) {
+	m.injector.AddExact(OpMkdir, path, err, ErrorModeAlways, 0)
+}
+
+// FailMkdirOnce configures a path to return the specified error once on Mkdir operations.
+func (m *MockFS) FailMkdirOnce(path string, err error) {
+	m.injector.AddExact(OpMkdir, path, err, ErrorModeOnce, 0)
+}
+
+// FailMkdirAll configures a path to return the specified error on MkdirAll operations.
+func (m *MockFS) FailMkdirAll(path string, err error) {
+	m.injector.AddExact(OpMkdirAll, path, err, ErrorModeAlways, 0)
+}
+
+// FailMkdirAllOnce configures a path to return the specified error once on MkdirAll operations.
+func (m *MockFS) FailMkdirAllOnce(path string, err error) {
+	m.injector.AddExact(OpMkdirAll, path, err, ErrorModeOnce, 0)
+}
+
+// FailRemove configures a path to return the specified error on Remove operations.
+func (m *MockFS) FailRemove(path string, err error) {
+	m.injector.AddExact(OpRemove, path, err, ErrorModeAlways, 0)
+}
+
+// FailRemoveOnce configures a path to return the specified error once on Remove operations.
+func (m *MockFS) FailRemoveOnce(path string, err error) {
+	m.injector.AddExact(OpRemove, path, err, ErrorModeOnce, 0)
+}
+
+// FailRemoveAll configures a path to return the specified error on RemoveAll operations.
+func (m *MockFS) FailRemoveAll(path string, err error) {
+	m.injector.AddExact(OpRemoveAll, path, err, ErrorModeAlways, 0)
+}
+
+// FailRemoveAllOnce configures a path to return the specified error once on RemoveAll operations.
+func (m *MockFS) FailRemoveAllOnce(path string, err error) {
+	m.injector.AddExact(OpRemoveAll, path, err, ErrorModeOnce, 0)
+}
+
+// FailRename configures a path to return the specified error on Rename operations.
+func (m *MockFS) FailRename(path string, err error) {
+	m.injector.AddExact(OpRename, path, err, ErrorModeAlways, 0)
+}
+
+// FailRenameOnce configures a path to return the specified error once on Rename operations.
+func (m *MockFS) FailRenameOnce(path string, err error) {
+	m.injector.AddExact(OpRename, path, err, ErrorModeOnce, 0)
+}
+
+// MarkNonExistent configures paths to return ErrNotExist for all operations.
+// This removes the paths from the internal map and injects errors.
+//
+// Note: If you later add files at these paths using AddFile/AddFileBytes,
+// the file will exist in the map but error injection will still apply.
+// Use ClearErrors or remove specific injection rules if needed.
 func (m *MockFS) MarkNonExistent(paths ...string) {
-	for _, path := range paths {
-		cleanPath := filepath.Clean(path)
-		m.RemovePath(cleanPath) // Remove from map first
-		m.injector.AddForPathAllOps(cleanPath, fs.ErrNotExist, ErrorModeAlways, 0)
+	for _, p := range paths {
+		cleanPath := cleanPath(p)
+		_ = m.RemovePath(cleanPath) // Remove from map first
+		m.injector.AddGlobForAllOps(cleanPath, fs.ErrNotExist, ErrorModeAlways, 0)
 	}
 }
 
-// ClearErrors removes all configured errors for all operations.
+// ClearErrors removes all configured error injection rules for all operations.
 func (m *MockFS) ClearErrors() {
 	m.injector.Clear()
 }
@@ -443,38 +720,45 @@ func (m *MockFS) ClearErrors() {
 // --- WritableFS Implementation ---
 
 // Mkdir creates a directory in the filesystem.
-func (m *MockFS) Mkdir(path string, perm fs.FileMode) error {
-	cleanPath := filepath.Clean(path)
+func (m *MockFS) Mkdir(dirPath string, perm fs.FileMode) (err error) {
+	// Record the result of this operation on exit
+	defer func() { m.stats.Record(OpMkdir, 0, err) }()
 
-	m.counters.inc(OpMkdir)
-
-	if err := m.checkAndInjectError(OpMkdir, cleanPath); err != nil {
+	cleanPath, err := m.validateAndCleanPath(dirPath, OpMkdir)
+	if err != nil {
 		return err
 	}
 
-	m.simulateLatency()
+	if err = m.injector.CheckAndApply(OpMkdir, cleanPath); err != nil {
+		return err
+	}
+
+	m.latency.Simulate(OpMkdir)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Check if already exists
-	if _, exists := m.fsys[cleanPath]; exists {
-		return &fs.PathError{Op: "mkdir", Path: path, Err: fs.ErrExist}
+	if _, exists := m.files[cleanPath]; exists {
+		err = &fs.PathError{Op: "Mkdir", Path: dirPath, Err: fs.ErrExist}
+		return err
 	}
 
 	// Check parent exists and is a directory
-	parent := filepath.Dir(cleanPath)
-	if parent != "." {
-		parentFile, exists := m.fsys[parent]
+	parent := path.Dir(cleanPath)
+	if parent != "." && parent != cleanPath {
+		parentFile, exists := m.files[parent]
 		if !exists {
-			return &fs.PathError{Op: "mkdir", Path: path, Err: fs.ErrNotExist}
+			err = &fs.PathError{Op: "Mkdir", Path: dirPath, Err: fs.ErrNotExist}
+			return err
 		}
 		if !parentFile.Mode.IsDir() {
-			return &fs.PathError{Op: "mkdir", Path: path, Err: ErrNotDir}
+			err = &fs.PathError{Op: "Mkdir", Path: dirPath, Err: ErrNotDir}
+			return err
 		}
 	}
 
-	m.fsys[cleanPath] = &fstest.MapFile{
+	m.files[cleanPath] = &fstest.MapFile{
 		Mode:    (perm & fs.ModePerm) | fs.ModeDir,
 		ModTime: time.Now(),
 	}
@@ -482,45 +766,54 @@ func (m *MockFS) Mkdir(path string, perm fs.FileMode) error {
 }
 
 // MkdirAll creates a directory path and all parents if needed.
-func (m *MockFS) MkdirAll(path string, perm fs.FileMode) error {
-	cleanPath := filepath.Clean(path)
+func (m *MockFS) MkdirAll(dirPath string, perm fs.FileMode) (err error) {
+	// Record the result of this operation on exit
+	defer func() { m.stats.Record(OpMkdirAll, 0, err) }()
 
-	m.counters.inc(OpMkdirAll)
-
-	if err := m.checkAndInjectError(OpMkdirAll, cleanPath); err != nil {
+	cleanPath, err := m.validateAndCleanPath(dirPath, OpMkdirAll)
+	if err != nil {
 		return err
 	}
 
-	m.simulateLatency()
+	if err = m.injector.CheckAndApply(OpMkdirAll, cleanPath); err != nil {
+		return err
+	}
+
+	m.latency.Simulate(OpMkdirAll)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Check if already exists
-	if existing, exists := m.fsys[cleanPath]; exists {
+	if existing, exists := m.files[cleanPath]; exists {
 		if !existing.Mode.IsDir() {
-			return &fs.PathError{Op: "mkdir", Path: path, Err: ErrNotDir}
+			err = &fs.PathError{Op: "MkdirAll", Path: dirPath, Err: ErrNotDir}
+			return err
 		}
 		return nil
 	}
 
 	// Create all parent directories
-	parts := strings.Split(cleanPath, string(filepath.Separator))
+	parts := strings.Split(cleanPath, "/")
 	currentPath := ""
-	for _, part := range parts {
-		if part == "" || part == "." {
+	for i, part := range parts {
+		if part == "" {
 			continue
 		}
-		if currentPath == "" {
-			currentPath = part
-		} else {
-			currentPath = filepath.Join(currentPath, part)
+		if i > 0 {
+			currentPath += "/"
 		}
+		currentPath += part
 
-		if _, exists := m.fsys[currentPath]; !exists {
-			m.fsys[currentPath] = &fstest.MapFile{
+		if _, exists := m.files[currentPath]; !exists {
+			m.files[currentPath] = &fstest.MapFile{
 				Mode:    (perm & fs.ModePerm) | fs.ModeDir,
 				ModTime: time.Now(),
+			}
+		} else {
+			if !m.files[currentPath].Mode.IsDir() {
+				err = &fs.PathError{Op: "MkdirAll", Path: dirPath, Err: ErrNotDir}
+				return err
 			}
 		}
 	}
@@ -529,59 +822,70 @@ func (m *MockFS) MkdirAll(path string, perm fs.FileMode) error {
 }
 
 // Remove removes a file or directory from the filesystem.
-func (m *MockFS) Remove(path string) error {
-	cleanPath := filepath.Clean(path)
+// Directories must be empty to be removed.
+func (m *MockFS) Remove(filePath string) (err error) {
+	// Record the result of this operation on exit
+	defer func() { m.stats.Record(OpRemove, 0, err) }()
 
-	m.counters.inc(OpRemove)
-
-	if err := m.checkAndInjectError(OpRemove, cleanPath); err != nil {
+	cleanPath, err := m.validateAndCleanPath(filePath, OpRemove)
+	if err != nil {
 		return err
 	}
 
-	m.simulateLatency()
+	if err = m.injector.CheckAndApply(OpRemove, cleanPath); err != nil {
+		return err
+	}
+
+	m.latency.Simulate(OpRemove)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	file, exists := m.fsys[cleanPath]
+	file, exists := m.files[cleanPath]
 	if !exists {
-		return &fs.PathError{Op: "remove", Path: path, Err: fs.ErrNotExist}
+		err = &fs.PathError{Op: "Remove", Path: filePath, Err: fs.ErrNotExist}
+		return err
 	}
 
 	// If it's a directory, check it's empty
 	if file.Mode.IsDir() {
 		prefix := cleanPath + "/"
-		for p := range m.fsys {
+		for p := range m.files {
 			if strings.HasPrefix(p, prefix) {
-				return &fs.PathError{Op: "remove", Path: path, Err: ErrNotDir}
+				err = &fs.PathError{Op: "Remove", Path: filePath, Err: ErrNotEmpty}
+				return err
 			}
 		}
 	}
 
-	delete(m.fsys, cleanPath)
+	delete(m.files, cleanPath)
 	return nil
 }
 
 // RemoveAll removes a path and any children recursively.
-func (m *MockFS) RemoveAll(path string) error {
-	cleanPath := filepath.Clean(path)
+func (m *MockFS) RemoveAll(filePath string) (err error) {
+	// Record the result of this operation on exit
+	defer func() { m.stats.Record(OpRemoveAll, 0, err) }()
 
-	m.counters.inc(OpRemoveAll)
-
-	if err := m.checkAndInjectError(OpRemoveAll, cleanPath); err != nil {
+	cleanPath, err := m.validateAndCleanPath(filePath, OpRemoveAll)
+	if err != nil {
 		return err
 	}
 
-	m.simulateLatency()
+	if err = m.injector.CheckAndApply(OpRemoveAll, cleanPath); err != nil {
+		return err
+	}
+
+	m.latency.Simulate(OpRemoveAll)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Remove the path itself and all children
 	prefix := cleanPath + "/"
-	for p := range m.fsys {
+	for p := range m.files {
 		if p == cleanPath || strings.HasPrefix(p, prefix) {
-			delete(m.fsys, p)
+			delete(m.files, p)
 		}
 	}
 
@@ -589,24 +893,34 @@ func (m *MockFS) RemoveAll(path string) error {
 }
 
 // Rename renames a file or directory in the filesystem.
-func (m *MockFS) Rename(oldpath, newpath string) error {
-	cleanOld := filepath.Clean(oldpath)
-	cleanNew := filepath.Clean(newpath)
+// If the destination already exists, it will be overwritten.
+func (m *MockFS) Rename(oldpath, newpath string) (err error) {
+	// Record the result of this operation on exit
+	defer func() { m.stats.Record(OpRename, 0, err) }()
 
-	m.counters.inc(OpRename)
-
-	if err := m.checkAndInjectError(OpRename, cleanOld); err != nil {
+	cleanOld, err := m.validateAndCleanPath(oldpath, OpRename)
+	if err != nil {
 		return err
 	}
 
-	m.simulateLatency()
+	cleanNew, err := m.validateAndCleanPath(newpath, OpRename)
+	if err != nil {
+		return err
+	}
+
+	if err = m.injector.CheckAndApply(OpRename, cleanOld); err != nil {
+		return err
+	}
+
+	m.latency.Simulate(OpRename)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	oldFile, exists := m.fsys[cleanOld]
+	oldFile, exists := m.files[cleanOld]
 	if !exists {
-		return &fs.PathError{Op: "rename", Path: oldpath, Err: fs.ErrNotExist}
+		err = &fs.PathError{Op: "Rename", Path: oldpath, Err: fs.ErrNotExist}
+		return err
 	}
 
 	// Copy to new location
@@ -614,87 +928,121 @@ func (m *MockFS) Rename(oldpath, newpath string) error {
 	if oldFile.Data != nil {
 		newFile.Data = append([]byte(nil), oldFile.Data...)
 	}
-	m.fsys[cleanNew] = &newFile
+	newFile.ModTime = time.Now()
+	m.files[cleanNew] = &newFile
 
 	// If directory, rename all children
 	if oldFile.Mode.IsDir() {
 		oldPrefix := cleanOld + "/"
 		newPrefix := cleanNew + "/"
-		for p, f := range m.fsys {
+		for p, f := range m.files {
 			if strings.HasPrefix(p, oldPrefix) {
-				newPath := newPrefix + p[len(oldPrefix):]
+				newP := newPrefix + p[len(oldPrefix):]
 				childFile := *f
 				if f.Data != nil {
 					childFile.Data = append([]byte(nil), f.Data...)
 				}
-				m.fsys[newPath] = &childFile
-				delete(m.fsys, p)
+				m.files[newP] = &childFile
+				delete(m.files, p)
 			}
 		}
 	}
 
 	// Remove old location
-	delete(m.fsys, cleanOld)
+	delete(m.files, cleanOld)
 	return nil
 }
 
 // WriteFile writes data to a file in the filesystem.
-func (m *MockFS) WriteFile(path string, data []byte, perm fs.FileMode) error {
-	if !m.allowWrites {
-		return &fs.PathError{Op: "writefile", Path: path, Err: fs.ErrInvalid}
-	}
+func (m *MockFS) WriteFile(filePath string, data []byte, perm fs.FileMode) (err error) {
+	// Record the result of this operation on exit
+	// We record len(data) as bytes written, assuming a full write or failure
+	defer func() { m.stats.Record(OpWrite, len(data), err) }()
 
-	cleanPath := filepath.Clean(path)
-
-	m.counters.inc(OpWrite)
-
-	if err := m.checkAndInjectError(OpWrite, cleanPath); err != nil {
+	cleanPath, err := m.validateAndCleanPath(filePath, OpWrite)
+	if err != nil {
 		return err
 	}
 
-	m.simulateLatency()
-
-	return m.writeHandler(cleanPath, data)
-}
-
-// --- Internal Helpers ---
-
-// simulateLatency introduces an artificial delay if configured.
-func (m *MockFS) simulateLatency() {
-	if m.latency > 0 {
-		time.Sleep(m.latency)
+	if err = m.injector.CheckAndApply(OpWrite, cleanPath); err != nil {
+		return err
 	}
-}
 
-// checkAndInjectError checks if an error should be injected for the operation and path.
-// It returns the error if applicable.
-func (m *MockFS) checkAndInjectError(op Operation, path string) error {
-	return m.injector.CheckAndApply(op, path)
-}
+	m.latency.Simulate(OpWrite)
 
-// defaultWriteHandler is the default write callback for MockFS.
-// It creates new files or overwrites existing ones with the provided data.
-func (m *MockFS) defaultWriteHandler(path string, data []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	cleanPath := filepath.Clean(path)
+	// Check write mode restrictions
+	if m.writeMode == writeModeReadOnly {
+		err = &fs.PathError{Op: "Write", Path: filePath, Err: ErrPermission}
+		return err
+	}
 
 	// Find the existing file or create if it doesn't exist
-	existing, ok := m.fsys[cleanPath]
+	existing, ok := m.files[cleanPath]
 	if !ok {
-		// Create a new MapFile entry.
-		m.fsys[cleanPath] = &fstest.MapFile{
+		if !m.createIfMissing {
+			err = &fs.PathError{Op: "Write", Path: filePath, Err: ErrNotExist}
+			return err
+		}
+
+		// Create a new MapFile entry
+		m.files[cleanPath] = &fstest.MapFile{
 			Data:    append([]byte(nil), data...), // Copy data
-			Mode:    0644,                         // Default mode
+			Mode:    perm &^ fs.ModeDir,
 			ModTime: time.Now(),
 		}
 		return nil
 	}
 
-	// Overwrite data for existing file
-	existing.Data = append([]byte(nil), data...) // Make a copy
-	existing.ModTime = time.Now()
+	// Apply write mode
+	switch m.writeMode {
+	case writeModeAppend:
+		// Append data to existing file
+		existing.Data = append(existing.Data, data...)
+		existing.ModTime = time.Now()
+		return nil
 
-	return nil
+	case writeModeOverwrite:
+		// Overwrite data for existing file
+		existing.Data = append([]byte(nil), data...) // Make a copy
+		existing.ModTime = time.Now()
+		return nil
+
+	default:
+		panic("mockfs: invalid writeMode state")
+	}
+}
+
+// --- Internal Helpers ---
+
+// validateAndCleanPath validates and cleans the path, returning an error if invalid.
+// Path validation happens before any other operation (including error injection).
+func (m *MockFS) validateAndCleanPath(p string, op Operation) (string, error) {
+	if !fs.ValidPath(p) {
+		return "", &fs.PathError{Op: op.String(), Path: p, Err: fs.ErrInvalid}
+	}
+	return cleanPath(p), nil
+}
+
+// cleanPath returns the shortest path name equivalent to path by purely lexical processing.
+func cleanPath(p string) string {
+	return path.Clean(p)
+}
+
+// dirPrefix returns the prefix for directory filtering.
+func dirPrefix(dirPath string) string {
+	if dirPath == "." {
+		return ""
+	}
+	return dirPath + "/"
+}
+
+// joinPath joins directory and name, handling "." correctly.
+func joinPath(dirPath, name string) string {
+	if dirPath == "." {
+		return name
+	}
+	return dirPath + "/" + name
 }
