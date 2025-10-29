@@ -37,6 +37,8 @@ type fileBackend interface {
 type MockFile interface {
 	fs.ReadDirFile
 	io.Writer
+	io.Seeker
+	io.Closer
 	fileBackend
 }
 
@@ -61,6 +63,7 @@ var (
 	_ io.Reader      = (*mockFile)(nil)
 	_ io.Writer      = (*mockFile)(nil)
 	_ io.Closer      = (*mockFile)(nil)
+	_ io.Seeker      = (*mockFile)(nil)
 	_ fileBackend    = (*mockFile)(nil)
 )
 
@@ -348,6 +351,47 @@ func (f *mockFile) Write(b []byte) (n int, err error) {
 	default:
 		panic("mockfs: invalid writeMode")
 	}
+}
+
+// Seek implements io.Seeker for MockFile.
+// It sets the offset for the next Read or Write operation.
+func (f *mockFile) Seek(offset int64, whence int) (n int64, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// Record the result of this operation on exit
+	defer func() { f.stats.Record(OpSeek, int(n), err) }()
+
+	if f.closed {
+		return 0, fs.ErrClosed
+	}
+
+	// Simulate latency before checking for errors (models real I/O timing)
+	f.latency.Simulate(OpSeek)
+
+	if err = f.injector.CheckAndApply(OpSeek, f.name); err != nil {
+		return 0, err
+	}
+
+	switch whence {
+	case io.SeekStart:
+		n = offset
+	case io.SeekCurrent:
+		n = f.position + offset
+	case io.SeekEnd:
+		n = int64(len(f.mapFile.Data)) + offset
+	default:
+		err = &fs.PathError{Op: "Seek", Path: f.name, Err: fs.ErrInvalid}
+		return 0, err
+	}
+
+	if n < 0 {
+		err = &fs.PathError{Op: "Seek", Path: f.name, Err: fs.ErrInvalid}
+		return 0, err
+	}
+
+	f.position = n
+	return n, nil
 }
 
 // ReadDir reads the contents of the directory and returns

@@ -177,6 +177,39 @@ func TestNewMockFileForReadWrite(t *testing.T) {
 	assertNoDuration(t, start, "close should be fast")
 }
 
+// TestMockFile_Seek tests Seek operation.
+func TestMockFile_Seek(t *testing.T) {
+	file := mockfs.NewMockFileFromString("test.txt", "0123456789")
+
+	// Seek to 4
+	_, err := file.Seek(4, io.SeekStart)
+	if err != nil {
+		t.Fatalf("seek to 4 failed: %v", err)
+	}
+
+	// Read from offset 4
+	buf := make([]byte, 5)
+	n, err := file.Read(buf)
+	if err != nil {
+		t.Fatalf("read from offset 4 failed: %v", err)
+	}
+	if n != 5 || string(buf) != "45678" {
+		t.Errorf("read from offset 4 = %q, want %q", buf[:n], "45678")
+	}
+
+	// Seek to end
+	_, err = file.Seek(0, io.SeekEnd)
+	if err != nil {
+		t.Fatalf("seek to end failed: %v", err)
+	}
+
+	// Read from end
+	_, err = file.Read(buf)
+	if err != io.EOF {
+		t.Errorf("read from end = %v, want %v", err, io.EOF)
+	}
+}
+
 // TestNewMockDirectory tests directory constructor.
 func TestNewMockDirectory(t *testing.T) {
 	t.Run("with handler", func(t *testing.T) {

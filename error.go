@@ -117,6 +117,7 @@ const (
 	OpOpen      // OpOpen represents the Open operation.
 	OpRead      // OpRead represents the Read operation.
 	OpWrite     // OpWrite represents the Write operation.
+	OpSeek      // OpSeek represents the Seek operation.
 	OpClose     // OpClose represents the Close operation.
 	OpReadDir   // OpReadDir represents the ReadDir operation.
 	OpMkdir     // OpMkdir represents the Mkdir operation.
@@ -137,6 +138,7 @@ var operationNames = map[Operation]string{
 	OpOpen:           "Open",
 	OpRead:           "Read",
 	OpWrite:          "Write",
+	OpSeek:           "Seek",
 	OpClose:          "Close",
 	OpReadDir:        "ReadDir",
 	OpMkdir:          "Mkdir",
