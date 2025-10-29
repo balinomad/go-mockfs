@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: test fulltest bench cover fullcover cyclo fullcyclo
+.PHONY: test fulltest bench cover fullcover cyclo fullcyclo examples
 
 test:
 	@go test -timeout 30s ./...
@@ -40,3 +40,6 @@ cyclo:
 fullcyclo:
 	@clear
 	@gocyclo . || true
+
+examples:
+	go test -v -run Example
