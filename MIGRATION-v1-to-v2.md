@@ -1,4 +1,4 @@
-# `movkfs` *v1* to *v2* Migration Guide
+# `mockfs` *v1* to *v2* Migration Guide
 
 ## Table of Contents
 
