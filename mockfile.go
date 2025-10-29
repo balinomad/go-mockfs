@@ -415,7 +415,7 @@ func (f *mockFile) Stat() (info fs.FileInfo, err error) {
 	mode := f.mapFile.Mode
 	modTime := f.mapFile.ModTime
 
-	return &fileInfo{
+	return &FileInfo{
 		name:    name,
 		size:    size,
 		mode:    mode,

@@ -22,6 +22,17 @@ func requireNoError(t *testing.T, err error) {
 	}
 }
 
+// requirePanic fails test immediately if fn does not panic.
+func requirePanic(t *testing.T, fn func(), name string) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("%s did not panic as expected", name)
+		}
+	}()
+	fn()
+}
+
 // assertPanic verifies that fn panics; fails test if no panic occurs.
 func assertPanic(t *testing.T, fn func(), name string) {
 	t.Helper()

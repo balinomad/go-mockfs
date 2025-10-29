@@ -218,7 +218,7 @@ func (m *MockFS) Stat(name string) (info fs.FileInfo, err error) {
 	}
 
 	// Build FileInfo from MapFile
-	return &fileInfo{
+	return &FileInfo{
 		name:    path.Base(cleanName),
 		size:    int64(len(mapFile.Data)),
 		mode:    mapFile.Mode,
@@ -308,7 +308,7 @@ func (m *MockFS) createReadDirHandler(dirPath string) func(int) ([]fs.DirEntry, 
 				// Look up the actual subdirectory entry
 				subdirPath := joinPath(dirPath, subdirName)
 				if subdir, exists := m.files[subdirPath]; exists {
-					entries = append(entries, &fileInfo{
+					entries = append(entries, &FileInfo{
 						name:    subdirName,
 						mode:    subdir.Mode,
 						modTime: subdir.ModTime,
@@ -322,7 +322,7 @@ func (m *MockFS) createReadDirHandler(dirPath string) func(int) ([]fs.DirEntry, 
 		// Direct child file
 		if !seen[relative] {
 			seen[relative] = true
-			entries = append(entries, &fileInfo{
+			entries = append(entries, &FileInfo{
 				name:    relative,
 				mode:    file.Mode,
 				modTime: file.ModTime,
@@ -467,7 +467,7 @@ func (m *MockFS) validateSubdir(dir string) (cleanDir string, info fs.FileInfo, 
 		return "", nil, &fs.PathError{Op: "Sub", Path: dir, Err: ErrNotDir}
 	}
 
-	info = &fileInfo{
+	info = &FileInfo{
 		name:    path.Base(cleanDir),
 		size:    0,
 		mode:    mapFile.Mode,
