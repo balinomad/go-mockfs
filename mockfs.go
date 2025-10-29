@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"sort"
 	"strings"
 	"sync"
 	"testing/fstest"
@@ -331,6 +332,11 @@ func (m *MockFS) createReadDirHandler(dirPath string) func(int) ([]fs.DirEntry, 
 		}
 	}
 	m.mu.RUnlock()
+
+	// Sort entries by name for deterministic output
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
 
 	// Return the stateful handler
 	var offset int
