@@ -143,10 +143,10 @@ type MockFile struct {
 **v2**
 ```go
 type mockFile struct {
-    mapFile        *fstest.MapFile  // Direct data ownership
+    mapFile        *fstest.MapFile   // Direct data ownership
     name           string
-    position       int64            // Read position tracking
-    mu             sync.Mutex       // Per-file concurrency
+    position       int64             // Read position tracking
+    mu             sync.Mutex        // Per-file concurrency
     closed         bool
     writeMode      writeMode
     readDirHandler func(int) ([]fs.DirEntry, error)
@@ -889,7 +889,7 @@ mfs = mockfs.NewMockFS(nil, mockfs.WithPerOperationLatency(map[mockfs.Operation]
 stats := mfs.Stats()
 
 // Count methods
-total := stats.Count(mockfs.OpRead)        // Total calls
+total := stats.Count(mockfs.OpRead)            // Total calls
 successes := stats.CountSuccess(mockfs.OpRead) // Successful calls
 failures := stats.CountFailure(mockfs.OpRead)  // Failed calls
 
@@ -898,7 +898,7 @@ bytesRead := stats.BytesRead()
 bytesWritten := stats.BytesWritten()
 
 // Aggregate methods
-totalOps := stats.Operations()  // Total operation count across all types
+totalOps := stats.Operations()   // Total operation count across all types
 hasErrors := stats.HasFailures() // Any failures?
 failedOps := stats.Failures()    // []Operation with at least one failure
 
@@ -906,7 +906,7 @@ failedOps := stats.Failures()    // []Operation with at least one failure
 before := mfs.Stats()
 // ... perform operations ...
 after := mfs.Stats()
-delta := after.Delta(before)  // Difference between snapshots
+delta := after.Delta(before) // Difference between snapshots
 if !after.Equal(before) {
     // Stats changed
 }

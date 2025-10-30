@@ -89,7 +89,7 @@
 - **Flexible error modes**: Always, once, or after N successful operations
 - **Latency simulation**: Global, per-operation, serialized, or async with independent file-handle state
 - **Dual statistics tracking**: Separate counters for filesystem-level vs file-handle-level operations
-- **Standalone file mocking**: Create `MockFile` instances without a filesystem for testing `io.Reader`/`io.Writer` functions
+- **Standalone file mocking**: Create `MockFile` instances without a filesystem for testing `io.Reader`/`io.Writer`/`io.Seeker` functions
 - **SubFS support**: Full sub-filesystem implementation with automatic error rule adjustment
 - **Concurrency-safe**: All operations safe for concurrent use
 
@@ -156,7 +156,7 @@ mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
     "file.txt": {Data: []byte("content"), Mode: 0644},
 })
 
-file, _ := mfs.Open("file.txt")  // Tracked in MockFS.Stats()
+file, _ := mfs.Open("file.txt")   // Tracked in MockFS.Stats()
 buf := make([]byte, 100)
 file.Read(buf)                    // Tracked in MockFile.Stats()
 file.Close()                      // Tracked in MockFile.Stats()
@@ -307,8 +307,8 @@ stats := mfs.Stats()
 stats.Count(mockfs.OpOpen)          // Total opens
 stats.CountSuccess(mockfs.OpOpen)   // Successful opens
 stats.CountFailure(mockfs.OpOpen)   // Failed opens
-stats.Operations()                   // Total operations across all types
-stats.HasFailures()                  // Any failures?
+stats.Operations()                  // Total operations across all types
+stats.HasFailures()                 // Any failures?
 
 // File-handle statistics
 file, _ := mfs.Open("file.txt")
@@ -318,8 +318,8 @@ file.Read(buf)
 mockFile := file.(mockfs.MockFile)
 fileStats := mockFile.Stats()
 fileStats.Count(mockfs.OpRead)      // Reads on this handle
-fileStats.BytesRead()                // Bytes read via this handle
-fileStats.BytesWritten()             // Bytes written via this handle
+fileStats.BytesRead()               // Bytes read via this handle
+fileStats.BytesWritten()            // Bytes written via this handle
 
 // Compare statistics
 before := mfs.Stats()
