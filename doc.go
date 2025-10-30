@@ -38,23 +38,26 @@
 // Inject an error to simulate I/O failure on a file handle or a filesystem operation.
 //
 //	// Simulate an error for every call to 'Open' on 'bad.txt'.
-//	mfs.ErrorInjector().Add(mockfs.OpOpen, mockfs.NewPathErrorRule(
+//	mfs.ErrorInjector().Add(mockfs.OpOpen, mockfs.NewErrorRule(
 //		mockfs.ErrPermission,
+//		mockfs.ErrorModeAlways,
+//		0,
 //		mockfs.NewExactMatcher("bad.txt"),
 //	))
 //
 //	// Simulate io.EOF after 5 successful reads from "flaky.txt".
 //	// (Note: This rule must be added before the file is opened.)
-//	mfs.ErrorInjector().Add(mockfs.OpRead, mockfs.NewPathErrorRule(
+//	mfs.ErrorInjector().Add(mockfs.OpRead, mockfs.NewErrorRule(
 //		io.EOF,
+//		mockfs.ErrorModeAfterSuccesses,
+//		5,
 //		mockfs.NewExactMatcher("flaky.txt"),
-//		mockfs.WithMode(mockfs.ErrorModeAfterSuccesses, 5),
 //	))
 //
 // To simulate permission errors:
 //
 //	mfs.FailWrite("readonly.txt", fs.ErrPermission)
-//	mfs.FailOpen("secret.dat", fs.ErrPermission)// # Operation Counters
+//	mfs.FailOpen("secret.dat", fs.ErrPermission)
 //
 // # Latency Simulation
 //
