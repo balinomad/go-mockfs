@@ -34,24 +34,28 @@ func ExampleNewMockFileFromBytes() {
 
 // ExampleNewMockDirectory demonstrates directory creation with ReadDir.
 func ExampleNewMockDirectory() {
-	// Create mock filesystem to generate proper DirEntry values
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"file1.txt": {Data: []byte("data1"), Mode: 0644, ModTime: time.Now()},
-	})
-
-	// Collect entries from filesystem
-	entries, _ := mfs.ReadDir(".")
+	// Create entries using NewFileInfo
+	entries := []fs.DirEntry{
+		mockfs.NewFileInfo("file1.txt", 5, 0644, time.Now()),
+		mockfs.NewFileInfo("file2.txt", 5, 0644, time.Now()),
+	}
 
 	// Create directory with these entries
 	handler := mockfs.NewDirHandler(entries)
 	dir := mockfs.NewMockDirectory("mydir", handler)
 
-	// ReadDir returns entries
+	// ReadDir returns entries in sorted order
 	readDirFile := dir.(fs.ReadDirFile)
 	list, _ := readDirFile.ReadDir(-1)
 
 	fmt.Printf("Directory contains %d entries\n", len(list))
-	// Output: Directory contains 1 entries
+	for _, e := range list {
+		fmt.Printf("  %s\n", e.Name())
+	}
+	// Output:
+	// Directory contains 2 entries
+	//   file1.txt
+	//   file2.txt
 }
 
 // ExampleMockFile_Stats demonstrates file-handle statistics.
@@ -74,6 +78,33 @@ func ExampleMockFile_Stats() {
 	// Read operations: 3
 	// Bytes read: 12
 	// Close operations: 1
+}
+
+// ExampleMockFile_Seek demonstrates file seeking.
+func ExampleMockFile_Seek() {
+	file := mockfs.NewMockFileFromString("test.txt", "Hello, World!")
+
+	// Read first 5 bytes
+	buf := make([]byte, 5)
+	file.Read(buf)
+	fmt.Printf("First read: %s\n", buf)
+
+	// Seek back to beginning
+	seeker := file.(io.Seeker)
+	seeker.Seek(0, io.SeekStart)
+
+	// Read again
+	file.Read(buf)
+	fmt.Printf("After rewind: %s\n", buf)
+
+	// Seek to end
+	seeker.Seek(0, io.SeekEnd)
+	pos, _ := seeker.Seek(0, io.SeekCurrent)
+	fmt.Printf("Position at end: %d\n", pos)
+	// Output:
+	// First read: Hello
+	// After rewind: Hello
+	// Position at end: 13
 }
 
 // ExampleNewDirHandler demonstrates creating a directory handler.
@@ -100,4 +131,17 @@ func ExampleNewDirHandler() {
 	// First batch: 1 entries, EOF: false
 	// Second batch: 1 entries, EOF: true
 	// Third batch: 0 entries, EOF: true
+}
+
+// ExampleNewFileInfo demonstrates creating directory entries for testing.
+func ExampleNewFileInfo() {
+	// Create file info entries
+	file1 := mockfs.NewFileInfo("readme.txt", 1024, 0644, time.Now())
+	dir1 := mockfs.NewFileInfo("docs", 0, fs.ModeDir|0755, time.Now())
+
+	fmt.Printf("%s: size=%d, isDir=%v\n", file1.Name(), file1.Size(), file1.IsDir())
+	fmt.Printf("%s: size=%d, isDir=%v\n", dir1.Name(), dir1.Size(), dir1.IsDir())
+	// Output:
+	// readme.txt: size=1024, isDir=false
+	// docs: size=0, isDir=true
 }
