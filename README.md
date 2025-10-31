@@ -1,18 +1,18 @@
-[![GoDoc](https://pkg.go.dev/badge/github.com/balinomad/go-mockfs?status.svg)](https://pkg.go.dev/github.com/balinomad/go-mockfs?tab=doc)
-[![GoMod](https://img.shields.io/github/go-mod/go-version/balinomad/go-mockfs)](https://github.com/balinomad/go-mockfs)
+[![GoDoc](https://pkg.go.dev/badge/github.com/balinomad/go-mockfs/v2?status.svg)](https://pkg.go.dev/github.com/balinomad/go-mockfs/v2?tab=doc)
+[![GoMod](https://img.shields.io/github/go-mod/go-version/balinomad/go-mockfs/v2)](https://github.com/balinomad/go-mockfs/tree/v2)
 [![Size](https://img.shields.io/github/languages/code-size/balinomad/go-mockfs)](https://github.com/balinomad/go-mockfs)
 [![License](https://img.shields.io/github/license/balinomad/go-mockfs)](./LICENSE)
-[![Go](https://github.com/balinomad/go-mockfs/actions/workflows/go.yml/badge.svg)](https://github.com/balinomad/go-mockfs/actions/workflows/go.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/balinomad/go-mockfs)](https://goreportcard.com/report/github.com/balinomad/go-mockfs)
-[![codecov](https://codecov.io/github/balinomad/go-mockfs/graph/badge.svg?token=L1K68IIN51)](https://codecov.io/github/balinomad/go-mockfs)
+[![Go](https://github.com/balinomad/go-mockfs/actions/workflows/go.yml/badge.svg?branch=v2)](https://github.com/balinomad/go-mockfs/actions/workflows/go.yml?query=branch%3Av2)
+[![Go Report Card](https://goreportcard.com/badge/github.com/balinomad/go-mockfs/v2)](https://goreportcard.com/report/github.com/balinomad/go-mockfs/v2)
+[![codecov](https://codecov.io/github/balinomad/go-mockfs/graph/badge.svg?token=L1K68IIN51&branch=v2)](https://codecov.io/github/balinomad/go-mockfs?branch=v2)
 
-# mockfs
+# mockfs v2
 
 *A flexible and feature-rich filesystem mocking library for Go, built on `testing/fstest.MapFS` with comprehensive error injection, latency simulation, and write operation support.*
 
 ## Table of Contents
 
-- [mockfs](#mockfs)
+- [mockfs v2](#mockfs-v2)
     - [Table of Contents](#table-of-contents)
     - [Overview](#overview)
     - [Key Features](#key-features)
@@ -41,7 +41,7 @@
         - [Testing Concurrent Access](#testing-concurrent-access)
         - [Dependency Injection for os Package Functions](#dependency-injection-for-os-package-functions)
     - [API Reference](#api-reference)
-        - [`MockFS`](#mockfs-1)
+        - [`MockFS`](#mockfs)
             - [Constructors and Options](#constructors-and-options)
             - [Filesystem Operations (`fs.FS` Interface)](#filesystem-operations-fsfs-interface)
             - [`WritableFS` Operations](#writablefs-operations)
@@ -95,8 +95,10 @@
 
 ## Installation
 
+Add **mockfs v2** to your module dependencies:
+
 ```bash
-go get github.com/balinomad/go-mockfs@latest
+go get github.com/balinomad/go-mockfs/v2@latest
 ```
 
 ## Quick Start
@@ -109,7 +111,7 @@ import (
     "testing"
     "time"
 
-    "github.com/balinomad/go-mockfs"
+    "github.com/balinomad/go-mockfs/v2"
 )
 
 func TestBasicUsage(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/balinomad/go-mockfs"
+	"github.com/balinomad/go-mockfs/v2"
 )
 
 func TestExactMatcher_Matches(t *testing.T) {

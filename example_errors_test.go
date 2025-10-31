@@ -6,7 +6,7 @@ import (
 	"io/fs"
 	"time"
 
-	"github.com/balinomad/go-mockfs"
+	"github.com/balinomad/go-mockfs/v2"
 )
 
 // ExampleMockFS_FailOpen demonstrates basic error injection.

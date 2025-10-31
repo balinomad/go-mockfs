@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/balinomad/go-mockfs"
+	"github.com/balinomad/go-mockfs/v2"
 )
 
 // ExampleWithLatency demonstrates global latency simulation.

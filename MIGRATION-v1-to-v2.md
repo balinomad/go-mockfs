@@ -58,6 +58,7 @@
         - [Pattern 6: Testing with Glob Patterns (New in *v2*)](#pattern-6-testing-with-glob-patterns-new-in-v2)
         - [Pattern 7: Testing SubFS (New in *v2*)](#pattern-7-testing-subfs-new-in-v2)
     - [Migration Checklist](#migration-checklist)
+        - [Semantic Import Versioning](#semantic-import-versioning)
         - [Core API Changes](#core-api-changes)
         - [File and Directory Management](#file-and-directory-management)
         - [Error Injection - Convenience Methods](#error-injection---convenience-methods)
@@ -1334,6 +1335,14 @@ func TestSubFilesystem(t *testing.T) {
 
 ## Migration Checklist
 
+### Semantic Import Versioning
+
+- [ ] Update all import paths in Go files: `import "github.com/balinomad/go-mockfs"` → `import "github.com/balinomad/go-mockfs/v2"`
+- [ ] Update module dependency: `go get github.com/balinomad/go-mockfs/v2@latest`
+- [ ] Run `go mod tidy` to update dependencies
+- [ ] (Optional) If your `go.mod` contains a `replace` directive for local development, update it to include `/v2`
+- [ ] (Optional) If you vendor dependencies, regenerate vendor files: `go mod vendor`
+
 ### Core API Changes
 
 - [ ] Replace `GetStats()` with `Stats()` throughout codebase
@@ -1417,13 +1426,12 @@ func TestSubFilesystem(t *testing.T) {
 
 ### Testing and Validation
 
-- [ ] Run `go mod tidy` to update dependencies
-- [ ] Run tests and fix compilation errors
+- [ ] Run tests and fix compilation errors: `go test ./...`
 - [ ] Verify test behavior matches expectations:
   - [ ] Stats assertions correctly distinguish filesystem vs file-handle operations
   - [ ] Error injection still triggers at expected points
   - [ ] Latency simulation still provides expected delays
-- [ ] Update test assertions that relied on v1.0.2 specific behavior:
+- [ ] Update test assertions that relied on *v1* specific behavior:
   - [ ] File-handle operation counts now in `MockFile.Stats()` not `MockFS.Stats()`
   - [ ] Stats snapshots are immutable - no need to copy before comparison
 
@@ -1436,5 +1444,5 @@ func TestSubFilesystem(t *testing.T) {
 ## Getting Help
 
 - Review test files (`*_test.go`) in the repository for comprehensive examples
-- Check GoDoc at `pkg.go.dev/github.com/balinomad/go-mockfs`
+- Check GoDoc at `pkg.go.dev/github.com/balinomad/go-mockfs/v2`
 - File issues at `github.com/balinomad/go-mockfs/issues`

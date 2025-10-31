@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/balinomad/go-mockfs"
+	"github.com/balinomad/go-mockfs/v2"
 )
 
 func TestNewStatsRecorder_NilInitial(t *testing.T) {

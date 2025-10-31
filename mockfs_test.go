@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/balinomad/go-mockfs"
+	"github.com/balinomad/go-mockfs/v2"
 )
 
 // --- Constructor and Options ---

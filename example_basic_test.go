@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"time"
 
-	"github.com/balinomad/go-mockfs"
+	"github.com/balinomad/go-mockfs/v2"
 )
 
 // Example demonstrates basic mockfs usage.

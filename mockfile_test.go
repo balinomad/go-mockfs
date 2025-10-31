@@ -11,7 +11,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/balinomad/go-mockfs"
+	"github.com/balinomad/go-mockfs/v2"
 )
 
 // TestNewMockFile tests the main constructor.

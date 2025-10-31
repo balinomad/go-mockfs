@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/balinomad/go-mockfs"
+	"github.com/balinomad/go-mockfs/v2"
 )
 
 func TestNewFileInfo(t *testing.T) {
