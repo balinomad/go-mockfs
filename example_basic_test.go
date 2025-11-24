@@ -14,7 +14,7 @@ func Example() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
 		"hello.txt": {
 			Data:    []byte("Hello, World!"),
-			Mode:    0644,
+			Mode:    0o644,
 			ModTime: time.Now(),
 		},
 	})
@@ -35,16 +35,16 @@ func ExampleNewMockFS() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
 		"config.json": {
 			Data:    []byte(`{"debug": true}`),
-			Mode:    0644,
+			Mode:    0o644,
 			ModTime: time.Now(),
 		},
 		"data": {
-			Mode:    fs.ModeDir | 0755,
+			Mode:    fs.ModeDir | 0o755,
 			ModTime: time.Now(),
 		},
 		"data/file.txt": {
 			Data:    []byte("content"),
-			Mode:    0644,
+			Mode:    0o644,
 			ModTime: time.Now(),
 		},
 	})
@@ -64,7 +64,7 @@ func ExampleMockFS_Open() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
 		"data.txt": {
 			Data:    []byte("line1\nline2\nline3"),
-			Mode:    0644,
+			Mode:    0o644,
 			ModTime: time.Now(),
 		},
 	})
@@ -87,7 +87,7 @@ func ExampleMockFS_Stat() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
 		"file.txt": {
 			Data:    []byte("content"),
-			Mode:    0644,
+			Mode:    0o644,
 			ModTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		},
 	})
@@ -110,9 +110,9 @@ func ExampleMockFS_Stat() {
 // ExampleMockFS_ReadDir demonstrates listing directory contents.
 func ExampleMockFS_ReadDir() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"logs":         {Mode: fs.ModeDir | 0755, ModTime: time.Now()},
-		"logs/app.log": {Data: []byte("log"), Mode: 0644, ModTime: time.Now()},
-		"logs/err.log": {Data: []byte("err"), Mode: 0644, ModTime: time.Now()},
+		"logs":         {Mode: fs.ModeDir | 0o755, ModTime: time.Now()},
+		"logs/app.log": {Data: []byte("log"), Mode: 0o644, ModTime: time.Now()},
+		"logs/err.log": {Data: []byte("err"), Mode: 0o644, ModTime: time.Now()},
 	})
 
 	entries, err := mfs.ReadDir("logs")
@@ -132,7 +132,7 @@ func ExampleMockFS_ReadDir() {
 // ExampleMockFS_Stats demonstrates tracking filesystem operations.
 func ExampleMockFS_Stats() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"file.txt": {Data: []byte("data"), Mode: 0644, ModTime: time.Now()},
+		"file.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
 	})
 
 	// Perform operations
@@ -157,7 +157,7 @@ func ExampleMockFS_AddFile() {
 	mfs := mockfs.NewMockFS(nil)
 
 	// Add a file
-	err := mfs.AddFile("config.json", `{"key": "value"}`, 0644)
+	err := mfs.AddFile("config.json", `{"key": "value"}`, 0o644)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return
@@ -173,7 +173,7 @@ func ExampleMockFS_AddDir() {
 	mfs := mockfs.NewMockFS(nil)
 
 	// Add directory
-	err := mfs.AddDir("logs", 0755)
+	err := mfs.AddDir("logs", 0o755)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return

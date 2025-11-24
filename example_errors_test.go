@@ -12,7 +12,7 @@ import (
 // ExampleMockFS_FailOpen demonstrates basic error injection.
 func ExampleMockFS_FailOpen() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"secret.txt": {Data: []byte("classified"), Mode: 0644, ModTime: time.Now()},
+		"secret.txt": {Data: []byte("classified"), Mode: 0o644, ModTime: time.Now()},
 	})
 
 	// Inject permission error
@@ -26,7 +26,7 @@ func ExampleMockFS_FailOpen() {
 // ExampleMockFS_FailReadOnce demonstrates one-time error injection.
 func ExampleMockFS_FailReadOnce() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"flaky.txt": {Data: []byte("data"), Mode: 0644, ModTime: time.Now()},
+		"flaky.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
 	})
 
 	mfs.FailReadOnce("flaky.txt", io.ErrUnexpectedEOF)
@@ -51,7 +51,7 @@ func ExampleMockFS_FailReadOnce() {
 // ExampleMockFS_FailReadAfter demonstrates error after N successes.
 func ExampleMockFS_FailReadAfter() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"stream.txt": {Data: []byte("123456789"), Mode: 0644, ModTime: time.Now()},
+		"stream.txt": {Data: []byte("123456789"), Mode: 0o644, ModTime: time.Now()},
 	})
 
 	// Error after 3 successful reads
@@ -79,9 +79,9 @@ func ExampleMockFS_FailReadAfter() {
 // ExampleErrorInjector_AddGlob demonstrates glob pattern matching.
 func ExampleErrorInjector_AddGlob() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"app.log":   {Data: []byte("log"), Mode: 0644, ModTime: time.Now()},
-		"error.log": {Data: []byte("err"), Mode: 0644, ModTime: time.Now()},
-		"data.txt":  {Data: []byte("txt"), Mode: 0644, ModTime: time.Now()},
+		"app.log":   {Data: []byte("log"), Mode: 0o644, ModTime: time.Now()},
+		"error.log": {Data: []byte("err"), Mode: 0o644, ModTime: time.Now()},
+		"data.txt":  {Data: []byte("txt"), Mode: 0o644, ModTime: time.Now()},
 	})
 
 	// All .log files fail to read
@@ -101,9 +101,9 @@ func ExampleErrorInjector_AddGlob() {
 // ExampleErrorInjector_AddRegexp demonstrates regex pattern matching.
 func ExampleErrorInjector_AddRegexp() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"file.tmp": {Data: []byte("tmp"), Mode: 0644, ModTime: time.Now()},
-		"data.tmp": {Data: []byte("tmp"), Mode: 0644, ModTime: time.Now()},
-		"file.txt": {Data: []byte("txt"), Mode: 0644, ModTime: time.Now()},
+		"file.tmp": {Data: []byte("tmp"), Mode: 0o644, ModTime: time.Now()},
+		"data.tmp": {Data: []byte("tmp"), Mode: 0o644, ModTime: time.Now()},
+		"file.txt": {Data: []byte("txt"), Mode: 0o644, ModTime: time.Now()},
 	})
 
 	// All .tmp files return corrupted error
@@ -122,7 +122,7 @@ func ExampleErrorInjector_AddRegexp() {
 // ExampleErrorInjector_AddExactForAllOps demonstrates cross-operation errors.
 func ExampleErrorInjector_AddExactForAllOps() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"broken.txt": {Data: []byte("data"), Mode: 0644, ModTime: time.Now()},
+		"broken.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
 	})
 
 	// All operations on this file fail
@@ -146,8 +146,8 @@ func ExampleErrorInjector_AddExactForAllOps() {
 // ExampleMockFS_MarkNonExistent demonstrates simulating missing files.
 func ExampleMockFS_MarkNonExistent() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"exists.txt":  {Data: []byte("data"), Mode: 0644, ModTime: time.Now()},
-		"deleted.txt": {Data: []byte("data"), Mode: 0644, ModTime: time.Now()},
+		"exists.txt":  {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
+		"deleted.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
 	})
 
 	// Mark as non-existent

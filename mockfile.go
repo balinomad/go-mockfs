@@ -35,7 +35,9 @@ type fileBackend interface {
 
 // MockFile represents an open file. It is a wrapper around fstest.MapFile to inject errors and track operations.
 type MockFile interface {
+	fs.File
 	fs.ReadDirFile
+	io.Reader
 	io.Writer
 	io.Seeker
 	io.Closer
@@ -233,7 +235,7 @@ func NewMockFile(mapFile *fstest.MapFile, name string, opts ...MockFileOption) M
 func NewMockFileFromBytes(name string, data []byte, opts ...MockFileOption) MockFile {
 	mapFile := &fstest.MapFile{
 		Data:    append([]byte(nil), data...), // Copy data
-		Mode:    0644,
+		Mode:    0o644,
 		ModTime: time.Now(),
 	}
 
@@ -244,7 +246,7 @@ func NewMockFileFromBytes(name string, data []byte, opts ...MockFileOption) Mock
 func NewMockFileFromString(name string, content string, opts ...MockFileOption) MockFile {
 	mapFile := &fstest.MapFile{
 		Data:    []byte(content),
-		Mode:    0644,
+		Mode:    0o644,
 		ModTime: time.Now(),
 	}
 
@@ -260,7 +262,7 @@ func NewMockDirectory(
 	opts ...MockFileOption,
 ) MockFile {
 	mapFile := &fstest.MapFile{
-		Mode:    fs.ModeDir | 0755,
+		Mode:    fs.ModeDir | 0o755,
 		ModTime: time.Now(),
 	}
 

@@ -151,7 +151,7 @@ func NewMockFS(initial map[string]*MapFile, opts ...MockFSOption) *MockFS {
 	// Ensure root directory exists if not explicitly provided
 	if _, exists := files["."]; !exists {
 		files["."] = &fstest.MapFile{
-			Mode:    fs.ModeDir | 0755,
+			Mode:    fs.ModeDir | 0o755,
 			ModTime: time.Now(),
 		}
 	}

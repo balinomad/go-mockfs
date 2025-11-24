@@ -120,11 +120,11 @@ func TestBasicUsage(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
         "config.json": {
             Data:    []byte(`{"setting": "value"}`),
-            Mode:    0644,
+            Mode:    0o644,
             ModTime: time.Now(),
         },
         "data": {
-            Mode:    fs.ModeDir | 0755,
+            Mode:    fs.ModeDir | 0o755,
             ModTime: time.Now(),
         },
     })
@@ -155,7 +155,7 @@ func TestBasicUsage(t *testing.T) {
 This separation enables precise verification of I/O patterns. Example:
 ```go
 mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-    "file.txt": {Data: []byte("content"), Mode: 0644},
+    "file.txt": {Data: []byte("content"), Mode: 0o644},
 })
 
 file, _ := mfs.Open("file.txt")   // Tracked in MockFS.Stats()
@@ -236,8 +236,8 @@ mfs := mockfs.NewMockFS(nil)
 
 // With initial files
 mfs = mockfs.NewMockFS(map[string]*mockfs.MapFile{
-    "file.txt": {Data: []byte("content"), Mode: 0644, ModTime: time.Now()},
-    "dir":      {Mode: fs.ModeDir | 0755, ModTime: time.Now()},
+    "file.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
+    "dir":      {Mode: fs.ModeDir | 0o755, ModTime: time.Now()},
 })
 
 // With options
@@ -252,13 +252,13 @@ mfs = mockfs.NewMockFS(nil,
 
 ```go
 // Add text file
-err := mfs.AddFile("config.json", `{"key": "value"}`, 0644)
+err := mfs.AddFile("config.json", `{"key": "value"}`, 0o644)
 
 // Add binary file
-err = mfs.AddFileBytes("data.bin", []byte{0x01, 0x02}, 0644)
+err = mfs.AddFileBytes("data.bin", []byte{0x01, 0x02}, 0o644)
 
 // Add directory
-err = mfs.AddDir("logs", 0755)
+err = mfs.AddDir("logs", 0o755)
 
 // Remove path
 err = mfs.RemovePath("temp.txt")
@@ -366,23 +366,23 @@ mfs = mockfs.NewMockFS(nil, mockfs.WithLatencySimulator(sim))
 mfs := mockfs.NewMockFS(nil, mockfs.WithOverwrite())
 
 // Write file
-err := mfs.WriteFile("output.txt", []byte("data"), 0644)
+err := mfs.WriteFile("output.txt", []byte("data"), 0o644)
 
 // Create if missing
 mfs = mockfs.NewMockFS(nil,
     mockfs.WithOverwrite(),
     mockfs.WithCreateIfMissing(true),
 )
-err = mfs.WriteFile("new.txt", []byte("content"), 0644)
+err = mfs.WriteFile("new.txt", []byte("content"), 0o644)
 
 // Append mode
 mfs = mockfs.NewMockFS(nil, mockfs.WithAppend())
-mfs.WriteFile("log.txt", []byte("line1\n"), 0644)
-mfs.WriteFile("log.txt", []byte("line2\n"), 0644) // Appends
+mfs.WriteFile("log.txt", []byte("line1\n"), 0o644)
+mfs.WriteFile("log.txt", []byte("line2\n"), 0o644) // Appends
 
 // Directory operations
-err = mfs.Mkdir("logs", 0755)
-err = mfs.MkdirAll("app/config/prod", 0755)
+err = mfs.Mkdir("logs", 0o755)
+err = mfs.MkdirAll("app/config/prod", 0o755)
 err = mfs.Remove("temp.txt")
 err = mfs.RemoveAll("cache")
 err = mfs.Rename("old.txt", "new.txt")
@@ -410,8 +410,8 @@ file = mockfs.NewMockFileFromString("test.txt", "content",
 
 // Create entries without a filesystem
 entries := []fs.DirEntry{
-    mockfs.NewFileInfo("readme.txt", 1024, 0644, time.Now()),
-    mockfs.NewFileInfo("docs", 0, fs.ModeDir|0755, time.Now()),
+    mockfs.NewFileInfo("readme.txt", 1024, 0o644, time.Now()),
+    mockfs.NewFileInfo("docs", 0, fs.ModeDir|0o755, time.Now()),
 }
 handler := mockfs.NewDirHandler(entries)
 dir := mockfs.NewMockDirectory("mydir", handler)
@@ -425,9 +425,9 @@ err := ProcessReader(file)
 
 ```go
 mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-    "app/config/dev.json":  {Data: []byte("{}"), Mode: 0644},
-    "app/config/prod.json": {Data: []byte("{}"), Mode: 0644},
-    "app/logs/app.log":     {Data: []byte(""), Mode: 0644},
+    "app/config/dev.json":  {Data: []byte("{}"), Mode: 0o644},
+    "app/config/prod.json": {Data: []byte("{}"), Mode: 0o644},
+    "app/logs/app.log":     {Data: []byte(""), Mode: 0o644},
 })
 
 // Configure error in parent
@@ -452,7 +452,7 @@ stats := subMockFS.Stats()
 ```go
 func TestRetryLogic(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "data.txt": {Data: []byte("content"), Mode: 0644},
+        "data.txt": {Data: []byte("content"), Mode: 0o644},
     })
 
     // First two reads fail, third succeeds
@@ -498,7 +498,7 @@ func TestTimeoutBehavior(t *testing.T) {
 ```go
 func TestConcurrentReads(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "shared.txt": {Data: bytes.Repeat([]byte("data"), 1000), Mode: 0644},
+        "shared.txt": {Data: bytes.Repeat([]byte("data"), 1000), Mode: 0o644},
     })
 
     var wg sync.WaitGroup

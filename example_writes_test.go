@@ -14,7 +14,7 @@ func ExampleMockFS_WriteFile() {
 		mockfs.WithCreateIfMissing(true),
 	)
 
-	err := mfs.WriteFile("output.txt", []byte("Hello, World!"), 0644)
+	err := mfs.WriteFile("output.txt", []byte("Hello, World!"), 0o644)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return
@@ -29,7 +29,7 @@ func ExampleMockFS_WriteFile() {
 func ExampleMockFS_Mkdir() {
 	mfs := mockfs.NewMockFS(nil)
 
-	err := mfs.Mkdir("logs", 0755)
+	err := mfs.Mkdir("logs", 0o755)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return
@@ -44,7 +44,7 @@ func ExampleMockFS_Mkdir() {
 func ExampleMockFS_MkdirAll() {
 	mfs := mockfs.NewMockFS(nil)
 
-	err := mfs.MkdirAll("app/config/prod", 0755)
+	err := mfs.MkdirAll("app/config/prod", 0o755)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return
@@ -64,7 +64,7 @@ func ExampleMockFS_MkdirAll() {
 // ExampleMockFS_Remove demonstrates removing files.
 func ExampleMockFS_Remove() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"temp.txt": {Data: []byte("data"), Mode: 0644, ModTime: time.Now()},
+		"temp.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
 	})
 
 	err := mfs.Remove("temp.txt")
@@ -81,9 +81,9 @@ func ExampleMockFS_Remove() {
 // ExampleMockFS_RemoveAll demonstrates removing directory trees.
 func ExampleMockFS_RemoveAll() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"cache":           {Mode: fs.ModeDir | 0755, ModTime: time.Now()},
-		"cache/file1.txt": {Data: []byte("1"), Mode: 0644, ModTime: time.Now()},
-		"cache/file2.txt": {Data: []byte("2"), Mode: 0644, ModTime: time.Now()},
+		"cache":           {Mode: fs.ModeDir | 0o755, ModTime: time.Now()},
+		"cache/file1.txt": {Data: []byte("1"), Mode: 0o644, ModTime: time.Now()},
+		"cache/file2.txt": {Data: []byte("2"), Mode: 0o644, ModTime: time.Now()},
 	})
 
 	err := mfs.RemoveAll("cache")
@@ -100,7 +100,7 @@ func ExampleMockFS_RemoveAll() {
 // ExampleMockFS_Rename demonstrates renaming files and directories.
 func ExampleMockFS_Rename() {
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"old.txt": {Data: []byte("content"), Mode: 0644, ModTime: time.Now()},
+		"old.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
 	})
 
 	err := mfs.Rename("old.txt", "new.txt")
@@ -123,12 +123,12 @@ func ExampleMockFS_Rename() {
 func ExampleWithOverwrite() {
 	mfs := mockfs.NewMockFS(
 		map[string]*mockfs.MapFile{
-			"file.txt": {Data: []byte("original"), Mode: 0644, ModTime: time.Now()},
+			"file.txt": {Data: []byte("original"), Mode: 0o644, ModTime: time.Now()},
 		},
 		mockfs.WithOverwrite(),
 	)
 
-	mfs.WriteFile("file.txt", []byte("replaced"), 0644)
+	mfs.WriteFile("file.txt", []byte("replaced"), 0o644)
 
 	data, _ := fs.ReadFile(mfs, "file.txt")
 	fmt.Printf("%s\n", data)
@@ -139,13 +139,13 @@ func ExampleWithOverwrite() {
 func ExampleWithAppend() {
 	mfs := mockfs.NewMockFS(
 		map[string]*mockfs.MapFile{
-			"log.txt": {Data: []byte("line1\n"), Mode: 0644, ModTime: time.Now()},
+			"log.txt": {Data: []byte("line1\n"), Mode: 0o644, ModTime: time.Now()},
 		},
 		mockfs.WithAppend(),
 	)
 
-	mfs.WriteFile("log.txt", []byte("line2\n"), 0644)
-	mfs.WriteFile("log.txt", []byte("line3\n"), 0644)
+	mfs.WriteFile("log.txt", []byte("line2\n"), 0o644)
+	mfs.WriteFile("log.txt", []byte("line3\n"), 0o644)
 
 	data, _ := fs.ReadFile(mfs, "log.txt")
 	fmt.Printf("%s", data)

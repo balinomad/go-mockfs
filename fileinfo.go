@@ -27,8 +27,8 @@ var (
 // Example:
 //
 //	entries := []fs.DirEntry{
-//	    mockfs.NewFileInfo("file1.txt", 100, 0644, time.Now()),
-//	    mockfs.NewFileInfo("file2.txt", 200, 0644, time.Now()),
+//	    mockfs.NewFileInfo("file1.txt", 100, 0o644, time.Now()),
+//	    mockfs.NewFileInfo("file2.txt", 200, 0o644, time.Now()),
 //	}
 //	handler := mockfs.NewDirHandler(entries)
 func NewFileInfo(name string, size int64, mode fs.FileMode, modTime time.Time) *FileInfo {

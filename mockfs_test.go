@@ -125,8 +125,8 @@ func TestNewMockFS_AutoCreateRoot_EmptyMap(t *testing.T) {
 func TestNewMockFS_AutoCreateRoot_FilesWithoutRoot(t *testing.T) {
 	t.Parallel()
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"file.txt":       {Data: []byte("test"), Mode: 0644},
-		"dir/nested.txt": {Data: []byte("nested"), Mode: 0644},
+		"file.txt":       {Data: []byte("test"), Mode: 0o644},
+		"dir/nested.txt": {Data: []byte("nested"), Mode: 0o644},
 	})
 	info, err := mfs.Stat(".")
 	if err != nil {
@@ -146,7 +146,7 @@ func TestNewMockFS_AutoCreateRoot_ExplicitNotOverwritten(t *testing.T) {
 	customTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
 		".":        {Mode: fs.ModeDir | 0700, ModTime: customTime},
-		"file.txt": {Data: []byte("test"), Mode: 0644},
+		"file.txt": {Data: []byte("test"), Mode: 0o644},
 	})
 	info, err := mfs.Stat(".")
 	if err != nil {
@@ -177,7 +177,7 @@ func TestNewMockFS_AutoCreateRoot_NilEntries(t *testing.T) {
 func TestNewMockFS_AutoCreateRoot_Operations(t *testing.T) {
 	t.Parallel()
 	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"file.txt": {Data: []byte("test"), Mode: 0644},
+		"file.txt": {Data: []byte("test"), Mode: 0o644},
 	})
 	dir, err := mfs.Open(".")
 	if err != nil {
@@ -216,8 +216,8 @@ func TestMockFS_Injector(t *testing.T) {
 func TestMockFS_Stat(t *testing.T) {
 	t.Parallel()
 	m := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"file.txt": {Data: []byte("content"), Mode: 0644},
-		"dir":      {Mode: fs.ModeDir | 0755},
+		"file.txt": {Data: []byte("content"), Mode: 0o644},
+		"dir":      {Mode: fs.ModeDir | 0o755},
 	})
 	injectedErr := errors.New("injected stat error")
 	m.FailStat("file.txt", injectedErr)
@@ -388,9 +388,9 @@ func TestMockFS_Sub(t *testing.T) {
 	t.Parallel()
 
 	parent := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"app":             {Mode: fs.ModeDir | 0755},
+		"app":             {Mode: fs.ModeDir | 0o755},
 		"app/config.json": {Data: []byte("{}")},
-		"app/src":         {Mode: fs.ModeDir | 0755},
+		"app/src":         {Mode: fs.ModeDir | 0o755},
 		"app/src/main.go": {Data: []byte("package main")},
 		"other.txt":       {Data: []byte("...")},
 		"not-a-dir.txt":   {Data: []byte("file")},
@@ -458,7 +458,7 @@ func TestMockFS_AddFileAndDir(t *testing.T) {
 		{
 			name: "add text file",
 			setup: func(m *mockfs.MockFS) error {
-				return m.AddFile("file.txt", "hello", 0644)
+				return m.AddFile("file.txt", "hello", 0o644)
 			},
 			verify: func(t *testing.T, m *mockfs.MockFS) {
 				content := mustReadFile(t, m, "file.txt")
@@ -482,7 +482,7 @@ func TestMockFS_AddFileAndDir(t *testing.T) {
 		{
 			name: "add directory",
 			setup: func(m *mockfs.MockFS) error {
-				return m.AddDir("my/dir", 0755)
+				return m.AddDir("my/dir", 0o755)
 			},
 			verify: func(t *testing.T, m *mockfs.MockFS) {
 				info, err := m.Stat("my/dir")
@@ -554,9 +554,9 @@ func TestMockFS_WritableFS(t *testing.T) {
 	// Base filesystem for mutation tests
 	setup := func() *mockfs.MockFS {
 		return mockfs.NewMockFS(map[string]*mockfs.MapFile{
-			"dir":              {Mode: fs.ModeDir | 0755},
+			"dir":              {Mode: fs.ModeDir | 0o755},
 			"dir/file.txt":     {Data: []byte("content")},
-			"dir/empty_subdir": {Mode: fs.ModeDir | 0755},
+			"dir/empty_subdir": {Mode: fs.ModeDir | 0o755},
 			"file.txt":         {Data: []byte("root file")},
 		})
 	}
@@ -564,7 +564,7 @@ func TestMockFS_WritableFS(t *testing.T) {
 	// Mkdir / MkdirAll
 	t.Run("mkdir", func(t *testing.T) {
 		m := setup()
-		err := m.Mkdir("dir/new_dir", 0755)
+		err := m.Mkdir("dir/new_dir", 0o755)
 		requireNoError(t, err)
 		info, _ := m.Stat("dir/new_dir")
 		if !info.IsDir() {
@@ -579,7 +579,7 @@ func TestMockFS_WritableFS(t *testing.T) {
 
 	t.Run("mkdirall", func(t *testing.T) {
 		m := setup()
-		err := m.MkdirAll("new/nested/dir", 0755)
+		err := m.MkdirAll("new/nested/dir", 0o755)
 		requireNoError(t, err)
 		info, _ := m.Stat("new/nested/dir")
 		if !info.IsDir() {
@@ -587,7 +587,7 @@ func TestMockFS_WritableFS(t *testing.T) {
 		}
 
 		// No error if path already exists and is a directory
-		err = m.MkdirAll("dir", 0755)
+		err = m.MkdirAll("dir", 0o755)
 		requireNoError(t, err)
 
 		// Error if part of the path is a file
@@ -657,7 +657,7 @@ func TestMockFS_WritableFS(t *testing.T) {
 		// Use createIfMissing to create a new file
 		m2 := mockfs.NewMockFS(nil, mockfs.WithCreateIfMissing(true))
 		newData := []byte("new data")
-		err := m2.WriteFile("newfile.txt", newData, 0644)
+		err := m2.WriteFile("newfile.txt", newData, 0o644)
 		requireNoError(t, err)
 		content := mustReadFile(t, m2, "newfile.txt")
 		if !bytes.Equal(content, newData) {
@@ -665,7 +665,7 @@ func TestMockFS_WritableFS(t *testing.T) {
 		}
 
 		// Overwrite existing file (works regardless of createIfMissing)
-		err = m.WriteFile("file.txt", newData, 0644)
+		err = m.WriteFile("file.txt", newData, 0o644)
 		requireNoError(t, err)
 		content = mustReadFile(t, m, "file.txt")
 		if !bytes.Equal(content, newData) {
@@ -704,13 +704,13 @@ func TestMockFS_WriteFile_EdgeCases(t *testing.T) {
 
 	t.Run("write to read-only filesystem", func(t *testing.T) {
 		mfs := mockfs.NewMockFS(nil, mockfs.WithReadOnly())
-		err := mfs.WriteFile("test.txt", []byte("data"), 0644)
+		err := mfs.WriteFile("test.txt", []byte("data"), 0o644)
 		assertError(t, err, fs.ErrPermission)
 	})
 
 	t.Run("write without createIfMissing", func(t *testing.T) {
 		mfs := mockfs.NewMockFS(nil)
-		err := mfs.WriteFile("test.txt", []byte("data"), 0644)
+		err := mfs.WriteFile("test.txt", []byte("data"), 0o644)
 		assertError(t, err, fs.ErrNotExist)
 	})
 
@@ -718,7 +718,7 @@ func TestMockFS_WriteFile_EdgeCases(t *testing.T) {
 		mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
 			"file.txt": {Data: []byte("old")},
 		}, mockfs.WithOverwrite())
-		err := mfs.WriteFile("file.txt", []byte("new"), 0644)
+		err := mfs.WriteFile("file.txt", []byte("new"), 0o644)
 		requireNoError(t, err)
 		content := mustReadFile(t, mfs, "file.txt")
 		if string(content) != "new" {
@@ -730,7 +730,7 @@ func TestMockFS_WriteFile_EdgeCases(t *testing.T) {
 		mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
 			"file.txt": {Data: []byte("old")},
 		}, mockfs.WithAppend())
-		err := mfs.WriteFile("file.txt", []byte("new"), 0644)
+		err := mfs.WriteFile("file.txt", []byte("new"), 0o644)
 		requireNoError(t, err)
 		content := mustReadFile(t, mfs, "file.txt")
 		if string(content) != "oldnew" {
@@ -755,12 +755,12 @@ func TestMockFS_FailMethods(t *testing.T) {
 		{
 			name:      "FailWrite",
 			setup:     func(m *mockfs.MockFS) { m.FailWrite("file.txt", injectedErr) },
-			operation: func(m *mockfs.MockFS) error { return m.WriteFile("file.txt", []byte("data"), 0644) },
+			operation: func(m *mockfs.MockFS) error { return m.WriteFile("file.txt", []byte("data"), 0o644) },
 		},
 		{
 			name: "FailClose",
 			setup: func(m *mockfs.MockFS) {
-				_ = m.AddFile("file.txt", "", 0644)
+				_ = m.AddFile("file.txt", "", 0o644)
 				m.FailClose("file.txt", injectedErr)
 			},
 			operation: func(m *mockfs.MockFS) error {
@@ -774,17 +774,17 @@ func TestMockFS_FailMethods(t *testing.T) {
 		{
 			name:      "FailMkdir",
 			setup:     func(m *mockfs.MockFS) { m.FailMkdir("dir", injectedErr) },
-			operation: func(m *mockfs.MockFS) error { return m.Mkdir("dir", 0755) },
+			operation: func(m *mockfs.MockFS) error { return m.Mkdir("dir", 0o755) },
 		},
 		{
 			name:      "FailMkdirAll",
 			setup:     func(m *mockfs.MockFS) { m.FailMkdirAll("dir/subdir", injectedErr) },
-			operation: func(m *mockfs.MockFS) error { return m.MkdirAll("dir/subdir", 0755) },
+			operation: func(m *mockfs.MockFS) error { return m.MkdirAll("dir/subdir", 0o755) },
 		},
 		{
 			name: "FailRemove",
 			setup: func(m *mockfs.MockFS) {
-				_ = m.AddFile("file.txt", "", 0644)
+				_ = m.AddFile("file.txt", "", 0o644)
 				m.FailRemove("file.txt", injectedErr)
 			},
 			operation: func(m *mockfs.MockFS) error { return m.Remove("file.txt") },
@@ -792,7 +792,7 @@ func TestMockFS_FailMethods(t *testing.T) {
 		{
 			name: "FailRemoveAll",
 			setup: func(m *mockfs.MockFS) {
-				_ = m.AddDir("dir", 0755)
+				_ = m.AddDir("dir", 0o755)
 				m.FailRemoveAll("dir", injectedErr)
 			},
 			operation: func(m *mockfs.MockFS) error { return m.RemoveAll("dir") },
@@ -800,7 +800,7 @@ func TestMockFS_FailMethods(t *testing.T) {
 		{
 			name: "FailRename",
 			setup: func(m *mockfs.MockFS) {
-				_ = m.AddFile("old.txt", "", 0644)
+				_ = m.AddFile("old.txt", "", 0o644)
 				m.FailRename("old.txt", injectedErr)
 			},
 			operation: func(m *mockfs.MockFS) error { return m.Rename("old.txt", "new.txt") },
@@ -890,7 +890,7 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 		{
 			name: "FailReadOnce",
 			inject: func(m *mockfs.MockFS) {
-				_ = m.AddFile("file.txt", "data", 0644)
+				_ = m.AddFile("file.txt", "data", 0o644)
 				m.FailReadOnce("file.txt", fs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
@@ -907,17 +907,17 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 		{
 			name: "FailWriteOnce",
 			inject: func(m *mockfs.MockFS) {
-				_ = m.AddFile("file.txt", "", 0644)
+				_ = m.AddFile("file.txt", "", 0o644)
 				m.FailWriteOnce("file.txt", fs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
-				return m.WriteFile("file.txt", []byte("data"), 0644)
+				return m.WriteFile("file.txt", []byte("data"), 0o644)
 			},
 		},
 		{
 			name: "FailReadDirOnce",
 			inject: func(m *mockfs.MockFS) {
-				_ = m.AddDir("dir", 0755)
+				_ = m.AddDir("dir", 0o755)
 				m.FailReadDirOnce("dir", fs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
@@ -928,7 +928,7 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 		{
 			name: "FailCloseOnce",
 			inject: func(m *mockfs.MockFS) {
-				_ = m.AddFile("file.txt", "", 0644)
+				_ = m.AddFile("file.txt", "", 0o644)
 				m.FailCloseOnce("file.txt", fs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
@@ -943,20 +943,20 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 			name:   "FailMkdirOnce",
 			inject: func(m *mockfs.MockFS) { m.FailMkdirOnce("dir", fs.ErrPermission) },
 			op: func(m *mockfs.MockFS) error {
-				return m.Mkdir("dir", 0755)
+				return m.Mkdir("dir", 0o755)
 			},
 		},
 		{
 			name:   "FailMkdirAllOnce",
 			inject: func(m *mockfs.MockFS) { m.FailMkdirAllOnce("dir/sub", fs.ErrPermission) },
 			op: func(m *mockfs.MockFS) error {
-				return m.MkdirAll("dir/sub", 0755)
+				return m.MkdirAll("dir/sub", 0o755)
 			},
 		},
 		{
 			name: "FailRemoveOnce",
 			inject: func(m *mockfs.MockFS) {
-				_ = m.AddFile("file.txt", "", 0644)
+				_ = m.AddFile("file.txt", "", 0o644)
 				m.FailRemoveOnce("file.txt", fs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
@@ -966,7 +966,7 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 		{
 			name: "FailRemoveAllOnce",
 			inject: func(m *mockfs.MockFS) {
-				_ = m.AddDir("dir", 0755)
+				_ = m.AddDir("dir", 0o755)
 				m.FailRemoveAllOnce("dir", fs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
@@ -976,7 +976,7 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 		{
 			name: "FailRenameOnce",
 			inject: func(m *mockfs.MockFS) {
-				_ = m.AddFile("old.txt", "", 0644)
+				_ = m.AddFile("old.txt", "", 0o644)
 				m.FailRenameOnce("old.txt", fs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
@@ -1037,7 +1037,7 @@ func TestMockFS_OptionsAndHelpers(t *testing.T) {
 
 	t.Run("WithReadOnly", func(t *testing.T) {
 		mfs := mockfs.NewMockFS(nil, mockfs.WithReadOnly())
-		err := mfs.WriteFile("test.txt", []byte("data"), 0644)
+		err := mfs.WriteFile("test.txt", []byte("data"), 0o644)
 		assertError(t, err, fs.ErrPermission)
 	})
 
@@ -1045,7 +1045,7 @@ func TestMockFS_OptionsAndHelpers(t *testing.T) {
 		mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
 			"file.txt": {Data: []byte("old")},
 		}, mockfs.WithOverwrite())
-		err := mfs.WriteFile("file.txt", []byte("new"), 0644)
+		err := mfs.WriteFile("file.txt", []byte("new"), 0o644)
 		requireNoError(t, err)
 		content := mustReadFile(t, mfs, "file.txt")
 		if string(content) != "new" {
@@ -1057,7 +1057,7 @@ func TestMockFS_OptionsAndHelpers(t *testing.T) {
 		mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
 			"file.txt": {Data: []byte("old")},
 		}, mockfs.WithAppend())
-		err := mfs.WriteFile("file.txt", []byte("new"), 0644)
+		err := mfs.WriteFile("file.txt", []byte("new"), 0o644)
 		requireNoError(t, err)
 		content := mustReadFile(t, mfs, "file.txt")
 		if string(content) != "oldnew" {
@@ -1097,9 +1097,9 @@ func TestMockFS_OptionsAndHelpers(t *testing.T) {
 
 	t.Run("joinPath", func(t *testing.T) {
 		mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-			"dir": {Mode: fs.ModeDir | 0755},
+			"dir": {Mode: fs.ModeDir | 0o755},
 		})
-		err := mfs.AddFile("dir/file.txt", "test", 0644)
+		err := mfs.AddFile("dir/file.txt", "test", 0o644)
 		requireNoError(t, err)
 		_, err = mfs.Stat("dir/file.txt")
 		requireNoError(t, err)
@@ -1117,7 +1117,7 @@ func TestMockFS_ConcurrentReadWrite(t *testing.T) {
 	// Pre-create files to avoid ErrNotExist
 	for i := 0; i < numGoroutines; i++ {
 		path := fmt.Sprintf("file-%d.txt", i)
-		if err := m.AddFile(path, "", 0644); err != nil {
+		if err := m.AddFile(path, "", 0o644); err != nil {
 			t.Fatalf("setup failed: %v", err)
 		}
 	}
@@ -1131,7 +1131,7 @@ func TestMockFS_ConcurrentReadWrite(t *testing.T) {
 			content := []byte(fmt.Sprintf("content-%d", id))
 
 			// Write a file
-			err := m.WriteFile(path, content, 0644)
+			err := m.WriteFile(path, content, 0o644)
 			if err != nil {
 				t.Errorf("concurrent WriteFile failed: %v", err)
 				return
@@ -1171,9 +1171,9 @@ func TestMockFS_ConcurrentRemoveRename(t *testing.T) {
 
 	// Pre-populate with directories
 	for i := 0; i < numGoroutines; i++ {
-		_ = m.AddDir(path.Join("dir", fmt.Sprintf("sub-%d", i)), 0755)
+		_ = m.AddDir(path.Join("dir", fmt.Sprintf("sub-%d", i)), 0o755)
 	}
-	_ = m.AddDir("other_dir", 0755)
+	_ = m.AddDir("other_dir", 0o755)
 
 	errorCount := int32(0)
 

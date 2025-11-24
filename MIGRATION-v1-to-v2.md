@@ -430,16 +430,16 @@ New convenience methods in *v2* include:
 **Before (v1)**:
 ```go
 mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-    "file.txt": {Data: []byte("content"), Mode: 0644, ModTime: time.Now()},
-    "dir":      {Mode: fs.ModeDir | 0755, ModTime: time.Now()},
+    "file.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
+    "dir":      {Mode: fs.ModeDir | 0o755, ModTime: time.Now()},
 }, mockfs.WithLatency(10*time.Millisecond))
 ```
 
 **After (v2)**:
 ```go
 mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-    "file.txt": {Data: []byte("content"), Mode: 0644, ModTime: time.Now()},
-    "dir":      {Mode: fs.ModeDir | 0755, ModTime: time.Now()},
+    "file.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
+    "dir":      {Mode: fs.ModeDir | 0o755, ModTime: time.Now()},
 }, mockfs.WithLatency(10*time.Millisecond))
 ```
 
@@ -449,30 +449,30 @@ mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
 
 **Before (v1)**:
 ```go
-mfs.AddFileString("config.json", `{"key": "value"}`, 0644)
-mfs.AddFileBytes("data.bin", []byte{0x00, 0x01}, 0644)
+mfs.AddFileString("config.json", `{"key": "value"}`, 0o644)
+mfs.AddFileBytes("data.bin", []byte{0x00, 0x01}, 0o644)
 ```
 
 **After (v2)**:
 ```go
 // AddFileString renamed to AddFile, now returns error
-err := mfs.AddFile("config.json", `{"key": "value"}`, 0644)
+err := mfs.AddFile("config.json", `{"key": "value"}`, 0o644)
 
 // AddFileBytes now returns error
-err = mfs.AddFileBytes("data.bin", []byte{0x00, 0x01}, 0644)
+err = mfs.AddFileBytes("data.bin", []byte{0x00, 0x01}, 0o644)
 ```
 
 ### Adding Directories
 
 **Before (v1)**:
 ```go
-mfs.AddDirectory("logs", 0755)
+mfs.AddDirectory("logs", 0o755)
 ```
 
 **After (v2)**:
 ```go
 // Renamed method, now returns error
-err := mfs.AddDir("logs", 0755)
+err := mfs.AddDir("logs", 0o755)
 ```
 
 ### Removing Paths
@@ -689,7 +689,7 @@ n, err := file.(io.Writer).Write([]byte("data"))
 ```go
 // Use WriteFile method (part of WritableFS interface)
 mfs := mockfs.NewMockFS(nil, mockfs.WithCreateIfMissing(true))
-err := mfs.WriteFile("new.txt", []byte("content"), 0644)
+err := mfs.WriteFile("new.txt", []byte("content"), 0o644)
 
 // Control write mode
 mfs = mockfs.NewMockFS(nil, mockfs.WithOverwrite()) // default
@@ -707,9 +707,9 @@ n, err := file.(io.Writer).Write([]byte("data"))
 ```go
 // Directory operations via manual map manipulation
 mfs := mockfs.NewMockFS(nil)
-mfs.AddDirectory("dir", 0755)
-mfs.AddDirectory("dir/subdir", 0755)
-mfs.AddDirectory("dir/subdir/nested", 0755)
+mfs.AddDirectory("dir", 0o755)
+mfs.AddDirectory("dir/subdir", 0o755)
+mfs.AddDirectory("dir/subdir/nested", 0o755)
 
 // No built-in Remove, Rename operations
 // Must manipulate internal map via RemovePath
@@ -720,12 +720,12 @@ mfs.RemovePath("file.txt")
 ```go
 // Full WritableFS interface
 mfs := mockfs.NewMockFS(nil)
-err := mfs.Mkdir("dir", 0755)
-err = mfs.MkdirAll("dir/subdir/nested", 0755)
+err := mfs.Mkdir("dir", 0o755)
+err = mfs.MkdirAll("dir/subdir/nested", 0o755)
 err = mfs.Remove("file.txt")
 err = mfs.RemoveAll("dir")
 err = mfs.Rename("old.txt", "new.txt")
-err = mfs.WriteFile("file.txt", data, 0644)
+err = mfs.WriteFile("file.txt", data, 0o644)
 ```
 
 ### Latency - Per-Operation
@@ -753,7 +753,7 @@ mfs := mockfs.NewMockFS(nil, mockfs.WithPerOperationLatency(map[mockfs.Operation
 // MockFile requires MockFS context - no standalone constructor
 // Must create via MockFS.Open()
 mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-    "test.txt": {Data: []byte("content"), Mode: 0644, ModTime: time.Now()},
+    "test.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
 })
 file, _ := mfs.Open("test.txt")
 
@@ -784,7 +784,7 @@ err := ProcessFile(file)
 ```go
 // All operations counted in MockFS stats (including file-handle operations)
 mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-    "file.txt": {Data: []byte("content"), Mode: 0644, ModTime: time.Now()},
+    "file.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
 })
 f, _ := mfs.Open("file.txt")
 buf := make([]byte, 100)
@@ -801,7 +801,7 @@ stats := mfs.GetStats()
 ```go
 // File statistics are separate from filesystem statistics
 mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-    "file.txt": {Data: []byte("content"), Mode: 0644, ModTime: time.Now()},
+    "file.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
 })
 f, _ := mfs.Open("file.txt")
 buf := make([]byte, 100)
@@ -923,10 +923,10 @@ fmt.Println(stats.String()) // "Stats{Ops: 10 (2 failed), Bytes: 1024 read, 512 
 mfs := mockfs.NewMockFS(nil)
 
 // Create directory hierarchy (new methods in v2)
-err := mfs.MkdirAll("app/config/prod", 0755)
+err := mfs.MkdirAll("app/config/prod", 0o755)
 
 // Create single directory
-err = mfs.Mkdir("logs", 0755)
+err = mfs.Mkdir("logs", 0o755)
 
 // Remove directory (must be empty)
 err = mfs.Remove("logs")
@@ -939,7 +939,7 @@ err = mfs.Rename("old_name", "new_name")
 
 // Write file with create-if-missing option
 mfs = mockfs.NewMockFS(nil, mockfs.WithCreateIfMissing(true))
-err = mfs.WriteFile("new.txt", []byte("content"), 0644)
+err = mfs.WriteFile("new.txt", []byte("content"), 0o644)
 ```
 
 ### Shared Error Injector
@@ -999,9 +999,9 @@ err := ProcessReader(file)
 *v2* provides full `fs.SubFS` implementation with automatic path adjustment for error rules.
 ```go
 mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-    "app/config/dev.json":  {Data: []byte("{}"), Mode: 0644},
-    "app/config/prod.json": {Data: []byte("{}"), Mode: 0644},
-    "app/logs/app.log":     {Data: []byte(""), Mode: 0644},
+    "app/config/dev.json":  {Data: []byte("{}"), Mode: 0o644},
+    "app/config/prod.json": {Data: []byte("{}"), Mode: 0o644},
+    "app/logs/app.log":     {Data: []byte(""), Mode: 0o644},
 })
 
 // Configure error for paths in parent
@@ -1027,7 +1027,7 @@ stats := subMockFS.Stats()
 ```go
 func TestReadError(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "data.txt": {Data: []byte("content"), Mode: 0644, ModTime: time.Now()},
+        "data.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
     })
     mfs.AddReadError("data.txt", io.ErrUnexpectedEOF)
 
@@ -1042,7 +1042,7 @@ func TestReadError(t *testing.T) {
 ```go
 func TestReadError(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "data.txt": {Data: []byte("content"), Mode: 0644, ModTime: time.Now()},
+        "data.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
     })
     mfs.FailRead("data.txt", io.ErrUnexpectedEOF)
 
@@ -1093,7 +1093,7 @@ func TestTimeout(t *testing.T) {
 ```go
 func TestOperationCounts(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "file.txt": {Data: []byte("content"), Mode: 0644, ModTime: time.Now()},
+        "file.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
     })
 
     // Function under test
@@ -1120,7 +1120,7 @@ func TestOperationCounts(t *testing.T) {
 ```go
 func TestOperationCounts(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "file.txt": {Data: []byte("content"), Mode: 0644, ModTime: time.Now()},
+        "file.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
     })
 
     // Function under test
@@ -1167,7 +1167,7 @@ func TestOperationCounts(t *testing.T) {
 func TestFileReader(t *testing.T) {
     // Must use MockFS to create file
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "test.txt": {Data: []byte("test data"), Mode: 0644, ModTime: time.Now()},
+        "test.txt": {Data: []byte("test data"), Mode: 0o644, ModTime: time.Now()},
     })
     file, _ := mfs.Open("test.txt")
 
@@ -1207,7 +1207,7 @@ func TestFileReader(t *testing.T) {
 ```go
 func TestIntermittentErrors(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "flaky.txt": {Data: []byte("datadatadatadata"), Mode: 0644, ModTime: time.Now()},
+        "flaky.txt": {Data: []byte("datadatadatadata"), Mode: 0o644, ModTime: time.Now()},
     })
 
     // Error after 3 successes
@@ -1236,7 +1236,7 @@ func TestIntermittentErrors(t *testing.T) {
 ```go
 func TestIntermittentErrors(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "flaky.txt": {Data: []byte("datadatadatadata"), Mode: 0644, ModTime: time.Now()},
+        "flaky.txt": {Data: []byte("datadatadatadata"), Mode: 0o644, ModTime: time.Now()},
     })
 
     // Error after 3 successes
@@ -1277,9 +1277,9 @@ func TestIntermittentErrors(t *testing.T) {
 ```go
 func TestGlobPatternErrors(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "logs/app.log":   {Data: []byte("log"), Mode: 0644, ModTime: time.Now()},
-        "logs/error.log": {Data: []byte("log"), Mode: 0644, ModTime: time.Now()},
-        "data/file.txt":  {Data: []byte("data"), Mode: 0644, ModTime: time.Now()},
+        "logs/app.log":   {Data: []byte("log"), Mode: 0o644, ModTime: time.Now()},
+        "logs/error.log": {Data: []byte("log"), Mode: 0o644, ModTime: time.Now()},
+        "data/file.txt":  {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
     })
 
     // Apply error to all .log files
@@ -1305,9 +1305,9 @@ func TestGlobPatternErrors(t *testing.T) {
 ```go
 func TestSubFilesystem(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "app/config/dev.json":  {Data: []byte("{}"), Mode: 0644, ModTime: time.Now()},
-        "app/config/prod.json": {Data: []byte("{}"), Mode: 0644, ModTime: time.Now()},
-        "app/data/file.txt":    {Data: []byte("data"), Mode: 0644, ModTime: time.Now()},
+        "app/config/dev.json":  {Data: []byte("{}"), Mode: 0o644, ModTime: time.Now()},
+        "app/config/prod.json": {Data: []byte("{}"), Mode: 0o644, ModTime: time.Now()},
+        "app/data/file.txt":    {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
     })
 
     // Configure error in parent filesystem

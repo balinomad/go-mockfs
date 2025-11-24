@@ -18,7 +18,7 @@ import (
 func TestNewMockFile(t *testing.T) {
 	mapFile := &fstest.MapFile{
 		Data:    []byte("test data"),
-		Mode:    0644,
+		Mode:    0o644,
 		ModTime: time.Now(),
 	}
 
@@ -408,7 +408,7 @@ func TestMockFile_Read_zeroByte(t *testing.T) {
 func TestMockFile_Write_overwrite(t *testing.T) {
 	mapFile := &fstest.MapFile{
 		Data:    []byte("original content"),
-		Mode:    0644,
+		Mode:    0o644,
 		ModTime: time.Now(),
 	}
 
@@ -435,7 +435,7 @@ func TestMockFile_Write_append(t *testing.T) {
 	initialData := []byte("initial-")
 	mapFile := &fstest.MapFile{
 		Data:    append([]byte(nil), initialData...),
-		Mode:    0644,
+		Mode:    0o644,
 		ModTime: time.Now(),
 	}
 
@@ -462,7 +462,7 @@ func TestMockFile_Write_readOnly(t *testing.T) {
 	initialData := []byte("initial")
 	mapFile := &fstest.MapFile{
 		Data:    append([]byte(nil), initialData...),
-		Mode:    0644,
+		Mode:    0o644,
 		ModTime: time.Now(),
 	}
 
@@ -500,7 +500,7 @@ func TestMockFile_Write_closed(t *testing.T) {
 
 // TestMockFile_Write_errorInjection tests error injection on write.
 func TestMockFile_Write_errorInjection(t *testing.T) {
-	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0644, ModTime: time.Now()}
+	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0o644, ModTime: time.Now()}
 	wantErr := fs.ErrPermission
 
 	injector := mockfs.NewErrorInjector()
@@ -519,7 +519,7 @@ func TestMockFile_Write_modTimeUpdate(t *testing.T) {
 	initialTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	mapFile := &fstest.MapFile{
 		Data:    []byte("old"),
-		Mode:    0644,
+		Mode:    0o644,
 		ModTime: initialTime,
 	}
 
@@ -700,7 +700,7 @@ func TestMockFile_ReadDir_pagination(t *testing.T) {
 func TestMockFile_Stat(t *testing.T) {
 	mapFile := &fstest.MapFile{
 		Data:    []byte("test data content"),
-		Mode:    0644,
+		Mode:    0o644,
 		ModTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
 
@@ -717,8 +717,8 @@ func TestMockFile_Stat(t *testing.T) {
 	if info.Size() != 17 {
 		t.Errorf("size = %d, want 17", info.Size())
 	}
-	if info.Mode() != 0644 {
-		t.Errorf("mode = %v, want 0644", info.Mode())
+	if info.Mode() != 0o644 {
+		t.Errorf("mode = %v, want 0o644", info.Mode())
 	}
 	if info.IsDir() {
 		t.Error("IsDir = true, want false")
@@ -741,7 +741,7 @@ func TestMockFile_Stat_closed(t *testing.T) {
 
 // TestMockFile_Stat_errorInjection tests error injection on stat.
 func TestMockFile_Stat_errorInjection(t *testing.T) {
-	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0644, ModTime: time.Now()}
+	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0o644, ModTime: time.Now()}
 	wantErr := fs.ErrPermission
 
 	injector := mockfs.NewErrorInjector()
@@ -818,8 +818,8 @@ func TestMockFile_Stat_directoryMode(t *testing.T) {
 // TestMockFile_Stat_permissions tests different file modes.
 func TestMockFile_Stat_permissions(t *testing.T) {
 	modes := []fs.FileMode{
-		0644,
-		0755,
+		0o644,
+		0o755,
 		0400,
 		0777,
 	}
@@ -868,7 +868,7 @@ func TestMockFile_Close_double(t *testing.T) {
 
 // TestMockFile_Close_errorInjection tests error injection on close.
 func TestMockFile_Close_errorInjection(t *testing.T) {
-	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0644, ModTime: time.Now()}
+	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0o644, ModTime: time.Now()}
 	wantErr := fs.ErrPermission
 
 	injector := mockfs.NewErrorInjector()
