@@ -554,8 +554,8 @@ func TestMockFile_Write_zeroByte(t *testing.T) {
 // TestMockFile_ReadDir_valid tests valid directory reading.
 func TestMockFile_ReadDir_valid(t *testing.T) {
 	entries := []fs.DirEntry{
-		&mockDirEntry{name: "file1.txt", isDir: false},
-		&mockDirEntry{name: "file2.txt", isDir: false},
+		mockfs.NewFileInfo("file1.txt", 0, 0o644, time.Now()),
+		mockfs.NewFileInfo("file2.txt", 0, 0o644, time.Now()),
 	}
 
 	handler := func(n int) ([]fs.DirEntry, error) {
@@ -639,10 +639,10 @@ func TestMockFile_ReadDir_errorInjection(t *testing.T) {
 // TestMockFile_ReadDir_pagination tests reading directory entries in pages.
 func TestMockFile_ReadDir_pagination(t *testing.T) {
 	entries := []fs.DirEntry{
-		&mockDirEntry{name: "file1", isDir: false},
-		&mockDirEntry{name: "file2", isDir: false},
-		&mockDirEntry{name: "file3", isDir: false},
-		&mockDirEntry{name: "file4", isDir: false},
+		mockfs.NewFileInfo("file1", 0, 0o644, time.Now()),
+		mockfs.NewFileInfo("file2", 0, 0o644, time.Now()),
+		mockfs.NewFileInfo("file3", 0, 0o644, time.Now()),
+		mockfs.NewFileInfo("file4", 0, 0o644, time.Now()),
 	}
 
 	pos := 0
@@ -817,11 +817,11 @@ func TestMockFile_Stat_directoryMode(t *testing.T) {
 
 // TestMockFile_Stat_permissions tests different file modes.
 func TestMockFile_Stat_permissions(t *testing.T) {
-	modes := []fs.FileMode{
+	modes := []mockfs.FileMode{
 		0o644,
 		0o755,
-		0400,
-		0777,
+		0o400,
+		0o777,
 	}
 
 	for _, mode := range modes {
@@ -1338,10 +1338,11 @@ func TestMockFile_statsRaceCondition(t *testing.T) {
 // TestMockFile_latencyCloning tests that files get independent latency simulators.
 func TestMockFile_latencyCloning(t *testing.T) {
 	// Create a MockFS with latency that uses Once mode
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"file1.txt": {Data: []byte("data1")},
-		"file2.txt": {Data: []byte("data2")},
-	}, mockfs.WithLatency(testDuration))
+	mfs := mockfs.NewMockFS(
+		mockfs.File("file1.txt", "data1"),
+		mockfs.File("file2.txt", "data2"),
+		mockfs.WithLatency(testDuration),
+	)
 
 	// Open two files - each should get cloned latency simulator
 	f1, err := mfs.Open("file1.txt")
@@ -1422,17 +1423,6 @@ func TestNewDirHandler(t *testing.T) {
 		}
 	})
 }
-
-// mockDirEntry is a test helper for directory entries.
-type mockDirEntry struct {
-	name  string
-	isDir bool
-}
-
-func (m *mockDirEntry) Name() string               { return m.name }
-func (m *mockDirEntry) IsDir() bool                { return m.isDir }
-func (m *mockDirEntry) Type() fs.FileMode          { return 0 }
-func (m *mockDirEntry) Info() (fs.FileInfo, error) { return nil, nil }
 
 // BenchmarkMockFile_Read benchmarks read performance.
 func BenchmarkMockFile_Read(b *testing.B) {

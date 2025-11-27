@@ -116,18 +116,10 @@ import (
 
 func TestBasicUsage(t *testing.T) {
     // Create filesystem with initial files
-    // MapFile is an alias for testing/fstest.MapFile
-    mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "config.json": {
-            Data:    []byte(`{"setting": "value"}`),
-            Mode:    0o644,
-            ModTime: time.Now(),
-        },
-        "data": {
-            Mode:    fs.ModeDir | 0o755,
-            ModTime: time.Now(),
-        },
-    })
+    mfs := mockfs.NewMockFS(
+        mockfs.File("config.json", `{"setting": "value"}`),
+        mockfs.Dir("data"),
+    )
 
     // Read file
     data, err := fs.ReadFile(mfs, "config.json")
@@ -154,9 +146,7 @@ func TestBasicUsage(t *testing.T) {
 
 This separation enables precise verification of I/O patterns. Example:
 ```go
-mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-    "file.txt": {Data: []byte("content"), Mode: 0o644},
-})
+mfs := mockfs.NewMockFS(mockfs.File("file.txt", "content"))
 
 file, _ := mfs.Open("file.txt")   // Tracked in MockFS.Stats()
 buf := make([]byte, 100)
@@ -215,12 +205,12 @@ Matchers automatically adjust for `SubFS` operations.
 ```go
 type WritableFS interface {
     fs.FS
-    Mkdir(path string, perm fs.FileMode) error
-    MkdirAll(path string, perm fs.FileMode) error
+    Mkdir(path string, perm FileMode) error
+    MkdirAll(path string, perm FileMode) error
     Remove(path string) error
     RemoveAll(path string) error
     Rename(oldpath, newpath string) error
-    WriteFile(path string, data []byte, perm fs.FileMode) error
+    WriteFile(path string, data []byte, perm FileMode) error
 }
 ```
 
@@ -232,16 +222,18 @@ type WritableFS interface {
 
 ```go
 // Empty filesystem
-mfs := mockfs.NewMockFS(nil)
+mfs := mockfs.NewMockFS()
 
 // With initial files
-mfs = mockfs.NewMockFS(map[string]*mockfs.MapFile{
-    "file.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
-    "dir":      {Mode: fs.ModeDir | 0o755, ModTime: time.Now()},
-})
+mfs = mockfs.NewMockFS(
+    mockfs.File("file.txt", "content"),
+    mockfs.Dir("dir"),
+)
 
-// With options
+// With initial files and options
 mfs = mockfs.NewMockFS(nil,
+    mockfs.File("file.txt", "content"),
+    mockfs.Dir("dir"),
     mockfs.WithLatency(10*time.Millisecond),
     mockfs.WithCreateIfMissing(true),
     mockfs.WithOverwrite(),
@@ -340,10 +332,10 @@ mfs.ResetStats()
 
 ```go
 // Global latency for all operations
-mfs := mockfs.NewMockFS(nil, mockfs.WithLatency(50*time.Millisecond))
+mfs := mockfs.NewMockFS(mockfs.WithLatency(50*time.Millisecond))
 
 // Per-operation latency
-mfs = mockfs.NewMockFS(nil, mockfs.WithPerOperationLatency(
+mfs = mockfs.NewMockFS(mockfs.WithPerOperationLatency(
     map[mockfs.Operation]time.Duration{
         mockfs.OpRead:  100 * time.Millisecond,
         mockfs.OpWrite: 200 * time.Millisecond,
@@ -356,14 +348,14 @@ sim := mockfs.NewLatencySimulator(50 * time.Millisecond)
 sim.Simulate(mockfs.OpRead, mockfs.Once())      // Latency only on first read
 sim.Simulate(mockfs.OpWrite, mockfs.Async())    // Non-blocking
 
-mfs = mockfs.NewMockFS(nil, mockfs.WithLatencySimulator(sim))
+mfs = mockfs.NewMockFS(mockfs.WithLatencySimulator(sim))
 ```
 
 ### Write Operations
 
 ```go
 // Enable writes
-mfs := mockfs.NewMockFS(nil, mockfs.WithOverwrite())
+mfs := mockfs.NewMockFS(mockfs.WithOverwrite())
 
 // Write file
 err := mfs.WriteFile("output.txt", []byte("data"), 0o644)
@@ -376,7 +368,7 @@ mfs = mockfs.NewMockFS(nil,
 err = mfs.WriteFile("new.txt", []byte("content"), 0o644)
 
 // Append mode
-mfs = mockfs.NewMockFS(nil, mockfs.WithAppend())
+mfs = mockfs.NewMockFS(mockfs.WithAppend())
 mfs.WriteFile("log.txt", []byte("line1\n"), 0o644)
 mfs.WriteFile("log.txt", []byte("line2\n"), 0o644) // Appends
 
@@ -424,11 +416,17 @@ err := ProcessReader(file)
 ### SubFS Support
 
 ```go
-mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-    "app/config/dev.json":  {Data: []byte("{}"), Mode: 0o644},
-    "app/config/prod.json": {Data: []byte("{}"), Mode: 0o644},
-    "app/logs/app.log":     {Data: []byte(""), Mode: 0o644},
-})
+mfs := mockfs.NewMockFS(
+    mockfs.Dir("app",
+        mockfs.Dir("config",
+            mockfs.File("dev.json", "{}"),
+            mockfs.File("prod.json", "{}"),
+        ),
+        mockfs.Dir("logs",
+            mockfs.File("app.log", ""),
+        ),
+    ),
+)
 
 // Configure error in parent
 mfs.ErrorInjector().AddGlob(mockfs.OpRead, "app/config/*.json", io.EOF, mockfs.ErrorModeAlways, 0)
@@ -451,13 +449,10 @@ stats := subMockFS.Stats()
 
 ```go
 func TestRetryLogic(t *testing.T) {
-    mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "data.txt": {Data: []byte("content"), Mode: 0o644},
-    })
+    mfs := mockfs.NewMockFS(mockfs.File("data.txt", "content"))
 
     // First two reads fail, third succeeds
-    mfs.FailReadAfter("data.txt", io.ErrUnexpectedEOF, 0)
-    mfs.FailReadAfter("data.txt", io.ErrUnexpectedEOF, 0)
+    mfs.FailReadAfter("data.txt", io.ErrUnexpectedEOF, 2)
 
     // Function under test should retry
     result, err := YourRetryFunction(mfs, "data.txt")
@@ -480,7 +475,7 @@ func TestRetryLogic(t *testing.T) {
 ```go
 func TestTimeoutBehavior(t *testing.T) {
     // Simulate slow I/O
-    mfs := mockfs.NewMockFS(nil, mockfs.WithLatency(2*time.Second))
+    mfs := mockfs.NewMockFS(mockfs.WithLatency(2*time.Second))
 
     ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
     defer cancel()
@@ -497,9 +492,7 @@ func TestTimeoutBehavior(t *testing.T) {
 
 ```go
 func TestConcurrentReads(t *testing.T) {
-    mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-        "shared.txt": {Data: bytes.Repeat([]byte("data"), 1000), Mode: 0o644},
-    })
+    mfs := mockfs.NewMockFS(mockfs.File("shared.txt", strings.Repeat("data", 1000)))
 
     var wg sync.WaitGroup
     for i := 0; i < 10; i++ {
@@ -531,19 +524,19 @@ When testing code that uses `os` package functions directly, use dependency inje
 ```go
 // Define abstraction
 type FileSystem interface {
-    MkdirAll(path string, perm fs.FileMode) error
-    WriteFile(path string, data []byte, perm fs.FileMode) error
+    MkdirAll(path string, perm FileMode) error
+    WriteFile(path string, data []byte, perm FileMode) error
     ReadFile(path string) ([]byte, error)
 }
 
 // Production implementation
 type OSFileSystem struct{}
 
-func (OSFileSystem) MkdirAll(path string, perm fs.FileMode) error {
+func (OSFileSystem) MkdirAll(path string, perm FileMode) error {
     return os.MkdirAll(path, perm)
 }
 
-func (OSFileSystem) WriteFile(path string, data []byte, perm fs.FileMode) error {
+func (OSFileSystem) WriteFile(path string, data []byte, perm FileMode) error {
     return os.WriteFile(path, data, perm)
 }
 
@@ -567,7 +560,7 @@ func NewService() *Service {
 
 // Usage in tests
 func TestService(t *testing.T) {
-    mfs := mockfs.NewMockFS(nil, mockfs.WithCreateIfMissing(true))
+    mfs := mockfs.NewMockFS(mockfs.WithCreateIfMissing(true))
     svc := &Service{fs: MockFileSystem{mfs}}
     // Test with full error injection and statistics
 }
@@ -575,7 +568,7 @@ func TestService(t *testing.T) {
 
 ## API Reference
 
-Complete API organized by type. See [GoDoc](https://pkg.go.dev/github.com/balinomad/go-mockfs) for detailed method signatures and examples.
+Complete API organized by type. See [GoDoc](https://pkg.go.dev/github.com/balinomad/go-mockfs/v2) for detailed method signatures and examples.
 
 ### `MockFS`
 
@@ -585,13 +578,15 @@ Primary filesystem type implementing `fs.FS`, `fs.ReadDirFS`, `fs.ReadFileFS`, `
 
 **Constructor:**
 ```go
-NewMockFS(initial map[string]*MapFile, opts ...MockFSOption) *MockFS
+NewMockFS(opts ...MockFSOption) *MockFS
 ```
 
 **Options:**
 
 | Option | Description |
 |--------|-------------|
+| `File(name string, content any, mode ...FileMode)` | Creates mock file in filesystem |
+| `Dir(name string, args ...any)` | Creates mock directory in filesystem |
 | `WithLatency(duration)` | Sets uniform latency for all operations |
 | `WithPerOperationLatency(map[Operation]time.Duration)` | Sets per-operation latency |
 | `WithLatencySimulator(sim)` | Sets custom `LatencySimulator` instance |
@@ -615,20 +610,20 @@ NewMockFS(initial map[string]*MapFile, opts ...MockFSOption) *MockFS
 
 | Method | Description |
 |--------|-------------|
-| `Mkdir(path string, perm fs.FileMode) error` | Creates directory (parent must exist) |
-| `MkdirAll(path string, perm fs.FileMode) error` | Creates directory and all parents |
+| `Mkdir(path string, perm FileMode) error` | Creates directory (parent must exist) |
+| `MkdirAll(path string, perm FileMode) error` | Creates directory and all parents |
 | `Remove(path string) error` | Removes file or empty directory |
 | `RemoveAll(path string) error` | Removes path and children recursively |
 | `Rename(oldpath, newpath string) error` | Renames/moves file or directory |
-| `WriteFile(path string, data []byte, perm fs.FileMode) error` | Writes file atomically |
+| `WriteFile(path string, data []byte, perm FileMode) error` | Writes file atomically |
 
 #### File Management (Additive)
 
 | Method | Description |
 |--------|-------------|
-| `AddFile(path, content string, mode fs.FileMode) error` | Adds text file |
-| `AddFileBytes(path string, data []byte, mode fs.FileMode) error` | Adds binary file |
-| `AddDir(path string, mode fs.FileMode) error` | Adds directory |
+| `AddFile(path, content string, mode FileMode) error` | Adds text file |
+| `AddFileBytes(path string, data []byte, mode FileMode) error` | Adds binary file |
+| `AddDir(path string, mode FileMode) error` | Adds directory |
 | `RemovePath(path string) error` | Removes file or directory from map |
 
 #### Error Injection (Convenience Methods)
@@ -742,7 +737,7 @@ NewDirHandler(entries []fs.DirEntry) func(int)([]fs.DirEntry, error)
 Creates stateful ReadDir handler from static entry list. Used with `NewMockDirectory` or `WithFileReadDirHandler`.
 
 ```go
-NewFileInfo(name string, size int64, mode fs.FileMode, modTime time.Time) *FileInfo
+NewFileInfo(name string, size int64, mode FileMode, modTime time.Time) *FileInfo
 ```
 Creates `fs.DirEntry` / `fs.FileInfo` for testing directory entries without requiring a filesystem.
 
@@ -953,7 +948,7 @@ type MapFile = fstest.MapFile
 
 **Fields:**
 - `Data []byte` — File content
-- `Mode fs.FileMode` — File permissions and type bits
+- `Mode FileMode` — File permissions and type bits
 - `ModTime time.Time` — Modification timestamp
 - `Sys any` — System-specific data (unused by mockfs)
 
@@ -965,12 +960,12 @@ Extension of `fs.FS` with write operations. `MockFS` implements this interface.
 ```go
 type WritableFS interface {
     fs.FS
-    Mkdir(path string, perm fs.FileMode) error
-    MkdirAll(path string, perm fs.FileMode) error
+    Mkdir(path string, perm FileMode) error
+    MkdirAll(path string, perm FileMode) error
     Remove(path string) error
     RemoveAll(path string) error
     Rename(oldpath, newpath string) error
-    WriteFile(path string, data []byte, perm fs.FileMode) error
+    WriteFile(path string, data []byte, perm FileMode) error
 }
 ```
 ## Migrations

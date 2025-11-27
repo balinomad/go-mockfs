@@ -3,7 +3,6 @@ package mockfs_test
 import (
 	"fmt"
 	"io/fs"
-	"time"
 
 	"github.com/balinomad/go-mockfs/v2"
 )
@@ -11,13 +10,7 @@ import (
 // Example demonstrates basic mockfs usage.
 func Example() {
 	// Create a mock filesystem with initial files
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"hello.txt": {
-			Data:    []byte("Hello, World!"),
-			Mode:    0o644,
-			ModTime: time.Now(),
-		},
-	})
+	mfs := mockfs.NewMockFS(mockfs.File("hello.txt", []byte("Hello, World!")))
 
 	// Read the file
 	data, err := fs.ReadFile(mfs, "hello.txt")
@@ -32,22 +25,12 @@ func Example() {
 
 // ExampleNewMockFS demonstrates creating a filesystem with multiple files.
 func ExampleNewMockFS() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"config.json": {
-			Data:    []byte(`{"debug": true}`),
-			Mode:    0o644,
-			ModTime: time.Now(),
-		},
-		"data": {
-			Mode:    fs.ModeDir | 0o755,
-			ModTime: time.Now(),
-		},
-		"data/file.txt": {
-			Data:    []byte("content"),
-			Mode:    0o644,
-			ModTime: time.Now(),
-		},
-	})
+	mfs := mockfs.NewMockFS(
+		mockfs.File("config.json", []byte(`{"debug": true}`)),
+		mockfs.Dir("data",
+			mockfs.File("file.txt", []byte("content")),
+		),
+	)
 
 	// List root directory
 	entries, _ := fs.ReadDir(mfs, ".")
@@ -61,13 +44,7 @@ func ExampleNewMockFS() {
 
 // ExampleMockFS_Open demonstrates opening and reading a file.
 func ExampleMockFS_Open() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"data.txt": {
-			Data:    []byte("line1\nline2\nline3"),
-			Mode:    0o644,
-			ModTime: time.Now(),
-		},
-	})
+	mfs := mockfs.NewMockFS(mockfs.File("data.txt", []byte("line1\nline2\nline3")))
 
 	file, err := mfs.Open("data.txt")
 	if err != nil {
@@ -84,13 +61,7 @@ func ExampleMockFS_Open() {
 
 // ExampleMockFS_Stat demonstrates getting file information.
 func ExampleMockFS_Stat() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"file.txt": {
-			Data:    []byte("content"),
-			Mode:    0o644,
-			ModTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		},
-	})
+	mfs := mockfs.NewMockFS(mockfs.File("file.txt", []byte("content"), 0o664))
 
 	info, err := mfs.Stat("file.txt")
 	if err != nil {
@@ -104,16 +75,16 @@ func ExampleMockFS_Stat() {
 	// Output:
 	// Name: file.txt
 	// Size: 7
-	// Mode: -rw-r--r--
+	// Mode: -rw-rw-r--
 }
 
 // ExampleMockFS_ReadDir demonstrates listing directory contents.
 func ExampleMockFS_ReadDir() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"logs":         {Mode: fs.ModeDir | 0o755, ModTime: time.Now()},
-		"logs/app.log": {Data: []byte("log"), Mode: 0o644, ModTime: time.Now()},
-		"logs/err.log": {Data: []byte("err"), Mode: 0o644, ModTime: time.Now()},
-	})
+	mfs := mockfs.NewMockFS(
+		mockfs.Dir("logs",
+			mockfs.File("app.log", []byte("log")),
+			mockfs.File("err.log", []byte("err")),
+		))
 
 	entries, err := mfs.ReadDir("logs")
 	if err != nil {
@@ -131,9 +102,7 @@ func ExampleMockFS_ReadDir() {
 
 // ExampleMockFS_Stats demonstrates tracking filesystem operations.
 func ExampleMockFS_Stats() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"file.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
-	})
+	mfs := mockfs.NewMockFS(mockfs.File("file.txt", []byte("data")))
 
 	// Perform operations
 	mfs.Stat("file.txt")
@@ -154,7 +123,7 @@ func ExampleMockFS_Stats() {
 
 // ExampleMockFS_AddFile demonstrates adding files dynamically.
 func ExampleMockFS_AddFile() {
-	mfs := mockfs.NewMockFS(nil)
+	mfs := mockfs.NewMockFS()
 
 	// Add a file
 	err := mfs.AddFile("config.json", `{"key": "value"}`, 0o644)
@@ -170,7 +139,7 @@ func ExampleMockFS_AddFile() {
 
 // ExampleMockFS_AddDir demonstrates adding directories.
 func ExampleMockFS_AddDir() {
-	mfs := mockfs.NewMockFS(nil)
+	mfs := mockfs.NewMockFS()
 
 	// Add directory
 	err := mfs.AddDir("logs", 0o755)

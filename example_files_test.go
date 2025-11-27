@@ -110,10 +110,10 @@ func ExampleMockFile_Seek() {
 // ExampleNewDirHandler demonstrates creating a directory handler.
 func ExampleNewDirHandler() {
 	// Create entries manually using fileInfo helper
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"readme.txt": {Data: []byte("info"), Mode: 0o644, ModTime: time.Now()},
-		"data.json":  {Data: []byte("{}"), Mode: 0o644, ModTime: time.Now()},
-	})
+	mfs := mockfs.NewMockFS(
+		mockfs.File("readme.txt", []byte("info")),
+		mockfs.File("data.json", []byte("{}")),
+	)
 
 	entries, _ := mfs.ReadDir(".")
 	handler := mockfs.NewDirHandler(entries)
@@ -137,7 +137,7 @@ func ExampleNewDirHandler() {
 func ExampleNewFileInfo() {
 	// Create file info entries
 	file1 := mockfs.NewFileInfo("readme.txt", 1024, 0o644, time.Now())
-	dir1 := mockfs.NewFileInfo("docs", 0, fs.ModeDir|0o755, time.Now())
+	dir1 := mockfs.NewFileInfo("docs", 0, mockfs.ModeDir|0o755, time.Now())
 
 	fmt.Printf("%s: size=%d, isDir=%v\n", file1.Name(), file1.Size(), file1.IsDir())
 	fmt.Printf("%s: size=%d, isDir=%v\n", dir1.Name(), dir1.Size(), dir1.IsDir())

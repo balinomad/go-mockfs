@@ -15,7 +15,7 @@ func TestNewFileInfo(t *testing.T) {
 		// Named input parameters for target function.
 		path    string
 		size    int64
-		mode    fs.FileMode
+		mode    mockfs.FileMode
 		modTime time.Time
 	}{
 		{
@@ -97,7 +97,7 @@ func TestNewFileInfo_Panic(t *testing.T) {
 	cases := []struct {
 		name string
 		in   string
-		mode fs.FileMode
+		mode mockfs.FileMode
 		size int64
 	}{
 		{

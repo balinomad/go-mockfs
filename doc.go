@@ -13,10 +13,13 @@
 //
 // Create a mock filesystem with initial files:
 //
-//	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-//	    "file.txt": {Data: []byte("content"), Mode: 0o644},
-//	    "dir":      {Mode: fs.ModeDir | 0o755},
-//	})
+//	mfs := mockfs.NewMockFS(map[
+//	    mockfs.File("file.txt", "content"),
+//	    mockfs.Dir("dir",
+//	        mockfs.File("file1.txt", "1"),
+//	        mockfs.File("file2.txt", "2"),
+//	    ),
+//	)
 //
 // Use it like any fs.FS:
 //

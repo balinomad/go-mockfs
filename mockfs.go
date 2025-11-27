@@ -3,6 +3,8 @@
 package mockfs
 
 import (
+	"encoding"
+	"fmt"
 	"io"
 	"io/fs"
 	"path"
@@ -11,6 +13,19 @@ import (
 	"sync"
 	"testing/fstest"
 	"time"
+)
+
+// A FileMode represents a file's mode and permission bits.
+// See [io/fs.FileMode]
+type FileMode = fs.FileMode
+
+// The defined file mode bits are the most significant bits of the FileMode.
+const (
+	ModeDir         FileMode = fs.ModeDir    // d: is a directory
+	ModeAppend      FileMode = fs.ModeAppend // a: append-only
+	ModePerm        FileMode = fs.ModePerm   // Unix permission bits
+	defaultFilePerm FileMode = 0o644
+	defaultDirPerm  FileMode = 0o755
 )
 
 // A MapFile describes a single file in a MapFS.
@@ -23,10 +38,10 @@ type WritableFS interface {
 	fs.FS
 
 	// Mkdir creates a directory in the filesystem.
-	Mkdir(path string, perm fs.FileMode) error
+	Mkdir(path string, perm FileMode) error
 
 	// MkdirAll creates a directory path and all parents if needed.
-	MkdirAll(path string, perm fs.FileMode) error
+	MkdirAll(path string, perm FileMode) error
 
 	// Remove removes a file or directory from the filesystem.
 	Remove(path string) error
@@ -39,7 +54,153 @@ type WritableFS interface {
 	Rename(oldpath, newpath string) error
 
 	// WriteFile writes data to a file in the filesystem.
-	WriteFile(path string, data []byte, perm fs.FileMode) error
+	WriteFile(path string, data []byte, perm FileMode) error
+}
+
+const ()
+
+// MockFSOption configures the MockFS or adds entries to it.
+// The contextPath argument allows relative path resolution for nested structures.
+type MockFSOption func(fs *MockFS, contextPath string) error
+
+// File adds a file at the current context path.
+// The content will be converted to a byte slice.
+// The mode is optional, defaulting to 0644.
+func File(name string, content any, mode ...FileMode) MockFSOption {
+	return func(m *MockFS, contextPath string) error {
+		if name == "" {
+			return fmt.Errorf("File: empty file name")
+		}
+		fullPath := path.Clean(joinPath(contextPath, name))
+
+		data, err := toBytes(content)
+		if err != nil {
+			return fmt.Errorf("File: invalid content in %s (%T): %w", fullPath, content, err)
+		}
+
+		perm := defaultFilePerm
+		if len(mode) > 0 {
+			perm = mode[0]
+		}
+
+		m.files[fullPath] = &fstest.MapFile{
+			Data:    data,
+			Mode:    perm,
+			ModTime: time.Now(),
+		}
+		return nil
+	}
+}
+
+// Dir adds a directory and applies child options within its context.
+// Mixed arguments are supported: FileMode sets permissions, MockFSOption adds children.
+func Dir(name string, args ...any) MockFSOption {
+	return func(m *MockFS, contextPath string) error {
+		if name == "" {
+			return fmt.Errorf("Dir: empty directory name")
+		}
+		fullPath := path.Clean(joinPath(contextPath, name))
+
+		perm := defaultDirPerm
+		var children []MockFSOption
+
+		// Argument parsing
+		for _, arg := range args {
+			switch v := arg.(type) {
+			case FileMode:
+				perm = v
+			case MockFSOption:
+				children = append(children, v)
+			default:
+				return fmt.Errorf("Dir: invalid argument %s: %T", fullPath, v)
+			}
+		}
+
+		// Create the directory entry itself
+		m.files[fullPath] = &fstest.MapFile{
+			Mode:    perm | fs.ModeDir,
+			ModTime: time.Now(),
+		}
+
+		// Apply children with the new fullPath as context
+		for _, child := range children {
+			if err := child(m, fullPath); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+// WithErrorInjector sets the error injector for the MockFS.
+func WithErrorInjector(injector ErrorInjector) MockFSOption {
+	return func(m *MockFS, _ string) error {
+		if injector != nil {
+			m.injector = injector
+		}
+		return nil
+	}
+}
+
+// WithCreateIfMissing sets whether writes should create files when missing.
+// Default behavior is to return an error.
+func WithCreateIfMissing(create bool) MockFSOption {
+	return func(m *MockFS, _ string) error {
+		m.createIfMissing = create
+		return nil
+	}
+}
+
+// WithReadOnly explicitly marks the filesystem as read-only.
+func WithReadOnly() MockFSOption {
+	return func(m *MockFS, _ string) error {
+		m.writeMode = writeModeReadOnly
+		return nil
+	}
+}
+
+// WithOverwrite sets the write policy to overwrite existing contents.
+// The existing contents will be replaced by the new data.
+func WithOverwrite() MockFSOption {
+	return func(m *MockFS, _ string) error {
+		m.writeMode = writeModeOverwrite
+		return nil
+	}
+}
+
+// WithAppend sets the write policy to append data to existing contents.
+// The new data will be appended to the existing contents.
+func WithAppend() MockFSOption {
+	return func(m *MockFS, _ string) error {
+		m.writeMode = writeModeAppend
+		return nil
+	}
+}
+
+// WithLatency sets the simulated latency for all operations.
+func WithLatency(duration time.Duration) MockFSOption {
+	return func(m *MockFS, _ string) error {
+		m.latency = NewLatencySimulator(duration)
+		return nil
+	}
+}
+
+// WithLatencySimulator sets a custom latency simulator for operations.
+func WithLatencySimulator(sim LatencySimulator) MockFSOption {
+	return func(m *MockFS, _ string) error {
+		if sim != nil {
+			m.latency = sim
+		}
+		return nil
+	}
+}
+
+// WithPerOperationLatency sets different latencies for different operations.
+func WithPerOperationLatency(durations map[Operation]time.Duration) MockFSOption {
+	return func(m *MockFS, _ string) error {
+		m.latency = NewLatencySimulatorPerOp(durations)
+		return nil
+	}
 }
 
 // MockFS wraps a file map to inject errors for specific paths and operations.
@@ -63,97 +224,16 @@ var (
 	_ WritableFS    = (*MockFS)(nil)
 )
 
-// MockFSOption is a function type for configuring MockFS.
-type MockFSOption func(*MockFS)
-
-// WithErrorInjector sets the error injector for the MockFS.
-func WithErrorInjector(injector ErrorInjector) MockFSOption {
-	return func(m *MockFS) {
-		if injector != nil {
-			m.injector = injector
-		}
-	}
-}
-
-// WithCreateIfMissing sets whether writes should create files when missing.
-// Default behavior is to return an error.
-func WithCreateIfMissing(create bool) MockFSOption {
-	return func(m *MockFS) {
-		m.createIfMissing = create
-	}
-}
-
-// WithReadOnly explicitly marks the filesystem as read-only.
-func WithReadOnly() MockFSOption {
-	return func(m *MockFS) {
-		m.writeMode = writeModeReadOnly
-	}
-}
-
-// WithOverwrite sets the write policy to overwrite existing contents.
-// The existing contents will be replaced by the new data.
-func WithOverwrite() MockFSOption {
-	return func(m *MockFS) {
-		m.writeMode = writeModeOverwrite
-	}
-}
-
-// WithAppend sets the write policy to append data to existing contents.
-// The new data will be appended to the existing contents.
-func WithAppend() MockFSOption {
-	return func(m *MockFS) {
-		m.writeMode = writeModeAppend
-	}
-}
-
-// WithLatency sets the simulated latency for all operations.
-func WithLatency(duration time.Duration) MockFSOption {
-	return func(m *MockFS) {
-		m.latency = NewLatencySimulator(duration)
-	}
-}
-
-// WithLatencySimulator sets a custom latency simulator for operations.
-func WithLatencySimulator(sim LatencySimulator) MockFSOption {
-	return func(m *MockFS) {
-		if sim != nil {
-			m.latency = sim
-		}
-	}
-}
-
-// WithPerOperationLatency sets different latencies for different operations.
-func WithPerOperationLatency(durations map[Operation]time.Duration) MockFSOption {
-	return func(m *MockFS) {
-		m.latency = NewLatencySimulatorPerOp(durations)
-	}
-}
-
 // NewMockFS creates a new MockFS with the given MapFile data and options.
 // Nil MapFile entries in the initial map are ignored.
 // If no root directory (".") is provided, one is created automatically.
-func NewMockFS(initial map[string]*MapFile, opts ...MockFSOption) *MockFS {
-	files := make(map[string]*fstest.MapFile)
-
-	// Create a deep copy of the input map to avoid external modifications
-	for p, file := range initial {
-		if file == nil {
-			continue // Skip nil entries
-		}
-		cleanPath := cleanPath(p)
-		newFile := *file
-		if file.Data != nil {
-			newFile.Data = append([]byte(nil), file.Data...)
-		}
-		files[cleanPath] = &newFile
-	}
-
-	// Ensure root directory exists if not explicitly provided
-	if _, exists := files["."]; !exists {
-		files["."] = &fstest.MapFile{
-			Mode:    fs.ModeDir | 0o755,
+func NewMockFS(opts ...MockFSOption) *MockFS {
+	// Ensure root directory exists
+	files := map[string]*fstest.MapFile{
+		".": {
+			Mode:    ModeDir | defaultDirPerm,
 			ModTime: time.Now(),
-		}
+		},
 	}
 
 	m := &MockFS{
@@ -167,7 +247,13 @@ func NewMockFS(initial map[string]*MapFile, opts ...MockFSOption) *MockFS {
 
 	// Apply options
 	for _, opt := range opts {
-		opt(m)
+		if opt == nil {
+			continue
+		}
+		if err := opt(m, "."); err != nil {
+			// Panic here to surface API misuse immediately
+			panic(fmt.Sprintf("mockfs: failed to apply option %v", err))
+		}
 	}
 
 	return m
@@ -517,19 +603,19 @@ func (m *MockFS) copyFilesToSubFS(subFS *MockFS, cleanDir string, dirInfo fs.Fil
 // AddFile adds a text file to the mock filesystem.
 // If the file already exists, it is overwritten.
 // Returns an error if the path is invalid.
-func (m *MockFS) AddFile(filePath string, content string, mode fs.FileMode) error {
+func (m *MockFS) AddFile(filePath string, content string, mode FileMode) error {
 	return m.addFile(filePath, []byte(content), mode)
 }
 
 // AddFileBytes adds a binary file to the mock filesystem.
 // If the file already exists, it is overwritten.
 // Returns an error if the path is invalid.
-func (m *MockFS) AddFileBytes(filePath string, content []byte, mode fs.FileMode) error {
+func (m *MockFS) AddFileBytes(filePath string, content []byte, mode FileMode) error {
 	return m.addFile(filePath, content, mode)
 }
 
 // addFile is the internal implementation for adding files.
-func (m *MockFS) addFile(filePath string, content []byte, mode fs.FileMode) error {
+func (m *MockFS) addFile(filePath string, content []byte, mode FileMode) error {
 	// Validate original path first; it should not have a trailing slash
 	if !fs.ValidPath(filePath) || strings.HasSuffix(filePath, "/") {
 		return &fs.PathError{Op: "AddFile", Path: filePath, Err: fs.ErrInvalid}
@@ -551,7 +637,7 @@ func (m *MockFS) addFile(filePath string, content []byte, mode fs.FileMode) erro
 // AddDir adds a directory to the mock filesystem.
 // If the directory already exists, it is overwritten.
 // Returns an error if the path is invalid.
-func (m *MockFS) AddDir(dirPath string, mode fs.FileMode) error {
+func (m *MockFS) AddDir(dirPath string, mode FileMode) error {
 	// Disallow adding "." as a directory explicitly
 	if !fs.ValidPath(dirPath) || dirPath == "." {
 		return &fs.PathError{Op: "AddDir", Path: dirPath, Err: fs.ErrInvalid}
@@ -726,7 +812,7 @@ func (m *MockFS) ClearErrors() {
 // --- WritableFS Implementation ---
 
 // Mkdir creates a directory in the filesystem.
-func (m *MockFS) Mkdir(dirPath string, perm fs.FileMode) (err error) {
+func (m *MockFS) Mkdir(dirPath string, perm FileMode) (err error) {
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpMkdir, 0, err) }()
 
@@ -772,7 +858,7 @@ func (m *MockFS) Mkdir(dirPath string, perm fs.FileMode) (err error) {
 }
 
 // MkdirAll creates a directory path and all parents if needed.
-func (m *MockFS) MkdirAll(dirPath string, perm fs.FileMode) (err error) {
+func (m *MockFS) MkdirAll(dirPath string, perm FileMode) (err error) {
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpMkdirAll, 0, err) }()
 
@@ -960,7 +1046,7 @@ func (m *MockFS) Rename(oldpath, newpath string) (err error) {
 }
 
 // WriteFile writes data to a file in the filesystem.
-func (m *MockFS) WriteFile(filePath string, data []byte, perm fs.FileMode) (err error) {
+func (m *MockFS) WriteFile(filePath string, data []byte, perm FileMode) (err error) {
 	// Record the result of this operation on exit
 	// We record len(data) as bytes written, assuming a full write or failure
 	defer func() { m.stats.Record(OpWrite, len(data), err) }()
@@ -1051,4 +1137,43 @@ func joinPath(dirPath, name string) string {
 		return name
 	}
 	return dirPath + "/" + name
+}
+
+// toBytes converts a variety of input types into a byte slice.
+// It never panics and never returns nil if error is nil, but may return an empty slice.
+func toBytes(content any) (data []byte, err error) {
+	// Recover from panics caused by typed nils or buggy third-party methods.
+	defer func() {
+		if r := recover(); r != nil {
+			data = []byte{}
+			err = fmt.Errorf("panic converting %T: %v", content, r)
+		}
+	}()
+
+	if content == nil {
+		return []byte{}, nil
+	}
+
+	switch v := content.(type) {
+	case []byte:
+		// Clone to ensure immutability and return non-nil slice.
+		data = make([]byte, len(v))
+		copy(data, v)
+	case string:
+		data = []byte(v)
+	case io.Reader:
+		data, err = io.ReadAll(v)
+	case encoding.BinaryMarshaler:
+		data, err = v.MarshalBinary()
+	case fmt.Stringer:
+		data = []byte(v.String())
+	default:
+		data = fmt.Append([]byte{}, content)
+	}
+
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return data, nil
 }

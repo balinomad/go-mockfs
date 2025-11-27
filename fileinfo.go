@@ -11,7 +11,7 @@ import (
 type FileInfo struct {
 	name    string
 	size    int64
-	mode    fs.FileMode
+	mode    FileMode
 	modTime time.Time
 }
 
@@ -31,7 +31,7 @@ var (
 //	    mockfs.NewFileInfo("file2.txt", 200, 0o644, time.Now()),
 //	}
 //	handler := mockfs.NewDirHandler(entries)
-func NewFileInfo(name string, size int64, mode fs.FileMode, modTime time.Time) *FileInfo {
+func NewFileInfo(name string, size int64, mode FileMode, modTime time.Time) *FileInfo {
 	if name == "" {
 		panic("name cannot be empty")
 	}
@@ -70,7 +70,7 @@ func (fi *FileInfo) Size() int64 {
 	return fi.size
 }
 
-func (fi *FileInfo) Mode() fs.FileMode {
+func (fi *FileInfo) Mode() FileMode {
 	return fi.mode
 }
 func (fi *FileInfo) ModTime() time.Time {
@@ -88,7 +88,7 @@ func (fi *FileInfo) Sys() any {
 }
 
 // Type returns the type bits for the entry.
-func (fi *FileInfo) Type() fs.FileMode {
+func (fi *FileInfo) Type() FileMode {
 	return fi.mode.Type()
 }
 

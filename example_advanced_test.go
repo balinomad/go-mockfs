@@ -3,21 +3,23 @@ package mockfs_test
 import (
 	"fmt"
 	"io/fs"
-	"time"
 
 	"github.com/balinomad/go-mockfs/v2"
 )
 
 // ExampleMockFS_Sub demonstrates SubFS with path adjustment.
 func ExampleMockFS_Sub() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"app":                  {Mode: fs.ModeDir | 0o755, ModTime: time.Now()},
-		"app/config":           {Mode: fs.ModeDir | 0o755, ModTime: time.Now()},
-		"app/config/dev.json":  {Data: []byte("dev"), Mode: 0o644, ModTime: time.Now()},
-		"app/config/prod.json": {Data: []byte("prod"), Mode: 0o644, ModTime: time.Now()},
-		"app/logs":             {Mode: fs.ModeDir | 0o755, ModTime: time.Now()},
-		"app/logs/app.log":     {Data: []byte("log"), Mode: 0o644, ModTime: time.Now()},
-	})
+	mfs := mockfs.NewMockFS(
+		mockfs.Dir("app",
+			mockfs.Dir("config",
+				mockfs.File("dev.json", "dev"),
+				mockfs.File("prod.json", "prod"),
+			),
+		),
+		mockfs.Dir("logs",
+			mockfs.File("app.log", "log"),
+		),
+	)
 
 	// Error rule in parent filesystem
 	mfs.FailRead("app/config/prod.json", fs.ErrPermission)
@@ -55,17 +57,13 @@ func ExampleNewErrorInjector() {
 
 	// Use with multiple filesystems
 	mfs1 := mockfs.NewMockFS(
-		map[string]*mockfs.MapFile{
-			"app.log":    {Data: []byte("log"), Mode: 0o644, ModTime: time.Now()},
-			"locked.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
-		},
+		mockfs.File("app.log", "log"),
+		mockfs.File("locked.txt", "data"),
 		mockfs.WithErrorInjector(injector),
 	)
 
 	mfs2 := mockfs.NewMockFS(
-		map[string]*mockfs.MapFile{
-			"error.log": {Data: []byte("err"), Mode: 0o644, ModTime: time.Now()},
-		},
+		mockfs.File("error.log", "err"),
 		mockfs.WithErrorInjector(injector),
 	)
 
@@ -86,9 +84,7 @@ func ExampleNewErrorInjector() {
 
 // ExampleStats_Delta demonstrates comparing statistics snapshots.
 func ExampleStats_Delta() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"file.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
-	})
+	mfs := mockfs.NewMockFS(mockfs.File("file.txt", "data"))
 
 	// Capture initial stats
 	before := mfs.Stats()
@@ -117,11 +113,11 @@ func ExampleStats_Delta() {
 
 // ExampleErrorInjector_AddAll demonstrates wildcard matching.
 func ExampleErrorInjector_AddAll() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"file1.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
-		"file2.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
-		"file3.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
-	})
+	mfs := mockfs.NewMockFS(
+		mockfs.File("file1.txt", "data"),
+		mockfs.File("file2.txt", "data"),
+		mockfs.File("file3.txt", "data"),
+	)
 
 	// All write operations fail (disk full simulation)
 	mfs.ErrorInjector().AddAll(mockfs.OpWrite, mockfs.ErrDiskFull, mockfs.ErrorModeAlways, 0)

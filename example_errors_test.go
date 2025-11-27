@@ -4,19 +4,16 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"time"
 
 	"github.com/balinomad/go-mockfs/v2"
 )
 
 // ExampleMockFS_FailOpen demonstrates basic error injection.
 func ExampleMockFS_FailOpen() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"secret.txt": {Data: []byte("classified"), Mode: 0o644, ModTime: time.Now()},
-	})
+	mfs := mockfs.NewMockFS(mockfs.File("secret.txt", []byte("classified")))
 
 	// Inject permission error
-	mfs.FailOpen("secret.txt", fs.ErrPermission)
+	mfs.FailOpen("secret.txt", mockfs.ErrPermission)
 
 	_, err := mfs.Open("secret.txt")
 	fmt.Printf("Error: %v\n", err)
@@ -25,9 +22,7 @@ func ExampleMockFS_FailOpen() {
 
 // ExampleMockFS_FailReadOnce demonstrates one-time error injection.
 func ExampleMockFS_FailReadOnce() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"flaky.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
-	})
+	mfs := mockfs.NewMockFS(mockfs.File("flaky.txt", []byte("data")))
 
 	mfs.FailReadOnce("flaky.txt", io.ErrUnexpectedEOF)
 
@@ -50,9 +45,7 @@ func ExampleMockFS_FailReadOnce() {
 
 // ExampleMockFS_FailReadAfter demonstrates error after N successes.
 func ExampleMockFS_FailReadAfter() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"stream.txt": {Data: []byte("123456789"), Mode: 0o644, ModTime: time.Now()},
-	})
+	mfs := mockfs.NewMockFS(mockfs.File("stream.txt", []byte("123456789")))
 
 	// Error after 3 successful reads
 	mfs.FailReadAfter("stream.txt", io.EOF, 3)
@@ -78,11 +71,11 @@ func ExampleMockFS_FailReadAfter() {
 
 // ExampleErrorInjector_AddGlob demonstrates glob pattern matching.
 func ExampleErrorInjector_AddGlob() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"app.log":   {Data: []byte("log"), Mode: 0o644, ModTime: time.Now()},
-		"error.log": {Data: []byte("err"), Mode: 0o644, ModTime: time.Now()},
-		"data.txt":  {Data: []byte("txt"), Mode: 0o644, ModTime: time.Now()},
-	})
+	mfs := mockfs.NewMockFS(
+		mockfs.File("app.log", []byte("log")),
+		mockfs.File("error.log", []byte("err")),
+		mockfs.File("data.txt", []byte("txt")),
+	)
 
 	// All .log files fail to read
 	mfs.ErrorInjector().AddGlob(mockfs.OpRead, "*.log", io.ErrUnexpectedEOF, mockfs.ErrorModeAlways, 0)
@@ -100,11 +93,11 @@ func ExampleErrorInjector_AddGlob() {
 
 // ExampleErrorInjector_AddRegexp demonstrates regex pattern matching.
 func ExampleErrorInjector_AddRegexp() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"file.tmp": {Data: []byte("tmp"), Mode: 0o644, ModTime: time.Now()},
-		"data.tmp": {Data: []byte("tmp"), Mode: 0o644, ModTime: time.Now()},
-		"file.txt": {Data: []byte("txt"), Mode: 0o644, ModTime: time.Now()},
-	})
+	mfs := mockfs.NewMockFS(
+		mockfs.File("file.tmp", []byte("tmp")),
+		mockfs.File("data.tmp", []byte("tmp")),
+		mockfs.File("file.txt", []byte("txt")),
+	)
 
 	// All .tmp files return corrupted error
 	mfs.ErrorInjector().AddRegexp(mockfs.OpRead, `\.tmp$`, mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
@@ -121,9 +114,7 @@ func ExampleErrorInjector_AddRegexp() {
 
 // ExampleErrorInjector_AddExactForAllOps demonstrates cross-operation errors.
 func ExampleErrorInjector_AddExactForAllOps() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"broken.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
-	})
+	mfs := mockfs.NewMockFS(mockfs.File("broken.txt", []byte("data")))
 
 	// All operations on this file fail
 	mfs.ErrorInjector().AddExactForAllOps("broken.txt", mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
@@ -145,10 +136,10 @@ func ExampleErrorInjector_AddExactForAllOps() {
 
 // ExampleMockFS_MarkNonExistent demonstrates simulating missing files.
 func ExampleMockFS_MarkNonExistent() {
-	mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
-		"exists.txt":  {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
-		"deleted.txt": {Data: []byte("data"), Mode: 0o644, ModTime: time.Now()},
-	})
+	mfs := mockfs.NewMockFS(
+		mockfs.File("exists.txt", []byte("data")),
+		mockfs.File("deleted.txt", []byte("data")),
+	)
 
 	// Mark as non-existent
 	mfs.MarkNonExistent("deleted.txt")
