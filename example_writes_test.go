@@ -77,8 +77,8 @@ func ExampleMockFS_Remove() {
 func ExampleMockFS_RemoveAll() {
 	mfs := mockfs.NewMockFS(
 		mockfs.Dir("cache",
-			mockfs.File("cache/file1.txt", []byte("1")),
-			mockfs.File("cache/file2.txt", []byte("2")),
+			mockfs.File("file1.txt", []byte("1")),
+			mockfs.File("file2.txt", []byte("2")),
 		))
 
 	err := mfs.RemoveAll("cache")

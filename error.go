@@ -55,6 +55,9 @@ var (
 	// ErrNotDir indicates that a path component is not a directory.
 	ErrNotDir = errors.New("not a directory")
 
+	// ErrIsDir indicates that a path component is a directory.
+	ErrIsDir = errors.New("it is a directory")
+
 	// ErrNotEmpty indicates that a directory is not empty.
 	ErrNotEmpty = errors.New("directory not empty")
 )

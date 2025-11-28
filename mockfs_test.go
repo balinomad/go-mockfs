@@ -93,6 +93,57 @@ func TestNewMockFS(t *testing.T) {
 	}
 }
 
+// TestNewMockFS_OptionPanic verifies that NewMockFS panics when provided with
+// an invalid (empty) path via mockfs.File or mockfs.Dir.
+func TestNewMockFS_OptionPanic(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		option    mockfs.MockFSOption
+		panicText string
+	}{
+		{
+			name:      "empty file name",
+			option:    mockfs.File("", "content"),
+			panicText: "empty file name",
+		},
+		{
+			name:      "empty dir name",
+			option:    mockfs.Dir(""),
+			panicText: "empty directory name",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt // Capture range variable
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Use a defer block with recover to catch the expected panic.
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatal("expected NewMockFS to panic, but it did not")
+				}
+
+				panicStr, ok := r.(string)
+				if !ok {
+					t.Fatalf("panic value was not a string: %v", r)
+				}
+
+				// Assert that the panic message contains the expected text.
+				if !strings.Contains(panicStr, tt.panicText) {
+					t.Errorf("panic message mismatch:\ngot:  %q\nwant fragment: %q", panicStr, tt.panicText)
+				}
+			}()
+
+			// This call is expected to panic.
+			mockfs.NewMockFS(tt.option)
+		})
+	}
+}
+
 func TestNewMockFS_AutoCreateRoot_EmptyMap(t *testing.T) {
 	t.Parallel()
 
@@ -128,23 +179,6 @@ func TestNewMockFS_AutoCreateRoot_FilesWithoutRoot(t *testing.T) {
 	_, err = mfs.Stat("file.txt")
 	if err != nil {
 		t.Errorf("file.txt should be accessible: %v", err)
-	}
-}
-
-func TestNewMockFS_AutoCreateRoot_ExplicitNotOverwritten(t *testing.T) {
-	t.Parallel()
-
-	mfs := mockfs.NewMockFS(
-		mockfs.Dir(".", mockfs.ModeDir|0o700),
-		mockfs.File("file.txt", "test"),
-	)
-
-	info, err := mfs.Stat(".")
-	if err != nil {
-		t.Fatalf("Stat(\".\") failed: %v", err)
-	}
-	if info.Mode().Perm() != 0o700 {
-		t.Errorf("explicit root permissions overwritten: got %v, want 0700", info.Mode().Perm())
 	}
 }
 
@@ -251,7 +285,7 @@ func TestMockFS_Open(t *testing.T) {
 	)
 	injectedErr := errors.New("injected open error")
 	mfs.FailOpen("file.txt", injectedErr)
-	mfs.FailOpenOnce("other.txt", fs.ErrPermission) // Not in FS, but error should trigger
+	mfs.FailOpenOnce("other.txt", mockfs.ErrPermission) // Not in FS, but error should trigger
 
 	// Test successful open
 	t.Run("open and read file", func(t *testing.T) {
@@ -269,7 +303,7 @@ func TestMockFS_Open(t *testing.T) {
 
 	t.Run("open with invalid path", func(t *testing.T) {
 		_, err := mfs.Open("../invalid")
-		assertError(t, err, fs.ErrInvalid)
+		assertError(t, err, mockfs.ErrInvalid)
 	})
 
 	// Test error cases
@@ -280,15 +314,15 @@ func TestMockFS_Open(t *testing.T) {
 
 	t.Run("open non-existent", func(t *testing.T) {
 		_, err := mfs.Open("missing.txt")
-		assertError(t, err, fs.ErrNotExist)
+		assertError(t, err, mockfs.ErrNotExist)
 	})
 
 	t.Run("open with injected error once", func(t *testing.T) {
 		_, err := mfs.Open("other.txt")
-		assertError(t, err, fs.ErrPermission)
+		assertError(t, err, mockfs.ErrPermission)
 		// Second attempt should be different (not exist in this case)
 		_, err = mfs.Open("other.txt")
-		assertError(t, err, fs.ErrNotExist)
+		assertError(t, err, mockfs.ErrNotExist)
 	})
 }
 
@@ -327,7 +361,7 @@ func TestMockFS_ReadFile(t *testing.T) {
 
 	t.Run("read with invalid path", func(t *testing.T) {
 		_, err := mfs.ReadFile("../invalid")
-		assertError(t, err, fs.ErrInvalid)
+		assertError(t, err, mockfs.ErrInvalid)
 	})
 }
 
@@ -375,7 +409,7 @@ func TestMockFS_ReadDir(t *testing.T) {
 
 	t.Run("readdir with invalid path", func(t *testing.T) {
 		_, err := mfs.ReadDir("../invalid")
-		assertError(t, err, fs.ErrInvalid)
+		assertError(t, err, mockfs.ErrInvalid)
 	})
 }
 
@@ -410,9 +444,9 @@ func TestMockFS_Sub(t *testing.T) {
 
 		// Check that files outside the sub-fs are not accessible
 		_, err = mfsSub.Open("other.txt")
-		assertError(t, err, fs.ErrNotExist)
+		assertError(t, err, mockfs.ErrNotExist)
 		_, err = mfsSub.Open("../other.txt") // Sub should prevent this
-		assertError(t, err, fs.ErrInvalid)
+		assertError(t, err, mockfs.ErrInvalid)
 
 		// Check that injector is cloned and path-adjusted
 		_, err = mfsSub.Open("src/main.go")
@@ -425,11 +459,11 @@ func TestMockFS_Sub(t *testing.T) {
 			path    string
 			wantErr error
 		}{
-			{"path not exist", "missing", fs.ErrNotExist},
+			{"path not exist", "missing", mockfs.ErrNotExist},
 			{"path is a file", "file.txt", mockfs.ErrNotDir},
-			{"invalid path dot", ".", fs.ErrInvalid},
-			{"invalid path slash", "/", fs.ErrInvalid},
-			{"invalid path parent", "../", fs.ErrInvalid},
+			{"invalid path dot", ".", mockfs.ErrInvalid},
+			{"invalid path slash", "/", mockfs.ErrInvalid},
+			{"invalid path parent", "../", mockfs.ErrInvalid},
 		}
 
 		for _, tt := range tests {
@@ -467,7 +501,7 @@ func TestMockFS_AddFileAndDir(t *testing.T) {
 		{
 			name: "add binary file",
 			setup: func(m *mockfs.MockFS) error {
-				return m.AddFileBytes("bin.dat", []byte{0, 1, 2}, 0600)
+				return m.AddFile("bin.dat", []byte{0, 1, 2}, 0600)
 			},
 			verify: func(t *testing.T, m *mockfs.MockFS) {
 				content := mustReadFile(t, m, "bin.dat")
@@ -501,7 +535,7 @@ func TestMockFS_AddFileAndDir(t *testing.T) {
 		},
 		{
 			name:    "add dir with invalid path",
-			setup:   func(m *mockfs.MockFS) error { return m.AddDir(".", 0) },
+			setup:   func(m *mockfs.MockFS) error { return m.AddDir("/mydir", 0) },
 			wantErr: fs.ErrInvalid,
 		},
 	}
@@ -520,27 +554,27 @@ func TestMockFS_AddFileAndDir(t *testing.T) {
 	}
 }
 
-func TestMockFS_RemovePath(t *testing.T) {
+func TestMockFS_RemoveEntry(t *testing.T) {
 	t.Parallel()
 
 	mfs := mockfs.NewMockFS(mockfs.File("file.txt", ""))
 
 	t.Run("remove existing path", func(t *testing.T) {
-		err := mfs.RemovePath("file.txt")
+		err := mfs.RemoveEntry("file.txt")
 		requireNoError(t, err)
 		_, err = mfs.Stat("file.txt")
-		assertError(t, err, fs.ErrNotExist)
+		assertError(t, err, mockfs.ErrNotExist)
 	})
 
 	t.Run("remove non-existent path", func(t *testing.T) {
 		// Should not return an error
-		err := mfs.RemovePath("non-existent.txt")
+		err := mfs.RemoveEntry("non-existent.txt")
 		requireNoError(t, err)
 	})
 
 	t.Run("remove with invalid path", func(t *testing.T) {
-		err := mfs.RemovePath("../invalid")
-		assertError(t, err, fs.ErrInvalid)
+		err := mfs.RemoveEntry("../invalid")
+		assertError(t, err, mockfs.ErrInvalid)
 	})
 }
 
@@ -571,8 +605,8 @@ func TestMockFS_WritableFS(t *testing.T) {
 		}
 
 		// Error cases
-		assertError(t, mfs.Mkdir("dir/new_dir", 0), fs.ErrExist)
-		assertError(t, mfs.Mkdir("nonexistent/dir", 0), fs.ErrNotExist)
+		assertError(t, mfs.Mkdir("dir/new_dir", 0), mockfs.ErrExist)
+		assertError(t, mfs.Mkdir("nonexistent/dir", 0), mockfs.ErrNotExist)
 		assertError(t, mfs.Mkdir("dir/file.txt/fail", 0), mockfs.ErrNotDir)
 	})
 
@@ -599,10 +633,10 @@ func TestMockFS_WritableFS(t *testing.T) {
 		err := mfs.Remove("file.txt")
 		requireNoError(t, err)
 		_, err = mfs.Stat("file.txt")
-		assertError(t, err, fs.ErrNotExist)
+		assertError(t, err, mockfs.ErrNotExist)
 
 		// Error cases
-		assertError(t, mfs.Remove("missing.txt"), fs.ErrNotExist)
+		assertError(t, mfs.Remove("missing.txt"), mockfs.ErrNotExist)
 		assertError(t, mfs.Remove("dir"), mockfs.ErrNotEmpty)
 
 		// Remove empty dir should succeed
@@ -615,9 +649,9 @@ func TestMockFS_WritableFS(t *testing.T) {
 		err := mfs.RemoveAll("dir")
 		requireNoError(t, err)
 		_, err = mfs.Stat("dir")
-		assertError(t, err, fs.ErrNotExist)
+		assertError(t, err, mockfs.ErrNotExist)
 		_, err = mfs.Stat("dir/file.txt")
-		assertError(t, err, fs.ErrNotExist)
+		assertError(t, err, mockfs.ErrNotExist)
 
 		// No error if path does not exist
 		err = mfs.RemoveAll("missing_dir")
@@ -631,7 +665,7 @@ func TestMockFS_WritableFS(t *testing.T) {
 		err := mfs.Rename("file.txt", "renamed.txt")
 		requireNoError(t, err)
 		_, err = mfs.Stat("file.txt")
-		assertError(t, err, fs.ErrNotExist)
+		assertError(t, err, mockfs.ErrNotExist)
 		content := mustReadFile(t, mfs, "renamed.txt")
 		if string(content) != "root file" {
 			t.Error("renamed file content mismatch")
@@ -641,12 +675,12 @@ func TestMockFS_WritableFS(t *testing.T) {
 		err = mfs.Rename("dir", "renamed_dir")
 		requireNoError(t, err)
 		_, err = mfs.Stat("dir")
-		assertError(t, err, fs.ErrNotExist)
+		assertError(t, err, mockfs.ErrNotExist)
 		_, err = mfs.Stat("renamed_dir/file.txt")
 		requireNoError(t, err)
 
 		// Error case
-		assertError(t, mfs.Rename("missing.txt", "new.txt"), fs.ErrNotExist)
+		assertError(t, mfs.Rename("missing.txt", "new.txt"), mockfs.ErrNotExist)
 	})
 
 	// WriteFile and Write via Open
@@ -704,13 +738,13 @@ func TestMockFS_WriteFile_EdgeCases(t *testing.T) {
 	t.Run("write to read-only filesystem", func(t *testing.T) {
 		mfs := mockfs.NewMockFS(mockfs.WithReadOnly())
 		err := mfs.WriteFile("test.txt", []byte("data"), 0o644)
-		assertError(t, err, fs.ErrPermission)
+		assertError(t, err, mockfs.ErrPermission)
 	})
 
 	t.Run("write without createIfMissing", func(t *testing.T) {
 		mfs := mockfs.NewMockFS()
 		err := mfs.WriteFile("test.txt", []byte("data"), 0o644)
-		assertError(t, err, fs.ErrNotExist)
+		assertError(t, err, mockfs.ErrNotExist)
 	})
 
 	t.Run("overwrite existing in overwrite mode", func(t *testing.T) {
@@ -846,19 +880,19 @@ func TestMockFS_ErrorInjection(t *testing.T) {
 
 		// Path should be gone from the filesystem
 		_, err := mfs.Stat("file.txt")
-		assertError(t, err, fs.ErrNotExist)
+		assertError(t, err, mockfs.ErrNotExist)
 
 		// Should also fail for other operations
 		_, err = mfs.Open("file.txt")
-		assertError(t, err, fs.ErrNotExist)
+		assertError(t, err, mockfs.ErrNotExist)
 	})
 
 	t.Run("clear errors", func(t *testing.T) {
 		mfs := mockfs.NewMockFS(mockfs.File("file.txt", ""))
-		mfs.FailStat("file.txt", fs.ErrPermission)
+		mfs.FailStat("file.txt", mockfs.ErrPermission)
 
 		_, err := mfs.Stat("file.txt")
-		assertError(t, err, fs.ErrPermission)
+		assertError(t, err, mockfs.ErrPermission)
 
 		mfs.ClearErrors()
 		_, err = mfs.Stat("file.txt")
@@ -876,7 +910,7 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 	}{
 		{
 			name:   "FailStatOnce",
-			inject: func(m *mockfs.MockFS) { m.FailStatOnce("file.txt", fs.ErrPermission) },
+			inject: func(m *mockfs.MockFS) { m.FailStatOnce("file.txt", mockfs.ErrPermission) },
 			op: func(m *mockfs.MockFS) error {
 				_, err := m.Stat("file.txt")
 				return err
@@ -886,7 +920,7 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 			name: "FailReadOnce",
 			inject: func(m *mockfs.MockFS) {
 				_ = m.AddFile("file.txt", "data", 0o644)
-				m.FailReadOnce("file.txt", fs.ErrPermission)
+				m.FailReadOnce("file.txt", mockfs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
 				f, err := m.Open("file.txt")
@@ -903,7 +937,7 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 			name: "FailWriteOnce",
 			inject: func(m *mockfs.MockFS) {
 				_ = m.AddFile("file.txt", "", 0o644)
-				m.FailWriteOnce("file.txt", fs.ErrPermission)
+				m.FailWriteOnce("file.txt", mockfs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
 				return m.WriteFile("file.txt", []byte("data"), 0o644)
@@ -913,7 +947,7 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 			name: "FailReadDirOnce",
 			inject: func(m *mockfs.MockFS) {
 				_ = m.AddDir("dir", 0o755)
-				m.FailReadDirOnce("dir", fs.ErrPermission)
+				m.FailReadDirOnce("dir", mockfs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
 				_, err := m.ReadDir("dir")
@@ -924,7 +958,7 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 			name: "FailCloseOnce",
 			inject: func(m *mockfs.MockFS) {
 				_ = m.AddFile("file.txt", "", 0o644)
-				m.FailCloseOnce("file.txt", fs.ErrPermission)
+				m.FailCloseOnce("file.txt", mockfs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
 				f, err := m.Open("file.txt")
@@ -936,14 +970,14 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 		},
 		{
 			name:   "FailMkdirOnce",
-			inject: func(m *mockfs.MockFS) { m.FailMkdirOnce("dir", fs.ErrPermission) },
+			inject: func(m *mockfs.MockFS) { m.FailMkdirOnce("dir", mockfs.ErrPermission) },
 			op: func(m *mockfs.MockFS) error {
 				return m.Mkdir("dir", 0o755)
 			},
 		},
 		{
 			name:   "FailMkdirAllOnce",
-			inject: func(m *mockfs.MockFS) { m.FailMkdirAllOnce("dir/sub", fs.ErrPermission) },
+			inject: func(m *mockfs.MockFS) { m.FailMkdirAllOnce("dir/sub", mockfs.ErrPermission) },
 			op: func(m *mockfs.MockFS) error {
 				return m.MkdirAll("dir/sub", 0o755)
 			},
@@ -952,7 +986,7 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 			name: "FailRemoveOnce",
 			inject: func(m *mockfs.MockFS) {
 				_ = m.AddFile("file.txt", "", 0o644)
-				m.FailRemoveOnce("file.txt", fs.ErrPermission)
+				m.FailRemoveOnce("file.txt", mockfs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
 				return m.Remove("file.txt")
@@ -962,7 +996,7 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 			name: "FailRemoveAllOnce",
 			inject: func(m *mockfs.MockFS) {
 				_ = m.AddDir("dir", 0o755)
-				m.FailRemoveAllOnce("dir", fs.ErrPermission)
+				m.FailRemoveAllOnce("dir", mockfs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
 				return m.RemoveAll("dir")
@@ -972,7 +1006,7 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 			name: "FailRenameOnce",
 			inject: func(m *mockfs.MockFS) {
 				_ = m.AddFile("old.txt", "", 0o644)
-				m.FailRenameOnce("old.txt", fs.ErrPermission)
+				m.FailRenameOnce("old.txt", mockfs.ErrPermission)
 			},
 			op: func(m *mockfs.MockFS) error {
 				return m.Rename("old.txt", "new.txt")
@@ -986,7 +1020,7 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 			tt.inject(mfs)
 
 			err := tt.op(mfs)
-			assertError(t, err, fs.ErrPermission)
+			assertError(t, err, mockfs.ErrPermission)
 
 			err = tt.op(mfs)
 			if err == fs.ErrPermission {
@@ -1032,7 +1066,7 @@ func TestMockFS_OptionsAndHelpers(t *testing.T) {
 	t.Run("WithReadOnly", func(t *testing.T) {
 		mfs := mockfs.NewMockFS(mockfs.WithReadOnly())
 		err := mfs.WriteFile("test.txt", []byte("data"), 0o644)
-		assertError(t, err, fs.ErrPermission)
+		assertError(t, err, mockfs.ErrPermission)
 	})
 
 	t.Run("WithOverwrite", func(t *testing.T) {

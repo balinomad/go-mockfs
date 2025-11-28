@@ -253,7 +253,7 @@ err = mfs.AddFileBytes("data.bin", []byte{0x01, 0x02}, 0o644)
 err = mfs.AddDir("logs", 0o755)
 
 // Remove path
-err = mfs.RemovePath("temp.txt")
+err = mfs.RemoveEntry("temp.txt")
 ```
 
 ### Error Injection: Simple Cases
@@ -624,7 +624,7 @@ NewMockFS(opts ...MockFSOption) *MockFS
 | `AddFile(path, content string, mode FileMode) error` | Adds text file |
 | `AddFileBytes(path string, data []byte, mode FileMode) error` | Adds binary file |
 | `AddDir(path string, mode FileMode) error` | Adds directory |
-| `RemovePath(path string) error` | Removes file or directory from map |
+| `RemoveEntry(path string) error` | Removes file or directory from map |
 
 #### Error Injection (Convenience Methods)
 

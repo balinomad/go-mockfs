@@ -485,7 +485,8 @@ mfs.RemovePath("temp.txt")
 
 **After (v2)**:
 ```go
-err := mfs.RemovePath("temp.txt") // Now returns error
+// Renamed method, now returns error
+err := mfs.RemoveEntry("temp.txt")
 ```
 
 ### Error Injection - Simple Cases
@@ -1372,7 +1373,7 @@ func TestSubFilesystem(t *testing.T) {
   - [ ] `AddFileString()` → `AddFile()` (returns error)
   - [ ] `AddDirectory()` → `AddDir()` (returns error)
 - [ ] Add error handling for file/directory operations that now return errors:
-  - [ ] `AddFile()`, `AddFileBytes()`, `AddDir()`, `RemovePath()`
+  - [ ] `AddFile()`, `AddFileBytes()`, `AddDir()`, `RemoveEntry()`
 
 ### Error Injection - Convenience Methods
 
