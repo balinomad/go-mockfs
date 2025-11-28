@@ -59,8 +59,8 @@
 //
 // To simulate permission errors:
 //
-//	mfs.FailWrite("readonly.txt", fs.ErrPermission)
-//	mfs.FailOpen("secret.dat", fs.ErrPermission)
+//	mfs.FailWrite("readonly.txt", mockfs.ErrPermission)
+//	mfs.FailOpen("secret.dat", mockfs.ErrPermission)
 //
 // # Latency Simulation
 //
@@ -86,7 +86,7 @@
 // Access the error injector directly for complex scenarios:
 //
 //	injector := mfs.ErrorInjector()
-//	injector.AddPattern(mockfs.OpOpen, `.*\.tmp$`, fs.ErrPermission, mockfs.ErrorModeAlways, 0)
+//	injector.AddPattern(mockfs.OpOpen, `.*\.tmp$`, mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 //	injector.AddExact(mockfs.OpRead, "flaky.txt", io.EOF, mockfs.ErrorModeAfterSuccesses, 5)
 //
 // # Testing Philosophy

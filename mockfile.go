@@ -365,7 +365,7 @@ func (f *mockFile) Seek(offset int64, whence int) (n int64, err error) {
 	defer func() { f.stats.Record(OpSeek, int(n), err) }()
 
 	if f.closed {
-		return 0, fs.ErrClosed
+		return 0, ErrClosed
 	}
 
 	// Simulate latency before checking for errors (models real I/O timing)

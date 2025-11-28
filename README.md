@@ -260,9 +260,9 @@ err = mfs.RemovePath("temp.txt")
 
 ```go
 // Always fail on specific operations
-mfs.FailOpen("secret.txt", fs.ErrPermission)
-mfs.FailRead("data.txt", io.ErrUnexpectedEOF)
-mfs.FailStat("config.json", fs.ErrNotExist)
+mfs.FailOpen("secret.txt", mockfs.ErrPermission)
+mfs.FailRead("data.txt", mockfs.ErrUnexpectedEOF)
+mfs.FailStat("config.json", mockfs.ErrNotExist)
 
 // One-time errors
 mfs.FailOpenOnce("flaky.db", mockfs.ErrTimeout)
@@ -278,7 +278,7 @@ mfs.FailReadAfter("large.bin", io.EOF, 3)
 // Glob patterns use path.Match semantics (not shell glob)
 // Supports: *, ?, [...], but NOT ** or brace expansion
 mfs.ErrorInjector().AddGlob(mockfs.OpRead, "*.log", io.EOF, mockfs.ErrorModeAlways, 0)
-mfs.ErrorInjector().AddGlob(mockfs.OpOpen, "temp/*", fs.ErrNotExist, mockfs.ErrorModeAlways, 0)
+mfs.ErrorInjector().AddGlob(mockfs.OpOpen, "temp/*", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 
 // Regular expressions
 mfs.ErrorInjector().AddRegexp(mockfs.OpRead, `\.tmp$`, mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
@@ -452,7 +452,7 @@ func TestRetryLogic(t *testing.T) {
     mfs := mockfs.NewMockFS(mockfs.File("data.txt", "content"))
 
     // First two reads fail, third succeeds
-    mfs.FailReadAfter("data.txt", io.ErrUnexpectedEOF, 2)
+    mfs.FailReadAfter("data.txt", mockfs.ErrUnexpectedEOF, 2)
 
     // Function under test should retry
     result, err := YourRetryFunction(mfs, "data.txt")

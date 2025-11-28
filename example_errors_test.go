@@ -24,7 +24,7 @@ func ExampleMockFS_FailOpen() {
 func ExampleMockFS_FailReadOnce() {
 	mfs := mockfs.NewMockFS(mockfs.File("flaky.txt", []byte("data")))
 
-	mfs.FailReadOnce("flaky.txt", io.ErrUnexpectedEOF)
+	mfs.FailReadOnce("flaky.txt", mockfs.ErrUnexpectedEOF)
 
 	file, _ := mfs.Open("flaky.txt")
 	defer file.Close()
@@ -78,7 +78,7 @@ func ExampleErrorInjector_AddGlob() {
 	)
 
 	// All .log files fail to read
-	mfs.ErrorInjector().AddGlob(mockfs.OpRead, "*.log", io.ErrUnexpectedEOF, mockfs.ErrorModeAlways, 0)
+	mfs.ErrorInjector().AddGlob(mockfs.OpRead, "*.log", mockfs.ErrUnexpectedEOF, mockfs.ErrorModeAlways, 0)
 
 	// Try reading each file
 	for _, name := range []string{"app.log", "error.log", "data.txt"} {

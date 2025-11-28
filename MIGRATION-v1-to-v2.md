@@ -492,17 +492,17 @@ err := mfs.RemovePath("temp.txt") // Now returns error
 
 **Before (v1)**:
 ```go
-mfs.AddStatError("config.json", fs.ErrPermission)
-mfs.AddOpenError("secret.txt", fs.ErrNotExist)
-mfs.AddReadError("data.txt", io.ErrUnexpectedEOF)
+mfs.AddStatError("config.json", mockfs.ErrPermission)
+mfs.AddOpenError("secret.txt", mockfs.ErrNotExist)
+mfs.AddReadError("data.txt", mockfs.ErrUnexpectedEOF)
 ```
 
 **After (v2)**:
 ```go
 // Use renamed convenience methods
-mfs.FailStat("config.json", fs.ErrPermission)
-mfs.FailOpen("secret.txt", fs.ErrNotExist)
-mfs.FailRead("data.txt", io.ErrUnexpectedEOF)
+mfs.FailStat("config.json", mockfs.ErrPermission)
+mfs.FailOpen("secret.txt", mockfs.ErrNotExist)
+mfs.FailRead("data.txt", mockfs.ErrUnexpectedEOF)
 ```
 
 ### Error Injection - Pattern Matching
@@ -583,8 +583,8 @@ mfs.MarkNonExistent("missing.txt", "old.json")
 // MarkDirectoryNonExistent removed - use combination of RemoveAll and error injection
 mfs.RemoveAll("temp")
 // Inject errors for directory and all potential paths under it
-mfs.ErrorInjector().AddExact(mockfs.OpOpen, "temp", fs.ErrNotExist, mockfs.ErrorModeAlways, 0)
-mfs.ErrorInjector().AddRegexp(mockfs.OpOpen, `^temp/`, fs.ErrNotExist, mockfs.ErrorModeAlways, 0)
+mfs.ErrorInjector().AddExact(mockfs.OpOpen, "temp", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
+mfs.ErrorInjector().AddRegexp(mockfs.OpOpen, `^temp/`, mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 ```
 
 ### Clearing Errors
@@ -829,10 +829,10 @@ fileStats.BytesRead()           // Number of bytes read
 mfs.ErrorInjector().AddGlob(mockfs.OpRead, "*.txt", io.EOF, mockfs.ErrorModeAlways, 0)
 
 // Match nested paths
-mfs.ErrorInjector().AddGlob(mockfs.OpOpen, "logs/*.log", fs.ErrPermission, mockfs.ErrorModeAlways, 0)
+mfs.ErrorInjector().AddGlob(mockfs.OpOpen, "logs/*.log", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 
 // Apply to all operations
-mfs.ErrorInjector().AddGlobForAllOps("temp/*", fs.ErrNotExist, mockfs.ErrorModeAlways, 0)
+mfs.ErrorInjector().AddGlobForAllOps("temp/*", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 ```
 
 ### Wildcard Matcher
@@ -948,7 +948,7 @@ err = mfs.WriteFile("new.txt", []byte("content"), 0o644)
 // Create shared injector
 injector := mockfs.NewErrorInjector()
 injector.AddGlob(mockfs.OpRead, "*.log", io.EOF, mockfs.ErrorModeAlways, 0)
-injector.AddExact(mockfs.OpOpen, "config.json", fs.ErrPermission, mockfs.ErrorModeAlways, 0)
+injector.AddExact(mockfs.OpOpen, "config.json", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 
 // Use with multiple filesystems
 mfs1 := mockfs.NewMockFS(mockfs.WithErrorInjector(injector))
@@ -1033,10 +1033,10 @@ func TestReadError(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
         "data.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
     })
-    mfs.AddReadError("data.txt", io.ErrUnexpectedEOF)
+    mfs.AddReadError("data.txt", mockfs.ErrUnexpectedEOF)
 
     _, err := mfs.ReadFile("data.txt")
-    if err != io.ErrUnexpectedEOF {
+    if err != mockfs.ErrUnexpectedEOF {
         t.Errorf("expected ErrUnexpectedEOF, got %v", err)
     }
 }
@@ -1046,10 +1046,10 @@ func TestReadError(t *testing.T) {
 ```go
 func TestReadError(t *testing.T) {
     mfs := mockfs.NewMockFS(mockfs.File("data.txt", "content"))
-    mfs.FailRead("data.txt", io.ErrUnexpectedEOF)
+    mfs.FailRead("data.txt", mockfs.ErrUnexpectedEOF)
 
     _, err := mfs.ReadFile("data.txt")
-    if err != io.ErrUnexpectedEOF {
+    if err != mockfs.ErrUnexpectedEOF {
         t.Errorf("expected ErrUnexpectedEOF, got %v", err)
     }
 }
@@ -1286,11 +1286,11 @@ func TestGlobPatternErrors(t *testing.T) {
     )
 
     // Apply error to all .log files
-    mfs.ErrorInjector().AddGlob(mockfs.OpRead, "logs/*.log", io.ErrUnexpectedEOF, mockfs.ErrorModeAlways, 0)
+    mfs.ErrorInjector().AddGlob(mockfs.OpRead, "logs/*.log", mockfs.ErrUnexpectedEOF, mockfs.ErrorModeAlways, 0)
 
     // Reading .log files fails
     _, err := mfs.ReadFile("logs/app.log")
-    if err != io.ErrUnexpectedEOF {
+    if err != mockfs.ErrUnexpectedEOF {
         t.Errorf("expected error for .log file, got %v", err)
     }
 
@@ -1320,7 +1320,7 @@ func TestSubFilesystem(t *testing.T) {
     )
 
     // Configure error in parent filesystem
-    mfs.FailRead("app/config/prod.json", fs.ErrPermission)
+    mfs.FailRead("app/config/prod.json", mockfs.ErrPermission)
 
     // Create sub-filesystem
     subFS, err := mfs.Sub("app/config")

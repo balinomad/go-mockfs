@@ -3,6 +3,7 @@ package mockfs
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"strings"
 	"sync"
@@ -21,17 +22,41 @@ const (
 // Generic file system errors.
 // Errors returned by file systems can be tested against these errors using [errors.Is].
 var (
-	ErrInvalid        = fs.ErrInvalid                     // ErrInvalid indicates an invalid argument.
-	ErrPermission     = fs.ErrPermission                  // ErrPermission indicates a permission error.
-	ErrExist          = fs.ErrExist                       // ErrExist indicates that a file already exists.
-	ErrNotExist       = fs.ErrNotExist                    // ErrNotExist indicates that a file does not exist.
-	ErrClosed         = fs.ErrClosed                      // ErrClosed indicates that a file is closed.
-	ErrDiskFull       = errors.New("disk full")           // ErrDiskFull indicates that the disk is full.
-	ErrTimeout        = errors.New("operation timeout")   // ErrTimeout indicates that the operation timed out.
-	ErrCorrupted      = errors.New("corrupted data")      // ErrCorrupted indicates that the data is corrupted.
-	ErrTooManyHandles = errors.New("too many open files") // ErrTooManyHandles indicates that too many handles are open.
-	ErrNotDir         = errors.New("not a directory")     // ErrNotDir indicates that a path component is not a directory.
-	ErrNotEmpty       = errors.New("directory not empty") // ErrNotEmpty indicates that a directory is not empty.
+	// ErrInvalid indicates an invalid argument.
+	ErrInvalid = fs.ErrInvalid
+
+	// ErrPermission indicates a permission error.
+	ErrPermission = fs.ErrPermission
+
+	// ErrExist indicates that a file already exists.
+	ErrExist = fs.ErrExist
+
+	// ErrNotExist indicates that a file does not exist.
+	ErrNotExist = fs.ErrNotExist
+
+	// ErrClosed indicates that a file is closed.
+	ErrClosed = fs.ErrClosed
+
+	// ErrUnexpectedEOF indicates an unexpected end of file.
+	ErrUnexpectedEOF = io.ErrUnexpectedEOF
+
+	// ErrDiskFull indicates that the disk is full.
+	ErrDiskFull = errors.New("disk full")
+
+	// ErrTimeout indicates that the operation timed out.
+	ErrTimeout = errors.New("operation timeout")
+
+	// ErrCorrupted indicates that the data is corrupted.
+	ErrCorrupted = errors.New("corrupted data")
+
+	// ErrTooManyHandles indicates that too many handles are open.
+	ErrTooManyHandles = errors.New("too many open files")
+
+	// ErrNotDir indicates that a path component is not a directory.
+	ErrNotDir = errors.New("not a directory")
+
+	// ErrNotEmpty indicates that a directory is not empty.
+	ErrNotEmpty = errors.New("directory not empty")
 )
 
 // ErrorRule captures the settings for an error to be injected.

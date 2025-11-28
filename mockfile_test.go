@@ -145,7 +145,7 @@ func TestNewMockFileWithLatency(t *testing.T) {
 // TestNewMockFileForReadWrite tests read/write focused constructor with per-op latency.
 func TestNewMockFileForReadWrite(t *testing.T) {
 	injector := mockfs.NewErrorInjector()
-	injector.AddExact(mockfs.OpRead, "test.txt", io.ErrUnexpectedEOF, mockfs.ErrorModeOnce, 0)
+	injector.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrUnexpectedEOF, mockfs.ErrorModeOnce, 0)
 	file := mockfs.NewMockFileFromString("test.txt", "test",
 		mockfs.WithFileErrorInjector(injector),
 		mockfs.WithFilePerOperationLatency(map[mockfs.Operation]time.Duration{
@@ -156,8 +156,8 @@ func TestNewMockFileForReadWrite(t *testing.T) {
 	// First read should fail
 	buf := make([]byte, 4)
 	_, err := file.Read(buf)
-	if err != io.ErrUnexpectedEOF {
-		t.Errorf("first read error = %v, want %v", err, io.ErrUnexpectedEOF)
+	if err != mockfs.ErrUnexpectedEOF {
+		t.Errorf("first read error = %v, want %v", err, mockfs.ErrUnexpectedEOF)
 	}
 
 	// Second read should succeed with latency
@@ -345,7 +345,7 @@ func TestMockFile_Read_closed(t *testing.T) {
 
 // TestMockFile_Read_errorInjection tests error injection on read.
 func TestMockFile_Read_errorInjection(t *testing.T) {
-	wantErr := io.ErrUnexpectedEOF
+	wantErr := mockfs.ErrUnexpectedEOF
 
 	injector := mockfs.NewErrorInjector()
 	injector.AddExact(mockfs.OpRead, "test.txt", wantErr, mockfs.ErrorModeAlways, 0)
@@ -471,10 +471,10 @@ func TestMockFile_Write_readOnly(t *testing.T) {
 	_, err := file.Write([]byte("new data"))
 
 	// Expect permission error
-	if !errors.Is(err, fs.ErrPermission) {
+	if !errors.Is(err, mockfs.ErrPermission) {
 		// fs.ErrPermission may be wrapped in fs.PathError
-		if err == nil || !strings.Contains(err.Error(), fs.ErrPermission.Error()) {
-			t.Errorf("error = %v, want %v (or wrapper)", err, fs.ErrPermission)
+		if err == nil || !strings.Contains(err.Error(), mockfs.ErrPermission.Error()) {
+			t.Errorf("error = %v, want %v (or wrapper)", err, mockfs.ErrPermission)
 		}
 	}
 
@@ -951,12 +951,12 @@ func TestMockFile_ErrorInjector(t *testing.T) {
 	}
 
 	// Configure and verify injection works
-	injector.AddExact(mockfs.OpRead, "test.txt", io.ErrUnexpectedEOF, mockfs.ErrorModeOnce, 0)
+	injector.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrUnexpectedEOF, mockfs.ErrorModeOnce, 0)
 
 	buf := make([]byte, 4)
 	_, err := file.Read(buf)
-	if err != io.ErrUnexpectedEOF {
-		t.Errorf("error = %v, want %v", err, io.ErrUnexpectedEOF)
+	if err != mockfs.ErrUnexpectedEOF {
+		t.Errorf("error = %v, want %v", err, mockfs.ErrUnexpectedEOF)
 	}
 }
 

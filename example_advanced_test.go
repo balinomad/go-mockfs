@@ -22,7 +22,7 @@ func ExampleMockFS_Sub() {
 	)
 
 	// Error rule in parent filesystem
-	mfs.FailRead("app/config/prod.json", fs.ErrPermission)
+	mfs.FailRead("app/config/prod.json", mockfs.ErrPermission)
 
 	// Create sub-filesystem
 	subFS, err := mfs.Sub("app/config")
@@ -53,7 +53,7 @@ func ExampleNewErrorInjector() {
 	// Create shared injector
 	injector := mockfs.NewErrorInjector()
 	injector.AddGlob(mockfs.OpRead, "*.log", mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
-	injector.AddExact(mockfs.OpOpen, "locked.txt", fs.ErrPermission, mockfs.ErrorModeAlways, 0)
+	injector.AddExact(mockfs.OpOpen, "locked.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 
 	// Use with multiple filesystems
 	mfs1 := mockfs.NewMockFS(
