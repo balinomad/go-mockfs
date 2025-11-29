@@ -253,10 +253,10 @@ func NewMockFileFromString(name string, content string, opts ...MockFileOption) 
 	return NewMockFile(mapFile, name, opts...)
 }
 
-// NewMockDirectory constructs a MockFile representing a directory.
+// NewMockDir constructs a MockFile representing a directory.
 // The readDirHandler is required for ReadDir operations.
 // Additional options (like latency) can be passed.
-func NewMockDirectory(
+func NewMockDir(
 	name string,
 	readDirHandler func(int) ([]fs.DirEntry, error),
 	opts ...MockFileOption,
@@ -534,7 +534,7 @@ func (f *mockFile) LatencySimulator() LatencySimulator {
 //	    mockfs.NewMockFileFromBytes("file2.txt", nil).Stat(),
 //	}
 //	handler := mockfs.NewDirHandler(entries)
-//	dir := mockfs.NewMockDirectory("my-dir", handler)
+//	dir := mockfs.NewMockDir("my-dir", handler)
 func NewDirHandler(entries []fs.DirEntry) func(int) ([]fs.DirEntry, error) {
 	var offset int
 	return func(n int) ([]fs.DirEntry, error) {

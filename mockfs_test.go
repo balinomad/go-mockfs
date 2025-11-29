@@ -41,7 +41,7 @@ func TestNewMockFS(t *testing.T) {
 			name: "with initial files",
 			opts: []mockfs.MockFSOption{
 				mockfs.File("file.txt", "original"),
-				mockfs.File("nil.txt", nil), // Should be ignored
+				mockfs.File("nil.txt", nil), // Should not be ignored
 			},
 			postCreation: func(t *testing.T, m *mockfs.MockFS) {
 				content := mustReadFile(t, m, "file.txt")
@@ -52,6 +52,39 @@ func TestNewMockFS(t *testing.T) {
 				content = mustReadFile(t, m, "nil.txt")
 				if string(content) != "" {
 					t.Errorf("expected empty file content, got %q", content)
+				}
+			},
+		},
+		{
+			name: "with initial directories",
+			opts: []mockfs.MockFSOption{
+				mockfs.Dir("dir1", mockfs.FileMode(0o777)),
+				mockfs.File("file1.txt", "1"),
+				mockfs.Dir("dir2",
+					mockfs.File("file2.txt", "2"),
+				),
+				mockfs.Dir("dir3", mockfs.FileMode(0o777),
+					mockfs.File("file3.txt", "3"),
+				),
+			},
+			postCreation: func(t *testing.T, m *mockfs.MockFS) {
+				if info, err := m.Stat("dir1"); err != nil || !info.IsDir() {
+					t.Errorf("expected directory 'dir1' to exist")
+				}
+				if info, err := m.Stat("dir2"); err != nil || !info.IsDir() {
+					t.Errorf("expected directory 'dir2' to exist")
+				}
+				if info, err := m.Stat("dir3"); err != nil || !info.IsDir() {
+					t.Errorf("expected directory 'dir3' to exist")
+				}
+				if info, err := m.Stat("file1.txt"); err != nil || info.IsDir() {
+					t.Errorf("expected file 'file1.txt' to exist")
+				}
+				if info, err := m.Stat("dir2/file2.txt"); err != nil || info.IsDir() {
+					t.Errorf("expected file 'file2.txt' to exist")
+				}
+				if info, err := m.Stat("dir3/file3.txt"); err != nil || info.IsDir() {
+					t.Errorf("expected file 'file3.txt' to exist")
 				}
 			},
 		},
@@ -92,6 +125,48 @@ func TestNewMockFS(t *testing.T) {
 		})
 	}
 }
+func TestNewMockFS_Builder(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with files and directories", func(t *testing.T) {
+		mfs := mockfs.NewMockFS(
+			mockfs.Dir("dir1", mockfs.FileMode(0o777)),
+			mockfs.File("file1.txt", "1"),
+			mockfs.Dir("dir2",
+				mockfs.File("file2.txt", "2"),
+			),
+			mockfs.Dir("dir3", mockfs.FileMode(0o777),
+				mockfs.File("file3.txt", "3"),
+			),
+		)
+		if mfs == nil {
+			t.Fatal("NewMockFS returned nil")
+		}
+
+		info, err := mfs.Stat("dir1")
+		if err != nil || !info.IsDir() {
+			t.Errorf("expected directory 'dir1' to exist")
+		}
+		if info.Mode()&fs.ModeDir == 0 {
+
+		}
+		if info, err := mfs.Stat("dir2"); err != nil || !info.IsDir() {
+			t.Errorf("expected directory 'dir2' to exist")
+		}
+		if info, err := mfs.Stat("dir3"); err != nil || !info.IsDir() {
+			t.Errorf("expected directory 'dir3' to exist")
+		}
+		if info, err := mfs.Stat("file1.txt"); err != nil || info.IsDir() {
+			t.Errorf("expected file 'file1.txt' to exist")
+		}
+		if info, err := mfs.Stat("dir2/file2.txt"); err != nil || info.IsDir() {
+			t.Errorf("expected file 'file2.txt' to exist")
+		}
+		if info, err := mfs.Stat("dir3/file3.txt"); err != nil || info.IsDir() {
+			t.Errorf("expected file 'file3.txt' to exist")
+		}
+	})
+}
 
 // TestNewMockFS_OptionPanic verifies that NewMockFS panics when provided with
 // an invalid (empty) path via mockfs.File or mockfs.Dir.
@@ -109,9 +184,24 @@ func TestNewMockFS_OptionPanic(t *testing.T) {
 			panicText: "empty file name",
 		},
 		{
+			name:      "invalid file name",
+			option:    mockfs.File("/", "content"),
+			panicText: "invalid name",
+		},
+		{
 			name:      "empty dir name",
 			option:    mockfs.Dir(""),
 			panicText: "empty directory name",
+		},
+		{
+			name:      "invalid dir name",
+			option:    mockfs.Dir(".."),
+			panicText: "invalid name",
+		},
+		{
+			name:      "invalid dir argument",
+			option:    mockfs.Dir("dir", 0),
+			panicText: "invalid argument",
 		},
 	}
 

@@ -210,14 +210,14 @@ func TestMockFile_Seek(t *testing.T) {
 	}
 }
 
-// TestNewMockDirectory tests directory constructor.
-func TestNewMockDirectory(t *testing.T) {
+// TestNewMockDir tests directory constructor.
+func TestNewMockDir(t *testing.T) {
 	t.Run("with handler", func(t *testing.T) {
 		handler := func(n int) ([]fs.DirEntry, error) {
 			return []fs.DirEntry{}, nil
 		}
 
-		dir := mockfs.NewMockDirectory("testdir", handler)
+		dir := mockfs.NewMockDir("testdir", handler)
 		if dir == nil {
 			t.Fatal("expected non-nil directory")
 		}
@@ -232,7 +232,7 @@ func TestNewMockDirectory(t *testing.T) {
 	})
 
 	t.Run("nil handler is valid", func(t *testing.T) {
-		dir := mockfs.NewMockDirectory("testdir", nil)
+		dir := mockfs.NewMockDir("testdir", nil)
 		if dir == nil {
 			t.Fatal("expected non-nil directory")
 		}
@@ -568,7 +568,7 @@ func TestMockFile_ReadDir_valid(t *testing.T) {
 		return entries[:n], nil
 	}
 
-	dir := mockfs.NewMockDirectory("testdir", handler)
+	dir := mockfs.NewMockDir("testdir", handler)
 
 	result, err := dir.ReadDir(-1)
 	if err != nil {
@@ -581,7 +581,7 @@ func TestMockFile_ReadDir_valid(t *testing.T) {
 
 // TestMockFile_ReadDir_nilHandler tests ReadDir with nil handler returns empty result.
 func TestMockFile_ReadDir_nilHandler(t *testing.T) {
-	dir := mockfs.NewMockDirectory("testdir", nil)
+	dir := mockfs.NewMockDir("testdir", nil)
 
 	entries, err := dir.ReadDir(-1)
 	if err != nil {
@@ -598,7 +598,7 @@ func TestMockFile_ReadDir_closed(t *testing.T) {
 		return []fs.DirEntry{}, nil
 	}
 
-	dir := mockfs.NewMockDirectory("testdir", handler)
+	dir := mockfs.NewMockDir("testdir", handler)
 	_ = dir.Close()
 
 	_, err := dir.ReadDir(-1)
@@ -628,7 +628,7 @@ func TestMockFile_ReadDir_errorInjection(t *testing.T) {
 	injector := mockfs.NewErrorInjector()
 	injector.AddExact(mockfs.OpReadDir, "testdir", wantErr, mockfs.ErrorModeAlways, 0)
 
-	dir := mockfs.NewMockDirectory("testdir", handler, mockfs.WithFileErrorInjector(injector))
+	dir := mockfs.NewMockDir("testdir", handler, mockfs.WithFileErrorInjector(injector))
 
 	_, err := dir.ReadDir(-1)
 	if err != wantErr {
@@ -667,7 +667,7 @@ func TestMockFile_ReadDir_pagination(t *testing.T) {
 		return result, nil
 	}
 
-	dir := mockfs.NewMockDirectory("testdir", handler)
+	dir := mockfs.NewMockDir("testdir", handler)
 
 	// Read 2 entries at a time
 	result1, err := dir.ReadDir(2)
@@ -789,7 +789,7 @@ func TestMockFile_Stat_directoryMode(t *testing.T) {
 		handler := func(n int) ([]fs.DirEntry, error) {
 			return []fs.DirEntry{}, nil
 		}
-		dir := mockfs.NewMockDirectory("testdir", handler)
+		dir := mockfs.NewMockDir("testdir", handler)
 
 		info, err := dir.Stat()
 		if err != nil {

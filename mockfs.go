@@ -138,7 +138,7 @@ func Dir(name string, args ...any) MockFSOption {
 			case MockFSOption:
 				children = append(children, v)
 			default:
-				return fmt.Errorf("%s: invalid argument %s: %T", opName, cleanPath, v)
+				return fmt.Errorf("%s: invalid argument for %s: %T", opName, cleanPath, v)
 			}
 		}
 

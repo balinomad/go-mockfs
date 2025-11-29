@@ -275,22 +275,24 @@ mfs.FailReadAfter("large.bin", io.EOF, 3)
 ### Error Injection: Pattern Matching
 
 ```go
+injector := mfs.ErrorInjector()
+
 // Glob patterns use path.Match semantics (not shell glob)
 // Supports: *, ?, [...], but NOT ** or brace expansion
-mfs.ErrorInjector().AddGlob(mockfs.OpRead, "*.log", io.EOF, mockfs.ErrorModeAlways, 0)
-mfs.ErrorInjector().AddGlob(mockfs.OpOpen, "temp/*", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
+injector.AddGlob(mockfs.OpRead, "*.log", io.EOF, mockfs.ErrorModeAlways, 0)
+injector.AddGlob(mockfs.OpOpen, "temp/*", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 
 // Regular expressions
-mfs.ErrorInjector().AddRegexp(mockfs.OpRead, `\.tmp$`, mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
+injector.AddRegexp(mockfs.OpRead, `\.tmp$`, mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
 
 // All paths for an operation
-mfs.ErrorInjector().AddAll(mockfs.OpWrite, mockfs.ErrDiskFull, mockfs.ErrorModeAlways, 0)
+injector.AddAll(mockfs.OpWrite, mockfs.ErrDiskFull, mockfs.ErrorModeAlways, 0)
 
 // All operations for a path
-mfs.ErrorInjector().AddExactForAllOps("unstable.dat", mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
+injector.AddExactForAllOps("unstable.dat", mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
 
 // All operations for all paths
-mfs.ErrorInjector().AddAllForAllOps(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0)
+injector.AddAllForAllOps(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0)
 ```
 
 ### Statistics Tracking
@@ -406,7 +408,7 @@ entries := []fs.DirEntry{
     mockfs.NewFileInfo("docs", 0, fs.ModeDir|0o755, time.Now()),
 }
 handler := mockfs.NewDirHandler(entries)
-dir := mockfs.NewMockDirectory("mydir", handler)
+dir := mockfs.NewMockDir("mydir", handler)
 
 // Test functions accepting io.Reader/io.Writer
 func ProcessReader(r io.Reader) error { /* ... */ }
@@ -429,7 +431,8 @@ mfs := mockfs.NewMockFS(
 )
 
 // Configure error in parent
-mfs.ErrorInjector().AddGlob(mockfs.OpRead, "app/config/*.json", io.EOF, mockfs.ErrorModeAlways, 0)
+injector := mfs.ErrorInjector()
+injector.AddGlob(mockfs.OpRead, "app/config/*.json", io.EOF, mockfs.ErrorModeAlways, 0)
 
 // Create sub-filesystem
 subFS, err := mfs.Sub("app/config")
@@ -691,7 +694,11 @@ File handle type returned by `MockFS.Open()` or created standalone. Implements `
 NewMockFile(mapFile *MapFile, name string, opts ...MockFileOption) MockFile
 NewMockFileFromBytes(name string, data []byte, opts ...MockFileOption) MockFile
 NewMockFileFromString(name string, content string, opts ...MockFileOption) MockFile
-NewMockDirectory(name string, handler func(int)([]fs.DirEntry, error), opts ...MockFileOption) MockFile
+NewMockDir(
+    name string,
+    handler func(int)([]fs.DirEntry, error),
+    opts ...MockFileOption,
+) MockFile
 ```
 
 **Options:**
@@ -734,7 +741,7 @@ See [Stats Interface](#stats-interface) for statistics methods.
 ```go
 NewDirHandler(entries []fs.DirEntry) func(int)([]fs.DirEntry, error)
 ```
-Creates stateful ReadDir handler from static entry list. Used with `NewMockDirectory` or `WithFileReadDirHandler`.
+Creates stateful ReadDir handler from static entry list. Used with `NewMockDir` or `WithFileReadDirHandler`.
 
 ```go
 NewFileInfo(name string, size int64, mode FileMode, modTime time.Time) *FileInfo

@@ -985,7 +985,7 @@ file = mockfs.NewMockFileFromString("test.txt", "content",
 // Create directory with ReadDir handler
 entries := []fs.DirEntry{ /* ... */ }
 handler := mockfs.NewDirHandler(entries)
-dir := mockfs.NewMockDirectory("mydir", handler,
+dir := mockfs.NewMockDir("mydir", handler,
     mockfs.WithFileLatency(5*time.Millisecond),
 )
 
@@ -1425,7 +1425,7 @@ func TestSubFilesystem(t *testing.T) {
 - [ ] Consider using standalone `MockFile` constructors for file-specific tests:
   - [ ] `NewMockFileFromString()` for text files
   - [ ] `NewMockFileFromBytes()` for binary files
-  - [ ] `NewMockDirectory()` for directory testing
+  - [ ] `NewMockDir()` for directory testing
 - [ ] Consider per-operation latency with `WithPerOperationLatency()` if different operations need different delays
 - [ ] Consider glob patterns (`AddGlob()`) for simpler path matching instead of regex
 - [ ] Consider `fs.SubFS` testing with automatic error rule adjustment

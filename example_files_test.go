@@ -32,8 +32,8 @@ func ExampleNewMockFileFromBytes() {
 	// Output: Hello
 }
 
-// ExampleNewMockDirectory demonstrates directory creation with ReadDir.
-func ExampleNewMockDirectory() {
+// ExampleNewMockDir demonstrates directory creation with ReadDir.
+func ExampleNewMockDir() {
 	// Create entries using NewFileInfo
 	entries := []fs.DirEntry{
 		mockfs.NewFileInfo("file1.txt", 5, 0o644, time.Now()),
@@ -42,7 +42,7 @@ func ExampleNewMockDirectory() {
 
 	// Create directory with these entries
 	handler := mockfs.NewDirHandler(entries)
-	dir := mockfs.NewMockDirectory("mydir", handler)
+	dir := mockfs.NewMockDir("mydir", handler)
 
 	// ReadDir returns entries in sorted order
 	readDirFile := dir.(fs.ReadDirFile)
