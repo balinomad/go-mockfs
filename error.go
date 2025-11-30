@@ -17,6 +17,7 @@ const (
 	ErrorModeAlways         ErrorMode = iota // ErrorModeAlways means the error is returned every time.
 	ErrorModeOnce                            // ErrorModeOnce means the error is returned once, then cleared.
 	ErrorModeAfterSuccesses                  // ErrorModeAfterSuccesses means the error is returned after N successful calls.
+	ErrorModeNext                            // ErrorModeNext means the error is returned next N times, then cleared.
 )
 
 // Generic file system errors.
@@ -60,6 +61,9 @@ var (
 
 	// ErrNotEmpty indicates that a directory is not empty.
 	ErrNotEmpty = errors.New("directory not empty")
+
+	// ErrNegativeOffset indicates that the offset is negative.
+	ErrNegativeOffset = errors.New("negative offset")
 )
 
 // ErrorRule captures the settings for an error to be injected.
@@ -117,6 +121,9 @@ func (r *ErrorRule) shouldReturnError() bool {
 	case ErrorModeAfterSuccesses:
 		hits := r.hits.Add(1)
 		return hits > r.AfterN
+	case ErrorModeNext:
+		hits := r.hits.Add(1)
+		return hits <= r.AfterN
 	default:
 		panic(fmt.Sprintf("mockfs: invalid ErrorMode: %d", r.Mode))
 	}
@@ -456,5 +463,7 @@ func mustAfter(after int) uint64 {
 	if after < 0 {
 		panic(fmt.Sprintf("mockfs: invalid after value %d — must be >= 0", after))
 	}
+
+	// after=0 means fail immediately (zero successes allowed)
 	return uint64(after)
 }

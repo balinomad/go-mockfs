@@ -14,6 +14,8 @@ import (
 	"github.com/balinomad/go-mockfs/v2"
 )
 
+// --- Constructors ---
+
 // TestNewMockFile tests the main constructor.
 func TestNewMockFile(t *testing.T) {
 	mapFile := &fstest.MapFile{
@@ -58,23 +60,10 @@ func TestNewMockFile(t *testing.T) {
 		})
 	}
 }
-func TestMockFile_WithFileStats(t *testing.T) {
-	t.Parallel()
 
-	sharedStats := mockfs.NewStatsRecorder(nil)
-	file := mockfs.NewMockFileFromString("test.txt", "data", mockfs.WithFileStats(sharedStats))
-
-	buf := make([]byte, 4)
-	_, _ = file.Read(buf)
-
-	if sharedStats.Count(mockfs.OpRead) != 1 {
-		t.Errorf("shared stats not updated: count = %d, want 1", sharedStats.Count(mockfs.OpRead))
-	}
-}
-
-// TestNewMockFile_defaults tests that nil arguments to NewMockFile are
+// TestNewMockFile_Defaults tests that nil arguments to NewMockFile are
 // initialized with non-nil default implementations.
-func TestNewMockFile_defaults(t *testing.T) {
+func TestNewMockFile_Defaults(t *testing.T) {
 	mapFile := &fstest.MapFile{Data: []byte("test")}
 	// Call with nil for injector, latency, and stats
 	file := mockfs.NewMockFile(mapFile, "test.txt", mockfs.WithFileOverwrite())
@@ -128,8 +117,25 @@ func TestNewMockFileFromBytes(t *testing.T) {
 	}
 }
 
-// TestNewMockFileWithLatency tests latency constructor.
-func TestNewMockFileWithLatency(t *testing.T) {
+// --- Options ---
+
+// TestWithFileStats tests that the WithFileStats option works.
+func TestWithFileStats(t *testing.T) {
+	t.Parallel()
+
+	sharedStats := mockfs.NewStatsRecorder(nil)
+	file := mockfs.NewMockFileFromString("test.txt", "data", mockfs.WithFileStats(sharedStats))
+
+	buf := make([]byte, 4)
+	_, _ = file.Read(buf)
+
+	if sharedStats.Count(mockfs.OpRead) != 1 {
+		t.Errorf("shared stats not updated: count = %d, want 1", sharedStats.Count(mockfs.OpRead))
+	}
+}
+
+// TestWithFileLatency tests latency constructor.
+func TestWithFileLatency(t *testing.T) {
 	file := mockfs.NewMockFileFromString("test.txt", "data", mockfs.WithFileLatency(testDuration))
 
 	buf := make([]byte, 4)
@@ -142,8 +148,8 @@ func TestNewMockFileWithLatency(t *testing.T) {
 	assertDuration(t, start, testDuration, "read with latency")
 }
 
-// TestNewMockFileForReadWrite tests read/write focused constructor with per-op latency.
-func TestNewMockFileForReadWrite(t *testing.T) {
+// TestWithFilePerOperationLatency tests read/write focused constructor with per-op latency.
+func TestWithFilePerOperationLatency(t *testing.T) {
 	injector := mockfs.NewErrorInjector()
 	injector.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrUnexpectedEOF, mockfs.ErrorModeOnce, 0)
 	file := mockfs.NewMockFileFromString("test.txt", "test",
@@ -177,6 +183,37 @@ func TestNewMockFileForReadWrite(t *testing.T) {
 	assertNoDuration(t, start, "close should be fast")
 }
 
+// TestNewMockDir tests directory constructor.
+func TestNewMockDir(t *testing.T) {
+	t.Run("with handler", func(t *testing.T) {
+		handler := func(n int) ([]fs.DirEntry, error) {
+			return []fs.DirEntry{}, nil
+		}
+
+		dir := mockfs.NewMockDir("testdir", handler)
+		if dir == nil {
+			t.Fatal("expected non-nil directory")
+		}
+
+		entries, err := dir.ReadDir(-1)
+		if err != nil {
+			t.Fatalf("readdir failed: %v", err)
+		}
+		if entries == nil {
+			t.Error("expected non-nil entries")
+		}
+	})
+
+	t.Run("nil handler is valid", func(t *testing.T) {
+		dir := mockfs.NewMockDir("testdir", nil)
+		if dir == nil {
+			t.Fatal("expected non-nil directory")
+		}
+	})
+}
+
+// --- Methods ---
+
 // TestMockFile_Seek tests Seek operation.
 func TestMockFile_Seek(t *testing.T) {
 	file := mockfs.NewMockFileFromString("test.txt", "0123456789")
@@ -208,35 +245,6 @@ func TestMockFile_Seek(t *testing.T) {
 	if err != io.EOF {
 		t.Errorf("read from end = %v, want %v", err, io.EOF)
 	}
-}
-
-// TestNewMockDir tests directory constructor.
-func TestNewMockDir(t *testing.T) {
-	t.Run("with handler", func(t *testing.T) {
-		handler := func(n int) ([]fs.DirEntry, error) {
-			return []fs.DirEntry{}, nil
-		}
-
-		dir := mockfs.NewMockDir("testdir", handler)
-		if dir == nil {
-			t.Fatal("expected non-nil directory")
-		}
-
-		entries, err := dir.ReadDir(-1)
-		if err != nil {
-			t.Fatalf("readdir failed: %v", err)
-		}
-		if entries == nil {
-			t.Error("expected non-nil entries")
-		}
-	})
-
-	t.Run("nil handler is valid", func(t *testing.T) {
-		dir := mockfs.NewMockDir("testdir", nil)
-		if dir == nil {
-			t.Fatal("expected non-nil directory")
-		}
-	})
 }
 
 // TestMockFile_Read tests Read operation.
@@ -295,8 +303,8 @@ func TestMockFile_Read(t *testing.T) {
 	}
 }
 
-// TestMockFile_Read_position tests that read position advances.
-func TestMockFile_Read_position(t *testing.T) {
+// TestMockFile_Read_Position tests that read position advances.
+func TestMockFile_Read_Position(t *testing.T) {
 	file := mockfs.NewMockFileFromString("test.txt", "abcdefghij")
 
 	// First read
@@ -328,8 +336,8 @@ func TestMockFile_Read_position(t *testing.T) {
 	}
 }
 
-// TestMockFile_Read_closed tests reading from closed file.
-func TestMockFile_Read_closed(t *testing.T) {
+// TestMockFile_Read_Closed tests reading from closed file.
+func TestMockFile_Read_Closed(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	if err := file.Close(); err != nil {
@@ -343,8 +351,8 @@ func TestMockFile_Read_closed(t *testing.T) {
 	}
 }
 
-// TestMockFile_Read_errorInjection tests error injection on read.
-func TestMockFile_Read_errorInjection(t *testing.T) {
+// TestMockFile_Read_ErrorInjection tests error injection on read.
+func TestMockFile_Read_ErrorInjection(t *testing.T) {
 	wantErr := mockfs.ErrUnexpectedEOF
 
 	injector := mockfs.NewErrorInjector()
@@ -359,8 +367,8 @@ func TestMockFile_Read_errorInjection(t *testing.T) {
 	}
 }
 
-// TestMockFile_Read_largeFile tests reading a large file.
-func TestMockFile_Read_largeFile(t *testing.T) {
+// TestMockFile_Read_LargeFile tests reading a large file.
+func TestMockFile_Read_LargeFile(t *testing.T) {
 	size := 10 * 1024 * 1024 // 10MB
 	data := make([]byte, size)
 	for i := range data {
@@ -390,8 +398,8 @@ func TestMockFile_Read_largeFile(t *testing.T) {
 	}
 }
 
-// TestMockFile_Read_zeroByte tests reading with zero-length buffer.
-func TestMockFile_Read_zeroByte(t *testing.T) {
+// TestMockFile_Read_ZeroByte tests reading with zero-length buffer.
+func TestMockFile_Read_ZeroByte(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	buf := make([]byte, 0)
@@ -404,8 +412,150 @@ func TestMockFile_Read_zeroByte(t *testing.T) {
 	}
 }
 
-// TestMockFile_Write_overwrite tests overwrite mode.
-func TestMockFile_Write_overwrite(t *testing.T) {
+// TestMockFile_ReadAt tests ReadAt operation at various offsets.
+func TestMockFile_ReadAt(t *testing.T) {
+	t.Parallel()
+
+	content := []byte("0123456789abcdef")
+	file := mockfs.NewMockFileFromBytes("test.txt", content)
+
+	tests := []struct {
+		name    string
+		offset  int64
+		bufSize int
+		wantN   int
+		wantErr error
+		wantStr string
+	}{
+		{
+			name:    "read from start",
+			offset:  0,
+			bufSize: 5,
+			wantN:   5,
+			wantErr: nil,
+			wantStr: "01234",
+		},
+		{
+			name:    "read from middle",
+			offset:  5,
+			bufSize: 5,
+			wantN:   5,
+			wantErr: nil,
+			wantStr: "56789",
+		},
+		{
+			name:    "read to end exact",
+			offset:  10,
+			bufSize: 6,
+			wantN:   6,
+			wantErr: nil,
+			wantStr: "abcdef",
+		},
+		{
+			name:    "read beyond end",
+			offset:  10,
+			bufSize: 10,
+			wantN:   6,
+			wantErr: io.EOF,
+			wantStr: "abcdef",
+		},
+		{
+			name:    "read at end",
+			offset:  16,
+			bufSize: 10,
+			wantN:   0,
+			wantErr: io.EOF,
+			wantStr: "",
+		},
+		{
+			name:    "read past end",
+			offset:  20,
+			bufSize: 10,
+			wantN:   0,
+			wantErr: io.EOF,
+			wantStr: "",
+		},
+		{
+			name:    "negative offset",
+			offset:  -1,
+			bufSize: 10,
+			wantN:   0,
+			wantErr: mockfs.ErrNegativeOffset,
+			wantStr: "",
+		},
+		{
+			name:    "zero length buffer",
+			offset:  5,
+			bufSize: 0,
+			wantN:   0,
+			wantErr: nil,
+			wantStr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := make([]byte, tt.bufSize)
+			n, err := file.ReadAt(buf, tt.offset)
+
+			if n != tt.wantN {
+				t.Errorf("ReadAt() n = %d, want %d", n, tt.wantN)
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("ReadAt() error = %v, want %v", err, tt.wantErr)
+			}
+			if got := string(buf[:n]); got != tt.wantStr {
+				t.Errorf("ReadAt() data = %q, want %q", got, tt.wantStr)
+			}
+		})
+	}
+}
+
+func TestMockFile_ReadAt_Closed(t *testing.T) {
+	t.Parallel()
+
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
+	_ = file.Close()
+
+	buf := make([]byte, 10)
+	_, err := file.ReadAt(buf, 0)
+	assertError(t, err, fs.ErrClosed)
+}
+
+func TestMockFile_ReadAt_ErrorInjection(t *testing.T) {
+	t.Parallel()
+
+	injector := mockfs.NewErrorInjector()
+	injector.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrUnexpectedEOF, mockfs.ErrorModeAlways, 0)
+
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"),
+		mockfs.WithFileErrorInjector(injector))
+
+	buf := make([]byte, 4)
+	_, err := file.ReadAt(buf, 0)
+	assertError(t, err, mockfs.ErrUnexpectedEOF)
+}
+
+func TestMockFile_ReadAt_Stats(t *testing.T) {
+	t.Parallel()
+
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("0123456789"))
+
+	buf := make([]byte, 3)
+	file.ReadAt(buf, 0)
+	file.ReadAt(buf, 5)
+
+	stats := file.Stats()
+	if stats.Count(mockfs.OpRead) != 2 {
+		t.Errorf("Count(OpRead) = %d, want 2", stats.Count(mockfs.OpRead))
+	}
+	if stats.BytesRead() != 6 {
+		t.Errorf("BytesRead() = %d, want 6", stats.BytesRead())
+	}
+}
+
+// TestMockFile_Write_Overwrite tests overwrite mode.
+func TestMockFile_Write_Overwrite(t *testing.T) {
 	mapFile := &fstest.MapFile{
 		Data:    []byte("original content"),
 		Mode:    0o644,
@@ -430,8 +580,8 @@ func TestMockFile_Write_overwrite(t *testing.T) {
 	}
 }
 
-// TestMockFile_Write_append tests append mode.
-func TestMockFile_Write_append(t *testing.T) {
+// TestMockFile_Write_Append tests append mode.
+func TestMockFile_Write_Append(t *testing.T) {
 	initialData := []byte("initial-")
 	mapFile := &fstest.MapFile{
 		Data:    append([]byte(nil), initialData...),
@@ -457,8 +607,8 @@ func TestMockFile_Write_append(t *testing.T) {
 	}
 }
 
-// TestMockFile_Write_readOnly tests read-only mode.
-func TestMockFile_Write_readOnly(t *testing.T) {
+// TestMockFile_Write_ReadOnly tests read-only mode.
+func TestMockFile_Write_ReadOnly(t *testing.T) {
 	initialData := []byte("initial")
 	mapFile := &fstest.MapFile{
 		Data:    append([]byte(nil), initialData...),
@@ -484,8 +634,8 @@ func TestMockFile_Write_readOnly(t *testing.T) {
 	}
 }
 
-// TestMockFile_Write_closed tests writing to closed file.
-func TestMockFile_Write_closed(t *testing.T) {
+// TestMockFile_Write_Closed tests writing to closed file.
+func TestMockFile_Write_Closed(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	if err := file.Close(); err != nil {
@@ -498,8 +648,8 @@ func TestMockFile_Write_closed(t *testing.T) {
 	}
 }
 
-// TestMockFile_Write_errorInjection tests error injection on write.
-func TestMockFile_Write_errorInjection(t *testing.T) {
+// TestMockFile_Write_ErrorInjection tests error injection on write.
+func TestMockFile_Write_ErrorInjection(t *testing.T) {
 	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0o644, ModTime: time.Now()}
 	wantErr := fs.ErrPermission
 
@@ -514,8 +664,8 @@ func TestMockFile_Write_errorInjection(t *testing.T) {
 	}
 }
 
-// TestMockFile_Write_modTimeUpdate tests that ModTime is updated on write.
-func TestMockFile_Write_modTimeUpdate(t *testing.T) {
+// TestMockFile_Write_ModTimeUpdate tests that ModTime is updated on write.
+func TestMockFile_Write_ModTimeUpdate(t *testing.T) {
 	initialTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	mapFile := &fstest.MapFile{
 		Data:    []byte("old"),
@@ -538,8 +688,8 @@ func TestMockFile_Write_modTimeUpdate(t *testing.T) {
 	}
 }
 
-// TestMockFile_Write_zeroByte tests writing zero bytes.
-func TestMockFile_Write_zeroByte(t *testing.T) {
+// TestMockFile_Write_ZeroByte tests writing zero bytes.
+func TestMockFile_Write_ZeroByte(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("initial"))
 
 	n, err := file.Write([]byte{})
@@ -551,8 +701,162 @@ func TestMockFile_Write_zeroByte(t *testing.T) {
 	}
 }
 
-// TestMockFile_ReadDir_valid tests valid directory reading.
-func TestMockFile_ReadDir_valid(t *testing.T) {
+// TestMockFile_WriteAt tests WriteAt operation at various offsets.
+func TestMockFile_WriteAt(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		initial   []byte
+		offset    int64
+		writeData []byte
+		wantN     int
+		wantErr   error
+		wantFinal string
+	}{
+		{
+			name:      "write at start",
+			initial:   []byte("0123456789"),
+			offset:    0,
+			writeData: []byte("ABC"),
+			wantN:     3,
+			wantErr:   nil,
+			wantFinal: "ABC3456789",
+		},
+		{
+			name:      "write at middle",
+			initial:   []byte("0123456789"),
+			offset:    5,
+			writeData: []byte("XYZ"),
+			wantN:     3,
+			wantErr:   nil,
+			wantFinal: "01234XYZ89",
+		},
+		{
+			name:      "write at end",
+			initial:   []byte("0123456789"),
+			offset:    10,
+			writeData: []byte("END"),
+			wantN:     3,
+			wantErr:   nil,
+			wantFinal: "0123456789END",
+		},
+		{
+			name:      "write beyond end extends",
+			initial:   []byte("012"),
+			offset:    5,
+			writeData: []byte("XY"),
+			wantN:     2,
+			wantErr:   nil,
+			wantFinal: "012\x00\x00XY",
+		},
+		{
+			name:      "negative offset",
+			initial:   []byte("data"),
+			offset:    -1,
+			writeData: []byte("X"),
+			wantN:     0,
+			wantErr:   mockfs.ErrNegativeOffset,
+			wantFinal: "data",
+		},
+		{
+			name:      "empty write",
+			initial:   []byte("data"),
+			offset:    2,
+			writeData: []byte{},
+			wantN:     0,
+			wantErr:   nil,
+			wantFinal: "data",
+		},
+		{
+			name:      "write to empty file",
+			initial:   []byte{},
+			offset:    0,
+			writeData: []byte("NEW"),
+			wantN:     3,
+			wantErr:   nil,
+			wantFinal: "NEW",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file := mockfs.NewMockFileFromBytes("test.txt", tt.initial)
+
+			n, err := file.WriteAt(tt.writeData, tt.offset)
+
+			if n != tt.wantN {
+				t.Errorf("WriteAt() n = %d, want %d", n, tt.wantN)
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("WriteAt() error = %v, want %v", err, tt.wantErr)
+			}
+
+			// Read back entire content
+			_, _ = file.Seek(0, io.SeekStart)
+			buf := make([]byte, 100)
+			nRead, _ := file.Read(buf)
+			got := string(buf[:nRead])
+
+			if got != tt.wantFinal {
+				t.Errorf("WriteAt() final content = %q, want %q", got, tt.wantFinal)
+			}
+		})
+	}
+}
+
+func TestMockFile_WriteAt_Closed(t *testing.T) {
+	t.Parallel()
+
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
+	_ = file.Close()
+
+	_, err := file.WriteAt([]byte("X"), 0)
+	assertError(t, err, fs.ErrClosed)
+}
+
+func TestMockFile_WriteAt_ReadOnly(t *testing.T) {
+	t.Parallel()
+
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"),
+		mockfs.WithFileReadOnly())
+
+	_, err := file.WriteAt([]byte("X"), 0)
+	assertError(t, err, mockfs.ErrPermission)
+}
+
+func TestMockFile_WriteAt_ErrorInjection(t *testing.T) {
+	t.Parallel()
+
+	injector := mockfs.NewErrorInjector()
+	injector.AddExact(mockfs.OpWrite, "test.txt", mockfs.ErrDiskFull, mockfs.ErrorModeAlways, 0)
+
+	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"),
+		mockfs.WithFileErrorInjector(injector))
+
+	_, err := file.WriteAt([]byte("X"), 0)
+	assertError(t, err, mockfs.ErrDiskFull)
+}
+
+func TestMockFile_WriteAt_Stats(t *testing.T) {
+	t.Parallel()
+
+	file := mockfs.NewMockFileFromBytes("test.txt", make([]byte, 20))
+
+	file.WriteAt([]byte("ABC"), 0)
+	file.WriteAt([]byte("XY"), 10)
+
+	stats := file.Stats()
+	if stats.Count(mockfs.OpWrite) != 2 {
+		t.Errorf("Count(OpWrite) = %d, want 2", stats.Count(mockfs.OpWrite))
+	}
+	if stats.BytesWritten() != 5 {
+		t.Errorf("BytesWritten() = %d, want 5", stats.BytesWritten())
+	}
+}
+
+// TestMockFile_ReadDir_Valid tests valid directory reading.
+func TestMockFile_ReadDir_Valid(t *testing.T) {
 	entries := []fs.DirEntry{
 		mockfs.NewFileInfo("file1.txt", 0, 0o644, time.Now()),
 		mockfs.NewFileInfo("file2.txt", 0, 0o644, time.Now()),
@@ -579,8 +883,8 @@ func TestMockFile_ReadDir_valid(t *testing.T) {
 	}
 }
 
-// TestMockFile_ReadDir_nilHandler tests ReadDir with nil handler returns empty result.
-func TestMockFile_ReadDir_nilHandler(t *testing.T) {
+// TestMockFile_ReadDir_NilHandler tests ReadDir with nil handler returns empty result.
+func TestMockFile_ReadDir_NilHandler(t *testing.T) {
 	dir := mockfs.NewMockDir("testdir", nil)
 
 	entries, err := dir.ReadDir(-1)
@@ -592,8 +896,8 @@ func TestMockFile_ReadDir_nilHandler(t *testing.T) {
 	}
 }
 
-// TestMockFile_ReadDir_closed tests closed directory.
-func TestMockFile_ReadDir_closed(t *testing.T) {
+// TestMockFile_ReadDir_Closed tests closed directory.
+func TestMockFile_ReadDir_Closed(t *testing.T) {
 	handler := func(n int) ([]fs.DirEntry, error) {
 		return []fs.DirEntry{}, nil
 	}
@@ -607,8 +911,8 @@ func TestMockFile_ReadDir_closed(t *testing.T) {
 	}
 }
 
-// TestMockFile_ReadDir_notDirectory tests file not directory error.
-func TestMockFile_ReadDir_notDirectory(t *testing.T) {
+// TestMockFile_ReadDir_NotDirectory tests file not directory error.
+func TestMockFile_ReadDir_NotDirectory(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	_, err := file.ReadDir(-1)
@@ -617,8 +921,8 @@ func TestMockFile_ReadDir_notDirectory(t *testing.T) {
 	}
 }
 
-// TestMockFile_ReadDir_errorInjection tests error injection on readdir.
-func TestMockFile_ReadDir_errorInjection(t *testing.T) {
+// TestMockFile_ReadDir_ErrorInjection tests error injection on readdir.
+func TestMockFile_ReadDir_ErrorInjection(t *testing.T) {
 	wantErr := fs.ErrPermission
 
 	handler := func(n int) ([]fs.DirEntry, error) {
@@ -636,8 +940,8 @@ func TestMockFile_ReadDir_errorInjection(t *testing.T) {
 	}
 }
 
-// TestMockFile_ReadDir_pagination tests reading directory entries in pages.
-func TestMockFile_ReadDir_pagination(t *testing.T) {
+// TestMockFile_ReadDir_Pagination tests reading directory entries in pages.
+func TestMockFile_ReadDir_Pagination(t *testing.T) {
 	entries := []fs.DirEntry{
 		mockfs.NewFileInfo("file1", 0, 0o644, time.Now()),
 		mockfs.NewFileInfo("file2", 0, 0o644, time.Now()),
@@ -725,8 +1029,8 @@ func TestMockFile_Stat(t *testing.T) {
 	}
 }
 
-// TestMockFile_Stat_closed tests stat on closed file.
-func TestMockFile_Stat_closed(t *testing.T) {
+// TestMockFile_Stat_Closed tests stat on closed file.
+func TestMockFile_Stat_Closed(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	if err := file.Close(); err != nil {
@@ -739,8 +1043,8 @@ func TestMockFile_Stat_closed(t *testing.T) {
 	}
 }
 
-// TestMockFile_Stat_errorInjection tests error injection on stat.
-func TestMockFile_Stat_errorInjection(t *testing.T) {
+// TestMockFile_Stat_ErrorInjection tests error injection on stat.
+func TestMockFile_Stat_ErrorInjection(t *testing.T) {
 	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0o644, ModTime: time.Now()}
 	wantErr := fs.ErrPermission
 
@@ -755,8 +1059,8 @@ func TestMockFile_Stat_errorInjection(t *testing.T) {
 	}
 }
 
-// TestMockFile_Stat_basename tests correct basename extraction.
-func TestMockFile_Stat_basename(t *testing.T) {
+// TestMockFile_Stat_Basename tests correct basename extraction.
+func TestMockFile_Stat_Basename(t *testing.T) {
 	tests := []struct {
 		path     string
 		wantName string
@@ -783,8 +1087,8 @@ func TestMockFile_Stat_basename(t *testing.T) {
 	}
 }
 
-// TestMockFile_Stat_directoryMode tests directory vs file detection.
-func TestMockFile_Stat_directoryMode(t *testing.T) {
+// TestMockFile_Stat_DirMode tests directory vs file detection.
+func TestMockFile_Stat_DirMode(t *testing.T) {
 	t.Run("directory", func(t *testing.T) {
 		handler := func(n int) ([]fs.DirEntry, error) {
 			return []fs.DirEntry{}, nil
@@ -815,8 +1119,8 @@ func TestMockFile_Stat_directoryMode(t *testing.T) {
 	})
 }
 
-// TestMockFile_Stat_permissions tests different file modes.
-func TestMockFile_Stat_permissions(t *testing.T) {
+// TestMockFile_Stat_Permissions tests different file modes.
+func TestMockFile_Stat_Permissions(t *testing.T) {
 	modes := []mockfs.FileMode{
 		0o644,
 		0o755,
@@ -855,8 +1159,8 @@ func TestMockFile_Close(t *testing.T) {
 	}
 }
 
-// TestMockFile_Close_double tests double close returns error.
-func TestMockFile_Close_double(t *testing.T) {
+// TestMockFile_Close_Double tests double close returns error.
+func TestMockFile_Close_Double(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	_ = file.Close()
@@ -866,8 +1170,8 @@ func TestMockFile_Close_double(t *testing.T) {
 	}
 }
 
-// TestMockFile_Close_errorInjection tests error injection on close.
-func TestMockFile_Close_errorInjection(t *testing.T) {
+// TestMockFile_Close_ErrorInjection tests error injection on close.
+func TestMockFile_Close_ErrorInjection(t *testing.T) {
 	mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0o644, ModTime: time.Now()}
 	wantErr := fs.ErrPermission
 
@@ -916,8 +1220,8 @@ func TestMockFile_Stats(t *testing.T) {
 	}
 }
 
-// TestMockFile_Stats_snapshot tests that Stats returns a snapshot.
-func TestMockFile_Stats_snapshot(t *testing.T) {
+// TestMockFile_Stats_Snapshot tests that Stats returns a snapshot.
+func TestMockFile_Stats_Snapshot(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	buf := make([]byte, 4)
@@ -960,8 +1264,8 @@ func TestMockFile_ErrorInjector(t *testing.T) {
 	}
 }
 
-// TestMockFile_LatencySimulator tests latency simulator access.
-func TestMockFile_LatencySimulator(t *testing.T) {
+// TestMockFile_LatencySimulator_Exists tests latency simulator access.
+func TestMockFile_LatencySimulator_Exists(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	sim := file.LatencySimulator()
@@ -1009,8 +1313,8 @@ func TestMockFile_latencySimulation(t *testing.T) {
 	}
 }
 
-// TestMockFile_latencyReset tests that latency state is reset on close.
-func TestMockFile_latencyReset(t *testing.T) {
+// TestMockFile_LatencyReset tests that latency state is reset on close.
+func TestMockFile_LatencyReset(t *testing.T) {
 	latencySim := mockfs.NewLatencySimulator(testDuration)
 
 	file := mockfs.NewMockFileFromString("test.txt", "test", mockfs.WithFileLatencySimulator(latencySim))
@@ -1025,8 +1329,8 @@ func TestMockFile_latencyReset(t *testing.T) {
 	_ = file.Close()
 }
 
-// TestMockFile_latencyOnceMode tests Once latency mode behavior.
-func TestMockFile_latencyOnceMode(t *testing.T) {
+// TestMockFile_LatencyOnceMode tests Once latency mode behavior.
+func TestMockFile_LatencyOnceMode(t *testing.T) {
 	latencySim := mockfs.NewLatencySimulator(testDuration)
 
 	file := mockfs.NewMockFileFromString("test.txt", "test", mockfs.WithFileLatencySimulator(latencySim))
@@ -1046,8 +1350,8 @@ func TestMockFile_latencyOnceMode(t *testing.T) {
 	}
 }
 
-// TestMockFile_latencySharedSimulator tests sharing latency simulator between files.
-func TestMockFile_latencySharedSimulator(t *testing.T) {
+// TestMockFile_LatencySharedSimulator tests sharing latency simulator between files.
+func TestMockFile_LatencySharedSimulator(t *testing.T) {
 	sharedLatency := mockfs.NewLatencySimulator(testDuration)
 
 	file1 := mockfs.NewMockFileFromString("file1.txt", "file1", mockfs.WithFileLatencySimulator(sharedLatency))
@@ -1071,8 +1375,8 @@ func TestMockFile_latencySharedSimulator(t *testing.T) {
 	assertDuration(t, start, testDuration, "file2 read")
 }
 
-// TestMockFile_concurrentReads tests concurrent read operations.
-func TestMockFile_concurrentReads(t *testing.T) {
+// TestMockFile_ConcurrentReads tests concurrent read operations.
+func TestMockFile_ConcurrentReads(t *testing.T) {
 	data := make([]byte, 1000)
 	for i := range data {
 		data[i] = byte(i % 256)
@@ -1103,8 +1407,8 @@ func TestMockFile_concurrentReads(t *testing.T) {
 	}
 }
 
-// TestMockFile_concurrentWrites tests concurrent write operations.
-func TestMockFile_concurrentWrites(t *testing.T) {
+// TestMockFile_ConcurrentWrites tests concurrent write operations.
+func TestMockFile_ConcurrentWrites(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte(""))
 
 	var wg sync.WaitGroup
@@ -1130,8 +1434,8 @@ func TestMockFile_concurrentWrites(t *testing.T) {
 	}
 }
 
-// TestMockFile_concurrentCloses tests that concurrent closes are safe.
-func TestMockFile_concurrentCloses(t *testing.T) {
+// TestMockFile_ConcurrentCloses tests that concurrent closes are safe.
+func TestMockFile_ConcurrentCloses(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	var wg sync.WaitGroup
@@ -1156,8 +1460,8 @@ func TestMockFile_concurrentCloses(t *testing.T) {
 	}
 }
 
-// TestMockFile_readWriteSequence tests mixed read/write operations.
-func TestMockFile_readWriteSequence(t *testing.T) {
+// TestMockFile_ReadWriteSequence tests mixed read/write operations.
+func TestMockFile_ReadWriteSequence(t *testing.T) {
 	file := mockfs.NewMockFileFromString("test.txt", "initial")
 
 	// Read initial content
@@ -1180,8 +1484,8 @@ func TestMockFile_readWriteSequence(t *testing.T) {
 	}
 }
 
-// TestMockFile_emptyFile tests operations on empty file.
-func TestMockFile_emptyFile(t *testing.T) {
+// TestMockFile_EmptyFile tests operations on empty file.
+func TestMockFile_EmptyFile(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("empty.txt", []byte{})
 
 	// Read should return EOF immediately
@@ -1207,8 +1511,8 @@ func TestMockFile_emptyFile(t *testing.T) {
 	}
 }
 
-// TestMockFile_multipleFilesIndependent tests that files have independent state.
-func TestMockFile_multipleFilesIndependent(t *testing.T) {
+// TestMockFile_MultipleFilesIndependent tests that files have independent state.
+func TestMockFile_MultipleFilesIndependent(t *testing.T) {
 	file1 := mockfs.NewMockFileFromBytes("file1.txt", []byte("content1"))
 	file2 := mockfs.NewMockFileFromBytes("file2.txt", []byte("content2"))
 
@@ -1239,8 +1543,8 @@ func TestMockFile_multipleFilesIndependent(t *testing.T) {
 	}
 }
 
-// TestMockFile_partialReads tests continuing reads.
-func TestMockFile_partialReads(t *testing.T) {
+// TestMockFile_PartialReads tests continuing reads.
+func TestMockFile_PartialReads(t *testing.T) {
 	file := mockfs.NewMockFileFromString("test.txt", "0123456789")
 
 	// Read in chunks
@@ -1267,8 +1571,8 @@ func TestMockFile_partialReads(t *testing.T) {
 	}
 }
 
-// TestMockFile_concurrentReadWrite tests race conditions in concurrent read/write.
-func TestMockFile_concurrentReadWrite(t *testing.T) {
+// TestMockFile_ConcurrentReadWrite tests race conditions in concurrent read/write.
+func TestMockFile_ConcurrentReadWrite(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("initial data"))
 
 	var wg sync.WaitGroup
@@ -1310,8 +1614,8 @@ func TestMockFile_concurrentReadWrite(t *testing.T) {
 	}
 }
 
-// TestMockFile_statsRaceCondition tests stats tracking under concurrent operations.
-func TestMockFile_statsRaceCondition(t *testing.T) {
+// TestMockFile_ConcurrentStats tests stats tracking under concurrent operations.
+func TestMockFile_ConcurrentStats(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	var wg sync.WaitGroup
@@ -1335,8 +1639,8 @@ func TestMockFile_statsRaceCondition(t *testing.T) {
 	}
 }
 
-// TestMockFile_latencyCloning tests that files get independent latency simulators.
-func TestMockFile_latencyCloning(t *testing.T) {
+// TestMockFile_LatencyCloning tests that files get independent latency simulators.
+func TestMockFile_LatencyCloning(t *testing.T) {
 	// Create a MockFS with latency that uses Once mode
 	mfs := mockfs.NewMockFS(
 		mockfs.File("file1.txt", "data1"),
@@ -1423,6 +1727,8 @@ func TestNewDirHandler(t *testing.T) {
 		}
 	})
 }
+
+// --- Benchmarks ---
 
 // BenchmarkMockFile_Read benchmarks read performance.
 func BenchmarkMockFile_Read(b *testing.B) {

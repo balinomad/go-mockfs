@@ -56,39 +56,6 @@ func TestNewMockFS(t *testing.T) {
 			},
 		},
 		{
-			name: "with initial directories",
-			opts: []mockfs.MockFSOption{
-				mockfs.Dir("dir1", mockfs.FileMode(0o777)),
-				mockfs.File("file1.txt", "1"),
-				mockfs.Dir("dir2",
-					mockfs.File("file2.txt", "2"),
-				),
-				mockfs.Dir("dir3", mockfs.FileMode(0o777),
-					mockfs.File("file3.txt", "3"),
-				),
-			},
-			postCreation: func(t *testing.T, m *mockfs.MockFS) {
-				if info, err := m.Stat("dir1"); err != nil || !info.IsDir() {
-					t.Errorf("expected directory 'dir1' to exist")
-				}
-				if info, err := m.Stat("dir2"); err != nil || !info.IsDir() {
-					t.Errorf("expected directory 'dir2' to exist")
-				}
-				if info, err := m.Stat("dir3"); err != nil || !info.IsDir() {
-					t.Errorf("expected directory 'dir3' to exist")
-				}
-				if info, err := m.Stat("file1.txt"); err != nil || info.IsDir() {
-					t.Errorf("expected file 'file1.txt' to exist")
-				}
-				if info, err := m.Stat("dir2/file2.txt"); err != nil || info.IsDir() {
-					t.Errorf("expected file 'file2.txt' to exist")
-				}
-				if info, err := m.Stat("dir3/file3.txt"); err != nil || info.IsDir() {
-					t.Errorf("expected file 'file3.txt' to exist")
-				}
-			},
-		},
-		{
 			name: "with latency",
 			opts: []mockfs.MockFSOption{
 				mockfs.File("file.txt", "original"),
@@ -128,44 +95,51 @@ func TestNewMockFS(t *testing.T) {
 func TestNewMockFS_Builder(t *testing.T) {
 	t.Parallel()
 
-	t.Run("with files and directories", func(t *testing.T) {
-		mfs := mockfs.NewMockFS(
-			mockfs.Dir("dir1", mockfs.FileMode(0o777)),
-			mockfs.File("file1.txt", "1"),
-			mockfs.Dir("dir2",
-				mockfs.File("file2.txt", "2"),
-			),
-			mockfs.Dir("dir3", mockfs.FileMode(0o777),
-				mockfs.File("file3.txt", "3"),
-			),
-		)
-		if mfs == nil {
-			t.Fatal("NewMockFS returned nil")
-		}
+	mfs := mockfs.NewMockFS(
+		mockfs.Dir("dir1", mockfs.FileMode(0o777)),
+		mockfs.File("file1.txt", "1"),
+		mockfs.Dir("dir2",
+			mockfs.File("file2.txt", "2"),
+		),
+		mockfs.Dir("dir3", mockfs.FileMode(0o777),
+			mockfs.File("file3.txt", "3"),
+		),
+	)
+	if mfs == nil {
+		t.Fatal("NewMockFS returned nil")
+	}
 
-		info, err := mfs.Stat("dir1")
-		if err != nil || !info.IsDir() {
-			t.Errorf("expected directory 'dir1' to exist")
-		}
-		if info.Mode()&fs.ModeDir == 0 {
+	tests := []struct {
+		path        string
+		shouldBeDir bool
+	}{
+		{"dir1", true},
+		{"dir2", true},
+		{"dir3", true},
+		{"file1.txt", false},
+		{"dir2/file2.txt", false},
+		{"dir3/file3.txt", false},
+	}
 
-		}
-		if info, err := mfs.Stat("dir2"); err != nil || !info.IsDir() {
-			t.Errorf("expected directory 'dir2' to exist")
-		}
-		if info, err := mfs.Stat("dir3"); err != nil || !info.IsDir() {
-			t.Errorf("expected directory 'dir3' to exist")
-		}
-		if info, err := mfs.Stat("file1.txt"); err != nil || info.IsDir() {
-			t.Errorf("expected file 'file1.txt' to exist")
-		}
-		if info, err := mfs.Stat("dir2/file2.txt"); err != nil || info.IsDir() {
-			t.Errorf("expected file 'file2.txt' to exist")
-		}
-		if info, err := mfs.Stat("dir3/file3.txt"); err != nil || info.IsDir() {
-			t.Errorf("expected file 'file3.txt' to exist")
-		}
-	})
+	for _, tc := range tests {
+		tc := tc // ensure parallel-safe
+		t.Run(tc.path, func(t *testing.T) {
+			t.Parallel()
+
+			info, err := mfs.Stat(tc.path)
+			if err != nil {
+				t.Fatalf("unexpected error for %s: %v", tc.path, err)
+			}
+
+			if tc.shouldBeDir != info.IsDir() {
+				if tc.shouldBeDir {
+					t.Errorf("expected directory %q", tc.path)
+				} else {
+					t.Errorf("expected file %q", tc.path)
+				}
+			}
+		})
+	}
 }
 
 // TestNewMockFS_OptionPanic verifies that NewMockFS panics when provided with
@@ -503,6 +477,15 @@ func TestMockFS_ReadDir(t *testing.T) {
 	})
 }
 
+// TestMockFS_ReadDir_NonExistent tests ReadDir on non-existent path.
+func TestMockFS_ReadDir_NonExistent(t *testing.T) {
+	t.Parallel()
+
+	mfs := mockfs.NewMockFS()
+	_, err := mfs.ReadDir("nonexistent")
+	assertError(t, err, mockfs.ErrNotExist)
+}
+
 // --- SubFS ---
 
 func TestMockFS_Sub(t *testing.T) {
@@ -642,6 +625,43 @@ func TestMockFS_AddFileAndDir(t *testing.T) {
 			tt.verify(t, mfs)
 		})
 	}
+}
+
+// TestMockFS_AddFile_InvalidContent tests AddFile with content that cannot be converted.
+func TestMockFS_AddFile_InvalidContent(t *testing.T) {
+	t.Parallel()
+
+	// Use typed nil pointer to trigger panic in toBytes
+	var nilReader *bytes.Buffer
+
+	mfs := mockfs.NewMockFS()
+	err := mfs.AddFile("bad.txt", nilReader, 0o644)
+	if err == nil {
+		t.Fatal("expected error for invalid content")
+	}
+	if !strings.Contains(err.Error(), "invalid content") {
+		t.Errorf("error = %v, want 'invalid content' in message", err)
+	}
+}
+
+// TestMockFS_AddFile_ParentIsFile tests AddFile when parent path is blocked by file.
+func TestMockFS_AddFile_ParentIsFile(t *testing.T) {
+	t.Parallel()
+
+	mfs := mockfs.NewMockFS(mockfs.File("blocked", "data"))
+
+	err := mfs.AddFile("blocked/child.txt", "content", 0o644)
+	assertError(t, err, mockfs.ErrNotDir)
+}
+
+// TestMockFS_AddFile_TargetIsDirectory tests AddFile when target is existing directory.
+func TestMockFS_AddFile_TargetIsDirectory(t *testing.T) {
+	t.Parallel()
+
+	mfs := mockfs.NewMockFS(mockfs.Dir("dir"))
+
+	err := mfs.AddFile("dir", "content", 0o644)
+	assertError(t, err, mockfs.ErrIsDir)
 }
 
 func TestMockFS_RemoveEntry(t *testing.T) {
@@ -1117,6 +1137,32 @@ func TestMockFS_ErrorInjectionOnce(t *testing.T) {
 				t.Error("Once error injection triggered twice")
 			}
 		})
+	}
+}
+
+func TestMockFS_FailReadNext(t *testing.T) {
+	t.Parallel()
+
+	mfs := mockfs.NewMockFS(mockfs.File("flaky.txt", "datadatadatadata"))
+
+	// Next 3 reads fail, then succeed
+	mfs.FailReadNext("flaky.txt", io.EOF, 3)
+
+	f, _ := mfs.Open("flaky.txt")
+	buf := make([]byte, 1)
+
+	// First 3 reads fail
+	for i := 0; i < 3; i++ {
+		_, err := f.Read(buf)
+		if err != io.EOF {
+			t.Errorf("read %d: expected EOF, got %v", i+1, err)
+		}
+	}
+
+	// 4th read succeeds
+	_, err := f.Read(buf)
+	if err != nil {
+		t.Errorf("read 4: expected success, got %v", err)
 	}
 }
 

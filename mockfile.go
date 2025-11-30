@@ -38,7 +38,9 @@ type MockFile interface {
 	fs.File
 	fs.ReadDirFile
 	io.Reader
+	io.ReaderAt
 	io.Writer
+	io.WriterAt
 	io.Seeker
 	io.Closer
 	fileBackend
@@ -310,6 +312,46 @@ func (f *mockFile) Read(b []byte) (n int, err error) {
 	return n, nil
 }
 
+// ReadAt implements io.ReaderAt for MockFile.
+// ReadAt does not affect nor is affected by the underlying seek offset.
+func (f *mockFile) ReadAt(b []byte, off int64) (n int, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// Record the result of this operation on exit
+	defer func() { f.stats.Record(OpRead, n, err) }()
+
+	if f.closed {
+		err = fs.ErrClosed
+		return 0, err
+	}
+
+	// Simulate latency before checking for errors (models real I/O timing)
+	f.latency.Simulate(OpRead)
+
+	if err = f.injector.CheckAndApply(OpRead, f.name); err != nil {
+		return 0, err
+	}
+
+	if off < 0 {
+		err = &fs.PathError{Op: OpRead.String(), Path: f.name, Err: ErrNegativeOffset}
+		return 0, err
+	}
+
+	// Read from current position
+	if off >= int64(len(f.mapFile.Data)) {
+		err = io.EOF
+		return 0, err
+	}
+
+	n = copy(b, f.mapFile.Data[off:])
+	if n < len(b) {
+		err = io.EOF
+	}
+
+	return n, err
+}
+
 // Write implements io.Writer for MockFile.
 func (f *mockFile) Write(b []byte) (n int, err error) {
 	f.mu.Lock()
@@ -333,7 +375,7 @@ func (f *mockFile) Write(b []byte) (n int, err error) {
 	// Check write mode
 	switch f.writeMode {
 	case writeModeReadOnly:
-		err = &fs.PathError{Op: "Write", Path: f.name, Err: fs.ErrPermission}
+		err = &fs.PathError{Op: OpWrite.String(), Path: f.name, Err: fs.ErrPermission}
 		return 0, err
 
 	case writeModeAppend:
@@ -355,6 +397,52 @@ func (f *mockFile) Write(b []byte) (n int, err error) {
 	}
 }
 
+// WriteAt implements io.WriterAt for MockFile.
+// WriteAt does not affect nor is affected by the underlying seek offset.
+func (f *mockFile) WriteAt(b []byte, off int64) (n int, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// Record the result of this operation on exit
+	defer func() { f.stats.Record(OpWrite, n, err) }()
+
+	if f.closed {
+		err = fs.ErrClosed
+		return 0, err
+	}
+
+	// Check write mode
+	if f.writeMode == writeModeReadOnly {
+		err = &fs.PathError{Op: OpWrite.String(), Path: f.name, Err: ErrPermission}
+		return 0, err
+	}
+
+	// Simulate latency before checking for errors
+	f.latency.Simulate(OpWrite)
+
+	if err = f.injector.CheckAndApply(OpWrite, f.name); err != nil {
+		return 0, err
+	}
+
+	if off < 0 {
+		err = &fs.PathError{Op: OpWrite.String(), Path: f.name, Err: ErrNegativeOffset}
+		return 0, err
+	}
+
+	// Extend file if necessary
+	needed := int(off) + len(b)
+	if needed > len(f.mapFile.Data) {
+		newData := make([]byte, needed)
+		copy(newData, f.mapFile.Data)
+		f.mapFile.Data = newData
+	}
+
+	n = copy(f.mapFile.Data[off:], b)
+	f.mapFile.ModTime = time.Now()
+
+	return n, nil
+}
+
 // Seek implements io.Seeker for MockFile.
 // It sets the offset for the next Read or Write operation.
 func (f *mockFile) Seek(offset int64, whence int) (n int64, err error) {
@@ -365,7 +453,8 @@ func (f *mockFile) Seek(offset int64, whence int) (n int64, err error) {
 	defer func() { f.stats.Record(OpSeek, int(n), err) }()
 
 	if f.closed {
-		return 0, ErrClosed
+		err = fs.ErrClosed
+		return 0, err
 	}
 
 	// Simulate latency before checking for errors (models real I/O timing)
@@ -383,16 +472,17 @@ func (f *mockFile) Seek(offset int64, whence int) (n int64, err error) {
 	case io.SeekEnd:
 		n = int64(len(f.mapFile.Data)) + offset
 	default:
-		err = &fs.PathError{Op: "Seek", Path: f.name, Err: fs.ErrInvalid}
+		err = &fs.PathError{Op: OpSeek.String(), Path: f.name, Err: fs.ErrInvalid}
 		return 0, err
 	}
 
 	if n < 0 {
-		err = &fs.PathError{Op: "Seek", Path: f.name, Err: fs.ErrInvalid}
+		err = &fs.PathError{Op: OpSeek.String(), Path: f.name, Err: fs.ErrInvalid}
 		return 0, err
 	}
 
 	f.position = n
+
 	return n, nil
 }
 
@@ -413,7 +503,7 @@ func (f *mockFile) ReadDir(n int) (entries []fs.DirEntry, err error) {
 	}
 
 	if !f.mapFile.Mode.IsDir() {
-		err = &fs.PathError{Op: "ReadDir", Path: f.name, Err: fs.ErrInvalid}
+		err = &fs.PathError{Op: OpReadDir.String(), Path: f.name, Err: fs.ErrInvalid}
 		return nil, err
 	}
 

@@ -299,6 +299,11 @@ func (m *MockFS) Stat(name string) (info fs.FileInfo, err error) {
 		return nil, err
 	}
 
+	basename := cleanName
+	if idx := strings.LastIndexByte(cleanName, '/'); idx >= 0 {
+		basename = cleanName[idx+1:]
+	}
+
 	if err = m.injector.CheckAndApply(OpStat, cleanName); err != nil {
 		return nil, err
 	}
@@ -316,7 +321,7 @@ func (m *MockFS) Stat(name string) (info fs.FileInfo, err error) {
 
 	// Build FileInfo from MapFile
 	return &FileInfo{
-		name:    path.Base(cleanName),
+		name:    basename,
 		size:    int64(len(mapFile.Data)),
 		mode:    mapFile.Mode,
 		modTime: mapFile.ModTime,
@@ -585,8 +590,17 @@ func (m *MockFS) FailReadOnce(path string, err error) {
 }
 
 // FailReadAfter configures a read error after N successful reads.
+// If successes=0, the error is returned immediately (no successful reads allowed).
+// If successes=3, the first 3 reads succeed, the 4th read fails.
 func (m *MockFS) FailReadAfter(path string, err error, successes int) {
 	m.injector.AddExact(OpRead, path, err, ErrorModeAfterSuccesses, successes)
+}
+
+// FailReadNext configures the next N read operations to fail, then succeed.
+func (m *MockFS) FailReadNext(path string, err error, count int) {
+	rule := NewErrorRule(err, ErrorModeNext, count, NewExactMatcher(path))
+	// Special handling: negative 'after' means "fail next N, then succeed"
+	m.injector.Add(OpRead, rule)
 }
 
 // FailWrite configures a path to return the specified error on Write operations.
@@ -970,7 +984,7 @@ func (m *MockFS) createReadDirHandler(dirPath string) func(int) ([]fs.DirEntry, 
 // collectDirEntries returns all directory entries for a directory.
 func (m *MockFS) collectDirEntries(dirPath, prefix string) []fs.DirEntry {
 	seen := make(map[string]bool)
-	var entries []fs.DirEntry
+	entries := make([]fs.DirEntry, 0, 16)
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -1217,7 +1231,7 @@ func (m *MockFS) validateAndCleanPath(p string, op Operation) (string, error) {
 // toBytes converts a variety of input types into a byte slice.
 // It never panics and never returns nil if error is nil, but may return an empty slice.
 func toBytes(content any) (data []byte, err error) {
-	// Recover from panics caused by typed nils or buggy third-party methods.
+	// Recover from panics to wrap with type information before re-panicking in caller.
 	defer func() {
 		if r := recover(); r != nil {
 			data = []byte{}

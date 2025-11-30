@@ -319,6 +319,51 @@ func TestErrorRule_NegativeAfterPanic(t *testing.T) {
 	mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAlways, -1)
 }
 
+func TestErrorRule_ModeNext(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		nextN   int
+		calls   int
+		wantErr []bool // true = error returned
+	}{
+		{
+			name:    "next 0 means never fail",
+			nextN:   0,
+			calls:   5,
+			wantErr: []bool{false, false, false, false, false},
+		},
+		{
+			name:    "next 1 means fail once",
+			nextN:   1,
+			calls:   5,
+			wantErr: []bool{true, false, false, false, false},
+		},
+		{
+			name:    "next 3 means fail three times",
+			nextN:   3,
+			calls:   6,
+			wantErr: []bool{true, true, true, false, false, false},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			em := mockfs.NewErrorInjector()
+			em.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrCorrupted, mockfs.ErrorModeNext, tt.nextN)
+
+			for i := 0; i < tt.calls; i++ {
+				err := em.CheckAndApply(mockfs.OpRead, "test.txt")
+				gotErr := err != nil
+				if gotErr != tt.wantErr[i] {
+					t.Errorf("call %d: got error=%v, want error=%v", i+1, gotErr, tt.wantErr[i])
+				}
+			}
+		})
+	}
+}
+
 func TestOperation_IsValid(t *testing.T) {
 	tests := []struct {
 		name string

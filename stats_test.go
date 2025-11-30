@@ -2,6 +2,7 @@ package mockfs_test
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -328,9 +329,9 @@ func TestStats_Operations(t *testing.T) {
 }
 
 // TestStats_Failures verifies failed operations list.
-func TestStats_Failures(t *testing.T) {
+func TestStats_FailedOperationss(t *testing.T) {
 	s := mockfs.NewStatsRecorder(nil)
-	if len(s.Failures()) != 0 {
+	if len(s.FailedOperations()) != 0 {
 		t.Error("empty stats has failures")
 	}
 
@@ -338,9 +339,9 @@ func TestStats_Failures(t *testing.T) {
 	s.Set(mockfs.OpWrite, 3, 1)
 	s.Set(mockfs.OpRead, 10, 0)
 
-	failed := s.Failures()
+	failed := s.FailedOperations()
 	if len(failed) != 2 {
-		t.Fatalf("Failures len = %d, want 2", len(failed))
+		t.Fatalf("FailedOperations len = %d, want 2", len(failed))
 	}
 
 	hasOp := func(ops []mockfs.Operation, op mockfs.Operation) bool {
@@ -617,7 +618,7 @@ func TestStats_SnapshotMethods(t *testing.T) {
 		s.Set(mockfs.OpRead, 10, 1)
 		snap := s.Snapshot()
 
-		failed := snap.Failures()
+		failed := snap.FailedOperations()
 		if len(failed) != 2 {
 			t.Errorf("Failures len = %d, want 2", len(failed))
 		}
@@ -673,6 +674,96 @@ func TestStats_SnapshotMethods(t *testing.T) {
 		assertPanic(t, func() { snap.CountFailure(mockfs.Operation(-1)) }, "CountFailure invalid op")
 	})
 }
+func TestStatsAssertion(t *testing.T) {
+	t.Parallel()
+
+	t.Run("all assertions pass", func(t *testing.T) {
+		s := mockfs.NewStatsRecorder(nil)
+		s.Record(mockfs.OpRead, 100, nil)
+		s.Record(mockfs.OpWrite, 50, nil)
+
+		// Should not fail
+		s.Expect().
+			Count(mockfs.OpRead, 1).
+			Success(mockfs.OpRead, 1).
+			BytesRead(100).
+			BytesWritten(50).
+			NoFailures().
+			Assert(t)
+	})
+
+	t.Run("count mismatch fails", func(t *testing.T) {
+		s := mockfs.NewStatsRecorder(nil)
+		s.Record(mockfs.OpRead, 0, nil)
+
+		mt := &mockReporter{}
+		s.Expect().Count(mockfs.OpRead, 2).Assert(mt)
+
+		if len(mt.errors) != 1 {
+			t.Fatalf("expected 1 error, got %d", len(mt.errors))
+		}
+		if !strings.Contains(mt.errors[0], "Count(Read) = 1, want 2") {
+			t.Errorf("unexpected error message: %s", mt.errors[0])
+		}
+	})
+
+	t.Run("failure detection", func(t *testing.T) {
+		s := mockfs.NewStatsRecorder(nil)
+		s.Record(mockfs.OpRead, 0, errors.New("fail"))
+
+		mt := &mockReporter{}
+		s.Expect().NoFailures().Assert(mt)
+
+		if len(mt.errors) != 1 {
+			t.Fatalf("expected 1 error, got %d", len(mt.errors))
+		}
+		if !strings.Contains(mt.errors[0], "expected no failures") {
+			t.Errorf("unexpected error: %s", mt.errors[0])
+		}
+	})
+
+	t.Run("chain multiple assertions", func(t *testing.T) {
+		s := mockfs.NewStatsRecorder(nil)
+		s.Record(mockfs.OpRead, 100, nil)
+		s.Record(mockfs.OpRead, 50, errors.New("fail"))
+		s.Record(mockfs.OpWrite, 200, nil)
+
+		s.Expect().
+			Count(mockfs.OpRead, 2).
+			Success(mockfs.OpRead, 1).
+			Failure(mockfs.OpRead, 1).
+			Count(mockfs.OpWrite, 1).
+			BytesRead(150).
+			BytesWritten(200).
+			Assert(t)
+	})
+
+	t.Run("multiple failures reported", func(t *testing.T) {
+		s := mockfs.NewStatsRecorder(nil)
+		s.Record(mockfs.OpRead, 0, nil)
+
+		mt := &mockReporter{}
+		s.Expect().
+			Count(mockfs.OpRead, 2). // Fails
+			BytesRead(100).          // Fails
+			Assert(mt)
+
+		if len(mt.errors) != 2 {
+			t.Errorf("expected 2 errors, got %d: %v", len(mt.errors), mt.errors)
+		}
+	})
+}
+
+// mockReporter implements TestReporter for testing assertions
+type mockReporter struct {
+	errors []string
+}
+
+func (m *mockReporter) Errorf(format string, args ...any) {
+	m.errors = append(m.errors, fmt.Sprintf(format, args...))
+}
+
+func (m *mockReporter) Helper() {}
 
 // Benchmark tests
 func BenchmarkStatsRecorder_Record(b *testing.B) {
