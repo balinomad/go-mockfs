@@ -10,127 +10,136 @@ import (
 	"github.com/balinomad/go-mockfs/v2"
 )
 
-func TestNewStatsRecorder_NilInitial(t *testing.T) {
+// --- Helpers ---
+
+// assertOpCount verifies operation count and failures.
+func assertOpCount(t *testing.T, s mockfs.Stats, op mockfs.Operation, wantTotal int, wantFailures int) {
+	t.Helper()
+	if got := s.Count(op); got != wantTotal {
+		t.Errorf("%s count = %d, want %d", op, got, wantTotal)
+	}
+	if got := s.CountFailure(op); got != wantFailures {
+		t.Errorf("%s failures = %d, want %d", op, got, wantFailures)
+	}
+	if got := s.CountSuccess(op); got != wantTotal-wantFailures {
+		t.Errorf("%s successes = %d, want %d", op, got, wantTotal-wantFailures)
+	}
+}
+
+func assertBytes(t *testing.T, s mockfs.Stats, wantRead int, wantWritten int) {
+	t.Helper()
+	if got := s.BytesRead(); got != wantRead {
+		t.Errorf("bytes read = %d, want %d", got, wantRead)
+	}
+	if got := s.BytesWritten(); got != wantWritten {
+		t.Errorf("bytes written = %d, want %d", got, wantWritten)
+	}
+}
+
+// mockReporter implements TestReporter for testing assertions.
+type mockReporter struct {
+	errors []string
+}
+
+func (m *mockReporter) Errorf(format string, args ...any) {
+	m.errors = append(m.errors, fmt.Sprintf(format, args...))
+}
+
+func (m *mockReporter) Helper() {}
+
+// --- Tests ---
+
+// TestNewStatsRecorder verifies recorder initialization.
+func TestNewStatsRecorder(t *testing.T) {
 	t.Parallel()
-	s := mockfs.NewStatsRecorder(nil)
-	if s == nil {
-		t.Fatal("returned nil")
-	}
-	if s.BytesRead() != 0 {
-		t.Errorf("BytesRead = %d, want 0", s.BytesRead())
-	}
-	if s.BytesWritten() != 0 {
-		t.Errorf("BytesWritten = %d, want 0", s.BytesWritten())
-	}
-	for op := mockfs.Operation(0); op < mockfs.NumOperations; op++ {
-		if !op.IsValid() {
-			continue
+
+	t.Run("nil initial", func(t *testing.T) {
+		s := mockfs.NewStatsRecorder(nil)
+		if s == nil {
+			t.Fatal("returned nil")
 		}
-		if s.Count(op) != 0 || s.CountFailure(op) != 0 {
-			t.Errorf("%s has non-zero counts: total=%d, failure=%d",
-				op, s.Count(op), s.CountFailure(op))
+		assertBytes(t, s, 0, 0)
+		for op := mockfs.Operation(0); op < mockfs.NumOperations; op++ {
+			if !op.IsValid() {
+				continue
+			}
+			assertOpCount(t, s, op, 0, 0)
 		}
-	}
+	})
+
+	t.Run("from existing", func(t *testing.T) {
+		initial := mockfs.NewStatsRecorder(nil)
+		initial.Record(mockfs.OpRead, 100, nil)
+		initial.Record(mockfs.OpWrite, 200, errors.New("fail"))
+		initial.Set(mockfs.OpStat, 5, 2)
+
+		s := mockfs.NewStatsRecorder(initial.Snapshot())
+		assertOpCount(t, s, mockfs.OpRead, 1, 0)
+		assertOpCount(t, s, mockfs.OpWrite, 1, 1)
+		assertOpCount(t, s, mockfs.OpStat, 5, 2)
+		assertBytes(t, s, 100, 200)
+	})
 }
 
-func TestNewStatsRecorder_FromExisting(t *testing.T) {
+// TestStatsRecorder_Panics verifies panic conditions for mutation methods.
+func TestStatsRecorder_Panics(t *testing.T) {
 	t.Parallel()
-	initial := mockfs.NewStatsRecorder(nil)
-	initial.Record(mockfs.OpRead, 100, nil)
-	initial.Record(mockfs.OpWrite, 200, errors.New("fail"))
-	initial.Set(mockfs.OpStat, 5, 2)
 
-	s := mockfs.NewStatsRecorder(initial.Snapshot())
-	if s.Count(mockfs.OpRead) != 1 {
-		t.Errorf("OpRead count = %d, want 1", s.Count(mockfs.OpRead))
+	tests := []struct {
+		name string
+		fn   func(mockfs.StatsRecorder)
+	}{
+		{"record invalid op -1", func(s mockfs.StatsRecorder) { s.Record(mockfs.Operation(-1), 0, nil) }},
+		{"record invalid op NumOps", func(s mockfs.StatsRecorder) { s.Record(mockfs.NumOperations, 0, nil) }},
+		{"set invalid op -1", func(s mockfs.StatsRecorder) { s.Set(mockfs.Operation(-1), 1, 0) }},
+		{"set invalid op NumOps", func(s mockfs.StatsRecorder) { s.Set(mockfs.NumOperations, 1, 0) }},
+		{"set negative failures", func(s mockfs.StatsRecorder) { s.Set(mockfs.OpStat, 5, -1) }},
+		{"set failures exceed total", func(s mockfs.StatsRecorder) { s.Set(mockfs.OpStat, 5, 6) }},
+		{"setbytes negative read", func(s mockfs.StatsRecorder) { s.SetBytes(-1, 0) }},
+		{"setbytes negative written", func(s mockfs.StatsRecorder) { s.SetBytes(0, -1) }},
+		{"setbytes both negative", func(s mockfs.StatsRecorder) { s.SetBytes(-1, -1) }},
 	}
-	if s.Count(mockfs.OpWrite) != 1 {
-		t.Errorf("OpWrite count = %d, want 1", s.Count(mockfs.OpWrite))
-	}
-	if s.CountFailure(mockfs.OpWrite) != 1 {
-		t.Errorf("OpWrite failures = %d, want 1", s.CountFailure(mockfs.OpWrite))
-	}
-	if s.Count(mockfs.OpStat) != 5 {
-		t.Errorf("OpStat count = %d, want 5", s.Count(mockfs.OpStat))
-	}
-	if s.CountFailure(mockfs.OpStat) != 2 {
-		t.Errorf("OpStat failures = %d, want 2", s.CountFailure(mockfs.OpStat))
-	}
-	if s.BytesRead() != 100 {
-		t.Errorf("BytesRead = %d, want 100", s.BytesRead())
-	}
-	if s.BytesWritten() != 200 {
-		t.Errorf("BytesWritten = %d, want 200", s.BytesWritten())
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := mockfs.NewStatsRecorder(nil)
+			assertPanic(t, func() { tt.fn(s) }, tt.name)
+		})
 	}
 }
 
-// TestStatsRecorder_Record_Panic tests panic on invalid operation.
-func TestStatsRecorder_Record_Panic(t *testing.T) {
-	s := mockfs.NewStatsRecorder(nil)
-	assertPanic(t, func() { s.Record(mockfs.Operation(-1), 0, nil) }, "invalid op -1")
-	assertPanic(t, func() { s.Record(mockfs.NumOperations, 0, nil) }, "invalid op NumOperations")
-}
-
-// TestStatsRecorder_Set verifies the Set method.
+// TestStatsRecorder_Set verifies Set method.
 func TestStatsRecorder_Set(t *testing.T) {
-	t.Run("valid set", func(t *testing.T) {
-		s := mockfs.NewStatsRecorder(nil)
-		s.Set(mockfs.OpStat, 10, 4)
+	t.Parallel()
 
-		if s.Count(mockfs.OpStat) != 10 {
-			t.Errorf("Count = %d, want 10", s.Count(mockfs.OpStat))
-		}
-		if s.CountFailure(mockfs.OpStat) != 4 {
-			t.Errorf("CountFailure = %d, want 4", s.CountFailure(mockfs.OpStat))
-		}
-		if s.CountSuccess(mockfs.OpStat) != 6 {
-			t.Errorf("CountSuccess = %d, want 6", s.CountSuccess(mockfs.OpStat))
-		}
+	s := mockfs.NewStatsRecorder(nil)
+	s.Set(mockfs.OpStat, 10, 4)
+	assertOpCount(t, s, mockfs.OpStat, 10, 4)
 
-		// Set to zero
-		s.Set(mockfs.OpStat, 0, 0)
-		if s.Count(mockfs.OpStat) != 0 {
-			t.Errorf("after reset Count = %d, want 0", s.Count(mockfs.OpStat))
-		}
-	})
-
-	t.Run("panics", func(t *testing.T) {
-		s := mockfs.NewStatsRecorder(nil)
-		assertPanic(t, func() { s.Set(mockfs.Operation(-1), 1, 0) }, "invalid op")
-		assertPanic(t, func() { s.Set(mockfs.NumOperations, 1, 0) }, "out of range op")
-		assertPanic(t, func() { s.Set(mockfs.OpStat, 5, -1) }, "negative failures")
-		assertPanic(t, func() { s.Set(mockfs.OpStat, 5, 6) }, "failures > total")
-	})
+	s.Set(mockfs.OpStat, 0, 0)
+	if s.Count(mockfs.OpStat) != 0 {
+		t.Errorf("after reset Count = %d, want 0", s.Count(mockfs.OpStat))
+	}
 }
 
-// TestStatsRecorder_SetBytes verifies the SetBytes method.
+// TestStatsRecorder_SetBytes verifies SetBytes method.
 func TestStatsRecorder_SetBytes(t *testing.T) {
-	t.Run("valid values", func(t *testing.T) {
-		s := mockfs.NewStatsRecorder(nil)
+	t.Parallel()
 
-		s.SetBytes(123, 456)
-		if s.BytesRead() != 123 {
-			t.Errorf("BytesRead = %d, want 123", s.BytesRead())
-		}
-		if s.BytesWritten() != 456 {
-			t.Errorf("BytesWritten = %d, want 456", s.BytesWritten())
-		}
+	s := mockfs.NewStatsRecorder(nil)
+	s.SetBytes(123, 456)
+	assertBytes(t, s, 123, 456)
 
-		s.SetBytes(0, 0)
-		if s.BytesRead() != 0 || s.BytesWritten() != 0 {
-			t.Error("SetBytes(0, 0) did not reset")
-		}
-	})
-	t.Run("panics on negative", func(t *testing.T) {
-		s := mockfs.NewStatsRecorder(nil)
-		assertPanic(t, func() { s.SetBytes(-1, 0) }, "negative read")
-		assertPanic(t, func() { s.SetBytes(0, -1) }, "negative written")
-		assertPanic(t, func() { s.SetBytes(-1, -1) }, "both negative")
-	})
+	s.SetBytes(0, 0)
+	if s.BytesRead() != 0 || s.BytesWritten() != 0 {
+		t.Error("SetBytes(0, 0) did not reset")
+	}
 }
 
-// TestStatsRecorder_Reset verifies that Reset clears all counters.
+// TestStatsRecorder_Reset verifies Reset clears all counters.
 func TestStatsRecorder_Reset(t *testing.T) {
+	t.Parallel()
+
 	s := mockfs.NewStatsRecorder(nil)
 	s.Record(mockfs.OpRead, 100, nil)
 	s.Record(mockfs.OpWrite, 200, errors.New("fail"))
@@ -146,6 +155,8 @@ func TestStatsRecorder_Reset(t *testing.T) {
 
 // TestStatsRecorder_Snapshot verifies snapshot independence.
 func TestStatsRecorder_Snapshot(t *testing.T) {
+	t.Parallel()
+
 	s := mockfs.NewStatsRecorder(nil)
 	s.Record(mockfs.OpRead, 100, nil)
 
@@ -161,8 +172,7 @@ func TestStatsRecorder_Snapshot(t *testing.T) {
 	}
 }
 
-// TestStatsRecorder_Delta verifies that statsRecorder.Delta correctly delegates to Snapshot().Delta
-// and computes differences between various StatsRecorder and Stats combinations.
+// TestStatsRecorder_Delta verifies Delta computation.
 func TestStatsRecorder_Delta(t *testing.T) {
 	t.Parallel()
 
@@ -175,79 +185,103 @@ func TestStatsRecorder_Delta(t *testing.T) {
 		return r
 	}
 
-	t.Run("same", func(t *testing.T) {
-		t.Parallel()
-		left := makeRec(100, 200, map[mockfs.Operation][2]int{
-			mockfs.OpRead:  {1, 0},
-			mockfs.OpWrite: {2, 1},
+	tests := []struct {
+		name             string
+		left             mockfs.StatsRecorder
+		right            mockfs.Stats
+		wantOps          int
+		wantBytesRead    int
+		wantBytesWritten int
+		wantReadCount    int
+		wantReadFailures int
+		wantStatCount    int
+		wantStatFailures int
+		expectNegative   bool
+	}{
+		{
+			name: "same",
+			left: makeRec(100, 200, map[mockfs.Operation][2]int{
+				mockfs.OpRead:  {1, 0},
+				mockfs.OpWrite: {2, 1},
+			}),
+			right: makeRec(100, 200, map[mockfs.Operation][2]int{
+				mockfs.OpRead:  {1, 0},
+				mockfs.OpWrite: {2, 1},
+			}),
+			wantOps:          0,
+			wantBytesRead:    0,
+			wantBytesWritten: 0,
+		},
+		{
+			name: "increased",
+			left: makeRec(500, 1000, map[mockfs.Operation][2]int{
+				mockfs.OpRead: {5, 1},
+				mockfs.OpStat: {10, 2},
+			}),
+			right: makeRec(200, 400, map[mockfs.Operation][2]int{
+				mockfs.OpRead: {4, 0},
+				mockfs.OpStat: {7, 1},
+			}).Snapshot(),
+			wantReadCount:    1,
+			wantReadFailures: 1,
+			wantStatCount:    3,
+			wantStatFailures: 1,
+			wantBytesRead:    300,
+			wantBytesWritten: 600,
+		},
+		{
+			name: "negative after reset",
+			left: func() mockfs.StatsRecorder {
+				r := makeRec(1000, 2000, map[mockfs.Operation][2]int{mockfs.OpRead: {10, 2}})
+				r.Reset()
+				return r
+			}(),
+			right: makeRec(1000, 2000, map[mockfs.Operation][2]int{
+				mockfs.OpRead: {10, 2},
+			}).Snapshot(),
+			expectNegative: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			delta := tt.left.Delta(tt.right)
+
+			if tt.expectNegative {
+				if delta.Count(mockfs.OpRead) >= 0 || delta.BytesRead() >= 0 {
+					t.Errorf("expected negative delta, got ops=%d bytesRead=%d",
+						delta.Count(mockfs.OpRead), delta.BytesRead())
+				}
+				return
+			}
+
+			if tt.name == "same" {
+				if delta.Operations() != 0 || delta.BytesRead() != 0 || delta.BytesWritten() != 0 {
+					t.Errorf("expected no delta, got ops=%d bytesRead=%d bytesWritten=%d",
+						delta.Operations(), delta.BytesRead(), delta.BytesWritten())
+				}
+				return
+			}
+
+			if tt.name == "increased" {
+				assertOpCount(t, delta, mockfs.OpRead, tt.wantReadCount, tt.wantReadFailures)
+				assertOpCount(t, delta, mockfs.OpStat, tt.wantStatCount, tt.wantStatFailures)
+				assertBytes(t, delta, tt.wantBytesRead, tt.wantBytesWritten)
+			}
 		})
-		right := makeRec(100, 200, map[mockfs.Operation][2]int{
-			mockfs.OpRead:  {1, 0},
-			mockfs.OpWrite: {2, 1},
-		})
-		delta := left.Delta(right)
-		if delta.Operations() != 0 || delta.BytesRead() != 0 || delta.BytesWritten() != 0 {
-			t.Fatalf("expected no delta, got ops=%d bytesRead=%d bytesWritten=%d",
-				delta.Operations(), delta.BytesRead(), delta.BytesWritten())
-		}
-	})
-
-	t.Run("increased", func(t *testing.T) {
-		t.Parallel()
-		left := makeRec(500, 1000, map[mockfs.Operation][2]int{
-			mockfs.OpRead: {5, 1},
-			mockfs.OpStat: {10, 2},
-		})
-		right := makeRec(200, 400, map[mockfs.Operation][2]int{
-			mockfs.OpRead: {4, 0},
-			mockfs.OpStat: {7, 1},
-		}).Snapshot()
-
-		delta := left.Delta(right)
-		if delta.Count(mockfs.OpRead) != 1 ||
-			delta.CountFailure(mockfs.OpRead) != 1 ||
-			delta.Count(mockfs.OpStat) != 3 ||
-			delta.CountFailure(mockfs.OpStat) != 1 ||
-			delta.BytesRead() != 300 ||
-			delta.BytesWritten() != 600 {
-			t.Fatalf("unexpected delta: %+v", delta)
-		}
-	})
-
-	t.Run("negative-after-reset", func(t *testing.T) {
-		t.Parallel()
-		left := makeRec(1000, 2000, map[mockfs.Operation][2]int{
-			mockfs.OpRead: {10, 2},
-		})
-		right := left.Snapshot()
-
-		// Reset left so Delta should produce negative differences
-		left.Reset()
-		delta := left.Delta(right)
-
-		if !(delta.Count(mockfs.OpRead) < 0 && delta.BytesRead() < 0) {
-			t.Fatalf("expected negative delta, got ops=%d bytesRead=%d",
-				delta.Count(mockfs.OpRead), delta.BytesRead())
-		}
-	})
+	}
 }
 
-// TestStatsRecorder_Equal verifies statsRecorder.Equal delegates to Snapshot().Equal
-// and correctly reports equality with both StatsRecorder and Stats (snapshot) arguments.
+// TestStatsRecorder_Equal verifies Equal comparison.
 func TestStatsRecorder_Equal(t *testing.T) {
 	t.Parallel()
 
-	base := mockfs.NewStatsRecorder(nil)
-	base.Record(mockfs.OpRead, 100, nil)
-	base.Set(mockfs.OpStat, 5, 1)
-
-	identical := mockfs.NewStatsRecorder(nil)
-	identical.Record(mockfs.OpRead, 100, nil)
-	identical.Set(mockfs.OpStat, 5, 1)
-
-	different := mockfs.NewStatsRecorder(nil)
-	different.Record(mockfs.OpRead, 100, nil)
-	different.Record(mockfs.OpWrite, 1, nil) // extra op makes it different
+	base := func() mockfs.StatsRecorder {
+		s := mockfs.NewStatsRecorder(nil)
+		s.Record(mockfs.OpRead, 100, nil)
+		s.Set(mockfs.OpStat, 5, 1)
+		return s
+	}
 
 	tests := []struct {
 		name string
@@ -255,20 +289,51 @@ func TestStatsRecorder_Equal(t *testing.T) {
 		b    mockfs.Stats
 		want bool
 	}{
-		{"equal-recorder", base, identical.Snapshot(), true}, // compare recorder to snapshot
-		{"equal-snapshot", base, identical, true},            // compare recorder to recorder
-		{"different", base, different.Snapshot(), false},     // different snapshot
-		{"different-recorder", base, different, false},       // different recorder
-		{"equal-empty", mockfs.NewStatsRecorder(nil), mockfs.NewStatsRecorder(nil), true},
+		{
+			name: "equal recorder",
+			a:    base(),
+			b:    base().Snapshot(),
+			want: true,
+		},
+		{
+			name: "equal snapshot",
+			a:    base(),
+			b:    base(),
+			want: true,
+		},
+		{
+			name: "different op",
+			a:    base(),
+			b: func() mockfs.Stats {
+				s := base()
+				s.Record(mockfs.OpWrite, 1, nil)
+				return s.Snapshot()
+			}(),
+			want: false,
+		},
+		{
+			name: "different failures",
+			a:    base(),
+			b: func() mockfs.Stats {
+				s := mockfs.NewStatsRecorder(nil)
+				s.Record(mockfs.OpRead, 100, nil)
+				s.Set(mockfs.OpStat, 5, 2)
+				return s.Snapshot()
+			}(),
+			want: false,
+		},
+		{
+			name: "equal empty",
+			a:    mockfs.NewStatsRecorder(nil),
+			b:    mockfs.NewStatsRecorder(nil),
+			want: true,
+		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := tt.a.Equal(tt.b)
-			if got != tt.want {
-				t.Fatalf("Equal() = %v, want %v (test %q)", got, tt.want, tt.name)
+			if got := tt.a.Equal(tt.b); got != tt.want {
+				t.Errorf("Equal() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -276,18 +341,11 @@ func TestStatsRecorder_Equal(t *testing.T) {
 
 // TestStats_Count verifies Count methods with valid and invalid operations.
 func TestStats_Count(t *testing.T) {
+	t.Parallel()
+
 	s := mockfs.NewStatsRecorder(nil)
 	s.Set(mockfs.OpStat, 10, 3)
-
-	if s.Count(mockfs.OpStat) != 10 {
-		t.Errorf("Count = %d, want 10", s.Count(mockfs.OpStat))
-	}
-	if s.CountSuccess(mockfs.OpStat) != 7 {
-		t.Errorf("CountSuccess = %d, want 7", s.CountSuccess(mockfs.OpStat))
-	}
-	if s.CountFailure(mockfs.OpStat) != 3 {
-		t.Errorf("CountFailure = %d, want 3", s.CountFailure(mockfs.OpStat))
-	}
+	assertOpCount(t, s, mockfs.OpStat, 10, 3)
 
 	assertPanic(t, func() { s.Count(mockfs.Operation(-1)) }, "Count invalid op")
 	assertPanic(t, func() { s.CountSuccess(mockfs.Operation(-1)) }, "CountSuccess invalid op")
@@ -296,6 +354,8 @@ func TestStats_Count(t *testing.T) {
 
 // TestStats_HasFailures verifies failure detection.
 func TestStats_HasFailures(t *testing.T) {
+	t.Parallel()
+
 	s := mockfs.NewStatsRecorder(nil)
 	if s.HasFailures() {
 		t.Error("empty stats HasFailures = true")
@@ -314,6 +374,8 @@ func TestStats_HasFailures(t *testing.T) {
 
 // TestStats_Operations verifies total operation count.
 func TestStats_Operations(t *testing.T) {
+	t.Parallel()
+
 	s := mockfs.NewStatsRecorder(nil)
 	if s.Operations() != 0 {
 		t.Error("empty stats Operations != 0")
@@ -328,8 +390,10 @@ func TestStats_Operations(t *testing.T) {
 	}
 }
 
-// TestStats_Failures verifies failed operations list.
-func TestStats_FailedOperationss(t *testing.T) {
+// TestStats_FailedOperations verifies failed operations list.
+func TestStats_FailedOperations(t *testing.T) {
+	t.Parallel()
+
 	s := mockfs.NewStatsRecorder(nil)
 	if len(s.FailedOperations()) != 0 {
 		t.Error("empty stats has failures")
@@ -353,11 +417,8 @@ func TestStats_FailedOperationss(t *testing.T) {
 		return false
 	}
 
-	if !hasOp(failed, mockfs.OpOpen) {
-		t.Error("OpOpen not in failures")
-	}
-	if !hasOp(failed, mockfs.OpWrite) {
-		t.Error("OpWrite not in failures")
+	if !hasOp(failed, mockfs.OpOpen) || !hasOp(failed, mockfs.OpWrite) {
+		t.Error("missing expected failed operations")
 	}
 	if hasOp(failed, mockfs.OpRead) {
 		t.Error("OpRead in failures but has none")
@@ -366,6 +427,8 @@ func TestStats_FailedOperationss(t *testing.T) {
 
 // TestStats_Delta verifies delta calculation including negative values.
 func TestStats_Delta(t *testing.T) {
+	t.Parallel()
+
 	s1 := mockfs.NewStatsRecorder(nil)
 	s1.Record(mockfs.OpRead, 100, nil)
 	s1.Set(mockfs.OpStat, 10, 2)
@@ -377,12 +440,7 @@ func TestStats_Delta(t *testing.T) {
 
 	delta := s2.Snapshot().Delta(s1.Snapshot())
 
-	if delta.Count(mockfs.OpRead) != 1 {
-		t.Errorf("delta OpRead count = %d, want 1", delta.Count(mockfs.OpRead))
-	}
-	if delta.CountFailure(mockfs.OpRead) != 1 {
-		t.Errorf("delta OpRead failures = %d, want 1", delta.CountFailure(mockfs.OpRead))
-	}
+	assertOpCount(t, delta, mockfs.OpRead, 1, 1)
 	if delta.Count(mockfs.OpStat) != 5 {
 		t.Errorf("delta OpStat count = %d, want 5", delta.Count(mockfs.OpStat))
 	}
@@ -403,7 +461,7 @@ func TestStats_Delta(t *testing.T) {
 			t.Errorf("delta count = %d, want -1", delta.Count(mockfs.OpRead))
 		}
 		if delta.BytesRead() != -100 {
-			t.Errorf("delta BytesRead = %d, want -100", delta.BytesRead())
+			t.Errorf("delta bytes read = %d, want -100", delta.BytesRead())
 		}
 	})
 
@@ -412,11 +470,8 @@ func TestStats_Delta(t *testing.T) {
 		s2 := mockfs.NewStatsRecorder(nil)
 		delta := s2.Snapshot().Delta(s1.Snapshot())
 
-		if delta.Operations() != 0 {
-			t.Errorf("delta Operations = %d, want 0", delta.Operations())
-		}
-		if delta.BytesRead() != 0 || delta.BytesWritten() != 0 {
-			t.Error("delta bytes should be zero")
+		if delta.Operations() != 0 || delta.BytesRead() != 0 || delta.BytesWritten() != 0 {
+			t.Error("delta of empty should be zero")
 		}
 	})
 }
@@ -432,60 +487,70 @@ func TestStats_Equal(t *testing.T) {
 		return s
 	}
 
-	t.Run("identical", func(t *testing.T) {
-		t.Parallel()
-		a := newBase()
-		b := newBase()
-		if !a.Snapshot().Equal(b.Snapshot()) {
-			t.Error("identical stats not equal")
-		}
-	})
+	tests := []struct {
+		name string
+		a    func() mockfs.StatsRecorder
+		b    func() mockfs.Stats
+		want bool
+	}{
+		{
+			name: "identical",
+			a:    newBase,
+			b:    func() mockfs.Stats { return newBase().Snapshot() },
+			want: true,
+		},
+		{
+			name: "extra on right",
+			a:    newBase,
+			b: func() mockfs.Stats {
+				b := newBase()
+				b.Record(mockfs.OpWrite, 1, nil)
+				return b.Snapshot()
+			},
+			want: false,
+		},
+		{
+			name: "extra on left",
+			a: func() mockfs.StatsRecorder {
+				a := newBase()
+				a.Record(mockfs.OpWrite, 1, nil)
+				return a
+			},
+			b:    func() mockfs.Stats { return newBase().Snapshot() },
+			want: false,
+		},
+		{
+			name: "different failures",
+			a:    newBase,
+			b: func() mockfs.Stats {
+				b := mockfs.NewStatsRecorder(nil)
+				b.Record(mockfs.OpRead, 100, nil)
+				b.Set(mockfs.OpStat, 5, 2)
+				return b.Snapshot()
+			},
+			want: false,
+		},
+		{
+			name: "empty",
+			a:    func() mockfs.StatsRecorder { return mockfs.NewStatsRecorder(nil) },
+			b:    func() mockfs.Stats { return mockfs.NewStatsRecorder(nil).Snapshot() },
+			want: true,
+		},
+	}
 
-	t.Run("extra-on-right", func(t *testing.T) {
-		t.Parallel()
-		a := newBase()
-		b := newBase()
-		b.Record(mockfs.OpWrite, 1, nil) // extra op on right
-		if a.Snapshot().Equal(b.Snapshot()) {
-			t.Error("different stats (extra op on right) reported equal")
-		}
-	})
-
-	t.Run("extra-on-left", func(t *testing.T) {
-		t.Parallel()
-		// left has an op that right lacks; this triggers the comparison of
-		// s.ops[i].total vs other.Count(op) / s.ops[i].failure vs other.CountFailure(op).
-		left := newBase()
-		left.Record(mockfs.OpWrite, 1, nil) // extra op on left
-		right := newBase()
-		if left.Snapshot().Equal(right.Snapshot()) {
-			t.Error("stats with extra op on left reported equal")
-		}
-	})
-
-	t.Run("different-failure-count", func(t *testing.T) {
-		t.Parallel()
-		a := newBase()
-		b := mockfs.NewStatsRecorder(nil)
-		b.Record(mockfs.OpRead, 100, nil)
-		b.Set(mockfs.OpStat, 5, 2) // same totals but different failure count
-		if a.Snapshot().Equal(b.Snapshot()) {
-			t.Error("stats with differing failure count reported equal")
-		}
-	})
-
-	t.Run("empty", func(t *testing.T) {
-		t.Parallel()
-		empty1 := mockfs.NewStatsRecorder(nil)
-		empty2 := mockfs.NewStatsRecorder(nil)
-		if !empty1.Snapshot().Equal(empty2.Snapshot()) {
-			t.Error("empty stats not equal")
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.a().Snapshot().Equal(tt.b()); got != tt.want {
+				t.Errorf("Equal() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
 
 // TestStats_String verifies human-readable output.
 func TestStats_String(t *testing.T) {
+	t.Parallel()
+
 	s := mockfs.NewStatsRecorder(nil)
 	s.Record(mockfs.OpRead, 100, nil)
 	s.Record(mockfs.OpWrite, 200, errors.New("fail"))
@@ -496,109 +561,57 @@ func TestStats_String(t *testing.T) {
 		t.Error("String() returned empty")
 	}
 
-	// Should contain operation count and failure count
-	if !strings.Contains(str, "12") { // Total ops
+	if !strings.Contains(str, "12") {
 		t.Error("String() missing total operations")
 	}
-	if !strings.Contains(str, "3") { // Total failures
+	if !strings.Contains(str, "3") {
 		t.Error("String() missing failure count")
 	}
 }
 
-// TestStats_Concurrent tests concurrent access to stats.
-func TestStats_Concurrent(t *testing.T) {
-	s := mockfs.NewStatsRecorder(nil)
-	var wg sync.WaitGroup
-
-	// Concurrent writers
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			performConcurrentWrites(s)
-		}()
-	}
-
-	// Concurrent readers (unchanged)
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 100; j++ {
-				_ = s.Snapshot()
-				_ = s.Count(mockfs.OpRead)
-				_ = s.HasFailures()
-			}
-		}()
-	}
-
-	wg.Wait()
-}
-
-func performConcurrentWrites(s mockfs.StatsRecorder) {
-	for j := 0; j < 100; j++ {
-		op := mockfs.Operation((j % (int(mockfs.NumOperations) - 2)) + 1)
-		var err error
-		if j%10 == 0 {
-			err = errors.New("fail")
-		}
-		s.Record(op, 1, err)
-
-		if j%20 == 0 {
-			s.Set(mockfs.OpStat, 5, 1)
-		}
-		if j%100 == 0 {
-			s.Reset()
-		}
-	}
-}
-
-// TestStats_SnapshotImmutability verifies snapshots are immutable values.
-func TestStats_SnapshotImmutability(t *testing.T) {
-	s := mockfs.NewStatsRecorder(nil)
-	s.Record(mockfs.OpRead, 100, nil)
-
-	snap := s.Snapshot()
-	before := snap.Count(mockfs.OpRead)
-
-	s.Record(mockfs.OpRead, 50, nil)
-
-	after := snap.Count(mockfs.OpRead)
-	if before != after {
-		t.Error("snapshot was mutated after recording")
-	}
-}
-
-// TestStatsRecorder_ByteCounters verifies byte counting for read/write operations.
-func TestStatsRecorder_ByteCounters(t *testing.T) {
-	s := mockfs.NewStatsRecorder(nil)
-
-	s.Record(mockfs.OpRead, 100, nil)
-	s.Record(mockfs.OpWrite, 200, nil)
-	s.Record(mockfs.OpRead, 50, errors.New("fail"))
-	s.Record(mockfs.OpStat, 1000, nil) // Should be ignored
-	s.Record(mockfs.OpWrite, 25, errors.New("fail"))
-
-	if s.BytesRead() != 150 {
-		t.Errorf("BytesRead = %d, want 150", s.BytesRead())
-	}
-	if s.BytesWritten() != 225 {
-		t.Errorf("BytesWritten = %d, want 225", s.BytesWritten())
-	}
-}
-func TestStats_SnapshotMethods(t *testing.T) {
+// TestStats_Empty verifies Empty() detection.
+func TestStats_Empty(t *testing.T) {
 	t.Parallel()
 
-	t.Run("CountSuccess on snapshot", func(t *testing.T) {
+	t.Run("recorder empty", func(t *testing.T) {
 		s := mockfs.NewStatsRecorder(nil)
-		s.Set(mockfs.OpRead, 10, 3)
-		snap := s.Snapshot()
-		if snap.CountSuccess(mockfs.OpRead) != 7 {
-			t.Errorf("CountSuccess = %d, want 7", snap.CountSuccess(mockfs.OpRead))
+		if !s.Empty() {
+			t.Error("new recorder should be empty")
+		}
+
+		s.Record(mockfs.OpRead, 0, nil)
+		if s.Empty() {
+			t.Error("recorder with operations should not be empty")
 		}
 	})
 
-	t.Run("HasFailures on snapshot", func(t *testing.T) {
+	t.Run("snapshot empty", func(t *testing.T) {
+		s := mockfs.NewStatsRecorder(nil)
+		snap := s.Snapshot()
+		if !snap.Empty() {
+			t.Error("snapshot of empty recorder should be empty")
+		}
+
+		s.Record(mockfs.OpRead, 0, nil)
+		snap = s.Snapshot()
+		if snap.Empty() {
+			t.Error("snapshot with operations should not be empty")
+		}
+	})
+}
+
+// TestStats_SnapshotMethods verifies snapshot interface methods.
+func TestStats_SnapshotMethods(t *testing.T) {
+	t.Parallel()
+
+	t.Run("count success", func(t *testing.T) {
+		s := mockfs.NewStatsRecorder(nil)
+		s.Set(mockfs.OpRead, 10, 3)
+		snap := s.Snapshot()
+		assertOpCount(t, snap, mockfs.OpRead, 10, 3)
+	})
+
+	t.Run("has failures", func(t *testing.T) {
 		s := mockfs.NewStatsRecorder(nil)
 		snap1 := s.Snapshot()
 		if snap1.HasFailures() {
@@ -612,7 +625,7 @@ func TestStats_SnapshotMethods(t *testing.T) {
 		}
 	})
 
-	t.Run("Failures on snapshot", func(t *testing.T) {
+	t.Run("failed operations", func(t *testing.T) {
 		s := mockfs.NewStatsRecorder(nil)
 		s.Set(mockfs.OpOpen, 5, 2)
 		s.Set(mockfs.OpRead, 10, 1)
@@ -620,11 +633,11 @@ func TestStats_SnapshotMethods(t *testing.T) {
 
 		failed := snap.FailedOperations()
 		if len(failed) != 2 {
-			t.Errorf("Failures len = %d, want 2", len(failed))
+			t.Errorf("FailedOperations len = %d, want 2", len(failed))
 		}
 	})
 
-	t.Run("Delta on snapshot", func(t *testing.T) {
+	t.Run("delta", func(t *testing.T) {
 		s1 := mockfs.NewStatsRecorder(nil)
 		s1.Record(mockfs.OpRead, 100, nil)
 		snap1 := s1.Snapshot()
@@ -639,7 +652,7 @@ func TestStats_SnapshotMethods(t *testing.T) {
 		}
 	})
 
-	t.Run("Equal on snapshot", func(t *testing.T) {
+	t.Run("equal", func(t *testing.T) {
 		s1 := mockfs.NewStatsRecorder(nil)
 		s1.Record(mockfs.OpRead, 100, nil)
 		snap1 := s1.Snapshot()
@@ -659,21 +672,15 @@ func TestStats_SnapshotMethods(t *testing.T) {
 		}
 	})
 
-	t.Run("Count panic on snapshot", func(t *testing.T) {
+	t.Run("panics", func(t *testing.T) {
 		snap := mockfs.NewStatsRecorder(nil).Snapshot()
 		assertPanic(t, func() { snap.Count(mockfs.Operation(-1)) }, "Count invalid op")
-	})
-
-	t.Run("CountSuccess panic on snapshot", func(t *testing.T) {
-		snap := mockfs.NewStatsRecorder(nil).Snapshot()
 		assertPanic(t, func() { snap.CountSuccess(mockfs.NumOperations) }, "CountSuccess invalid op")
-	})
-
-	t.Run("CountFailure panic on snapshot", func(t *testing.T) {
-		snap := mockfs.NewStatsRecorder(nil).Snapshot()
 		assertPanic(t, func() { snap.CountFailure(mockfs.Operation(-1)) }, "CountFailure invalid op")
 	})
 }
+
+// TestStatsAssertion verifies fluent assertion API.
 func TestStatsAssertion(t *testing.T) {
 	t.Parallel()
 
@@ -682,7 +689,6 @@ func TestStatsAssertion(t *testing.T) {
 		s.Record(mockfs.OpRead, 100, nil)
 		s.Record(mockfs.OpWrite, 50, nil)
 
-		// Should not fail
 		s.Expect().
 			Count(mockfs.OpRead, 1).
 			Success(mockfs.OpRead, 1).
@@ -699,11 +705,8 @@ func TestStatsAssertion(t *testing.T) {
 		mt := &mockReporter{}
 		s.Expect().Count(mockfs.OpRead, 2).Assert(mt)
 
-		if len(mt.errors) != 1 {
-			t.Fatalf("expected 1 error, got %d", len(mt.errors))
-		}
-		if !strings.Contains(mt.errors[0], "Count(Read) = 1, want 2") {
-			t.Errorf("unexpected error message: %s", mt.errors[0])
+		if len(mt.errors) != 1 || !strings.Contains(mt.errors[0], "Count(Read) = 1, want 2") {
+			t.Errorf("unexpected errors: %v", mt.errors)
 		}
 	})
 
@@ -714,11 +717,8 @@ func TestStatsAssertion(t *testing.T) {
 		mt := &mockReporter{}
 		s.Expect().NoFailures().Assert(mt)
 
-		if len(mt.errors) != 1 {
-			t.Fatalf("expected 1 error, got %d", len(mt.errors))
-		}
-		if !strings.Contains(mt.errors[0], "expected no failures") {
-			t.Errorf("unexpected error: %s", mt.errors[0])
+		if len(mt.errors) != 1 || !strings.Contains(mt.errors[0], "expected no failures") {
+			t.Errorf("unexpected errors: %v", mt.errors)
 		}
 	})
 
@@ -738,7 +738,7 @@ func TestStatsAssertion(t *testing.T) {
 			Assert(t)
 	})
 
-	t.Run("multiple failures reported", func(t *testing.T) {
+	t.Run("multiple failures", func(t *testing.T) {
 		s := mockfs.NewStatsRecorder(nil)
 		s.Record(mockfs.OpRead, 0, nil)
 
@@ -752,20 +752,125 @@ func TestStatsAssertion(t *testing.T) {
 			t.Errorf("expected 2 errors, got %d: %v", len(mt.errors), mt.errors)
 		}
 	})
+
+	t.Run("success assertion", func(t *testing.T) {
+		s := mockfs.NewStatsRecorder(nil)
+		s.Set(mockfs.OpRead, 10, 3)
+
+		s.Expect().Success(mockfs.OpRead, 7).Assert(t)
+
+		mt := &mockReporter{}
+		s.Expect().Success(mockfs.OpRead, 5).Assert(mt)
+		if len(mt.errors) != 1 {
+			t.Errorf("expected 1 error, got %d", len(mt.errors))
+		}
+	})
+
+	t.Run("failure assertion", func(t *testing.T) {
+		s := mockfs.NewStatsRecorder(nil)
+		s.Set(mockfs.OpWrite, 10, 4)
+
+		s.Expect().Failure(mockfs.OpWrite, 4).Assert(t)
+
+		mt := &mockReporter{}
+		s.Expect().Failure(mockfs.OpWrite, 2).Assert(mt)
+		if len(mt.errors) != 1 {
+			t.Errorf("expected 1 error, got %d", len(mt.errors))
+		}
+	})
+
+	t.Run("bytes written assertion", func(t *testing.T) {
+		s := mockfs.NewStatsRecorder(nil)
+		s.Record(mockfs.OpWrite, 100, nil)
+
+		s.Expect().BytesWritten(100).Assert(t)
+
+		mt := &mockReporter{}
+		s.Expect().BytesWritten(50).Assert(mt)
+		if len(mt.errors) != 1 {
+			t.Errorf("expected 1 error, got %d", len(mt.errors))
+		}
+	})
 }
 
-// mockReporter implements TestReporter for testing assertions
-type mockReporter struct {
-	errors []string
+// TestStats_Concurrent tests concurrent access to stats.
+func TestStats_Concurrent(t *testing.T) {
+	s := mockfs.NewStatsRecorder(nil)
+	var wg sync.WaitGroup
+
+	// Concurrent writers
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				op := mockfs.Operation((j % (int(mockfs.NumOperations) - 2)) + 1)
+				var err error
+				if j%10 == 0 {
+					err = errors.New("fail")
+				}
+				s.Record(op, 1, err)
+				if j%20 == 0 {
+					s.Set(mockfs.OpStat, 5, 1)
+				}
+				if j%100 == 0 {
+					s.Reset()
+				}
+			}
+		}()
+	}
+
+	// Concurrent readers (unchanged)
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				_ = s.Snapshot()
+				_ = s.Count(mockfs.OpRead)
+				_ = s.HasFailures()
+			}
+		}()
+	}
+
+	wg.Wait()
 }
 
-func (m *mockReporter) Errorf(format string, args ...any) {
-	m.errors = append(m.errors, fmt.Sprintf(format, args...))
+// TestStats_SnapshotImmutability verifies snapshots are immutable values.
+func TestStats_SnapshotImmutability(t *testing.T) {
+	t.Parallel()
+
+	s := mockfs.NewStatsRecorder(nil)
+	s.Record(mockfs.OpRead, 100, nil)
+
+	snap := s.Snapshot()
+	before := snap.Count(mockfs.OpRead)
+
+	s.Record(mockfs.OpRead, 50, nil)
+
+	after := snap.Count(mockfs.OpRead)
+	if before != after {
+		t.Error("snapshot was mutated after recording")
+	}
 }
 
-func (m *mockReporter) Helper() {}
+// TestStatsRecorder_ByteCounters verifies byte counting for read/write operations.
+func TestStatsRecorder_ByteCounters(t *testing.T) {
+	t.Parallel()
 
-// Benchmark tests
+	s := mockfs.NewStatsRecorder(nil)
+
+	s.Record(mockfs.OpRead, 100, nil)
+	s.Record(mockfs.OpWrite, 200, nil)
+	s.Record(mockfs.OpRead, 50, errors.New("fail"))
+	s.Record(mockfs.OpStat, 1000, nil) // Should be ignored
+	s.Record(mockfs.OpWrite, 25, errors.New("fail"))
+
+	assertBytes(t, s, 150, 225)
+}
+
+// --- Benchmarks ---
+
 func BenchmarkStatsRecorder_Record(b *testing.B) {
 	s := mockfs.NewStatsRecorder(nil)
 	b.ResetTimer()
