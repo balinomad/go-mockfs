@@ -721,7 +721,7 @@ mfs.RemovePath("file.txt")
 **After (v2)**:
 ```go
 // Full WritableFS interface
-mfs := mockfs.NewMockFS(nil)
+mfs := mockfs.NewMockFS()
 err := mfs.Mkdir("dir", 0o755)
 err = mfs.MkdirAll("dir/subdir/nested", 0o755)
 err = mfs.Remove("file.txt")
@@ -920,7 +920,7 @@ fmt.Println(stats.String()) // "Stats{Ops: 10 (2 failed), Bytes: 1024 read, 512 
 
 *v1* required manual map manipulation or write callbacks for filesystem modifications. *v2* provides a complete `WritableFS` interface with proper hierarchy management.
 ```go
-mfs := mockfs.NewMockFS(nil)
+mfs := mockfs.NewMockFS()
 
 // Create directory hierarchy (new methods in v2)
 err := mfs.MkdirAll("app/config/prod", 0o755)
