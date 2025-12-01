@@ -45,17 +45,23 @@ func assertPanic(t *testing.T, fn func(), name string) {
 }
 
 // assertError asserts that got matches want. Handles fs.PathError wrapping.
-func assertError(t *testing.T, got error, want error) {
+func assertError(t *testing.T, got error, want error, name ...string) {
 	t.Helper()
+
+	prefix := ""
+	if len(name) > 0 {
+		prefix = name[0] + ": "
+	}
+
 	if got == nil {
 		if want != nil {
-			t.Errorf("expected error %q, got nil", want)
+			t.Errorf("%sexpected error %q, got nil", prefix, want)
 		}
 		return
 	}
 
 	if want == nil {
-		t.Errorf("expected nil, got error %q", got)
+		t.Errorf("%sexpected nil, got error %q", prefix, got)
 		return
 	}
 
@@ -65,7 +71,7 @@ func assertError(t *testing.T, got error, want error) {
 		if errors.As(got, &pathErr) && errors.Is(pathErr.Err, want) {
 			return
 		}
-		t.Errorf("expected error %q, got %q", want, got)
+		t.Errorf("%sexpected error %q, got %q", prefix, want, got)
 	}
 }
 

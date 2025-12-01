@@ -185,7 +185,7 @@ var operationNames = map[Operation]string{
 
 // IsValid returns true if the operation is valid.
 func (op Operation) IsValid() bool {
-	return op > 0 && op < NumOperations
+	return op > OpUnknown && op < NumOperations
 }
 
 // String returns a human-readable string representation of the operation.
