@@ -33,21 +33,15 @@ type fileBackend interface {
 	LatencySimulator() LatencySimulator
 }
 
-// MockFile represents an open file. It is a wrapper around fstest.MapFile to inject errors and track operations.
-type MockFile interface {
-	fs.File
-	fs.ReadDirFile
-	io.Reader
-	io.ReaderAt
-	io.Writer
-	io.WriterAt
-	io.Seeker
-	io.Closer
-	fileBackend
-}
-
-// mockFile is the implementation of MockFile.
-type mockFile struct {
+// MockFile represents an open file. It implements the following interfaces:
+//   - fs.File
+//   - fs.ReadDirFile
+//   - io.Reader
+//   - io.ReaderAt
+//   - io.Writer
+//   - io.WriterAt
+//   - io.Closer
+type MockFile struct {
 	mapFile        *fstest.MapFile                  // The underlying file data.
 	name           string                           // Cleaned name used to open this file (relative to its MockFS).
 	position       int64                            // Current read position in the file.
@@ -62,16 +56,18 @@ type mockFile struct {
 
 // Ensure interface implementations.
 var (
-	_ fs.File        = (*mockFile)(nil)
-	_ fs.ReadDirFile = (*mockFile)(nil)
-	_ io.Reader      = (*mockFile)(nil)
-	_ io.Writer      = (*mockFile)(nil)
-	_ io.Closer      = (*mockFile)(nil)
-	_ io.Seeker      = (*mockFile)(nil)
-	_ fileBackend    = (*mockFile)(nil)
+	_ fs.File        = (*MockFile)(nil)
+	_ fs.ReadDirFile = (*MockFile)(nil)
+	_ io.Reader      = (*MockFile)(nil)
+	_ io.ReaderAt    = (*MockFile)(nil)
+	_ io.Writer      = (*MockFile)(nil)
+	_ io.WriterAt    = (*MockFile)(nil)
+	_ io.Closer      = (*MockFile)(nil)
+	_ io.Seeker      = (*MockFile)(nil)
+	_ fileBackend    = (*MockFile)(nil)
 )
 
-// fileOptions holds the configurable state for a new mockFile.
+// fileOptions holds the configurable state for a new MockFile.
 type fileOptions struct {
 	writeMode      writeMode
 	injector       ErrorInjector
@@ -174,7 +170,7 @@ func newMockFile(
 	latencySimulator LatencySimulator,
 	readDirHandler func(int) ([]fs.DirEntry, error),
 	stats StatsRecorder,
-) MockFile {
+) *MockFile {
 	if mapFile == nil {
 		panic("mockfs: mapFile cannot be nil")
 	}
@@ -190,7 +186,7 @@ func newMockFile(
 		stats = NewStatsRecorder(nil)
 	}
 
-	return &mockFile{
+	return &MockFile{
 		mapFile:        mapFile,
 		name:           name,
 		writeMode:      writeMode,
@@ -204,7 +200,7 @@ func newMockFile(
 // NewMockFile constructs a MockFile with the given MapFile and options.
 // This is the primary constructor if you already have a *fstest.MapFile.
 // By default, the file is writable in overwrite mode.
-func NewMockFile(mapFile *fstest.MapFile, name string, opts ...MockFileOption) MockFile {
+func NewMockFile(mapFile *fstest.MapFile, name string, opts ...MockFileOption) *MockFile {
 	if mapFile == nil {
 		panic("mockfs: mapFile cannot be nil")
 	}
@@ -234,7 +230,7 @@ func NewMockFile(mapFile *fstest.MapFile, name string, opts ...MockFileOption) M
 // NewMockFileFromBytes creates a writable file from raw data and options.
 // The data is copied, so subsequent modifications to the input slice
 // will not affect the file's content.
-func NewMockFileFromBytes(name string, data []byte, opts ...MockFileOption) MockFile {
+func NewMockFileFromBytes(name string, data []byte, opts ...MockFileOption) *MockFile {
 	mapFile := &fstest.MapFile{
 		Data:    append([]byte(nil), data...), // Copy data
 		Mode:    0o644,
@@ -245,7 +241,7 @@ func NewMockFileFromBytes(name string, data []byte, opts ...MockFileOption) Mock
 }
 
 // NewMockFileFromString creates a writable file from string content and options.
-func NewMockFileFromString(name string, content string, opts ...MockFileOption) MockFile {
+func NewMockFileFromString(name string, content string, opts ...MockFileOption) *MockFile {
 	mapFile := &fstest.MapFile{
 		Data:    []byte(content),
 		Mode:    0o644,
@@ -262,7 +258,7 @@ func NewMockDir(
 	name string,
 	readDirHandler func(int) ([]fs.DirEntry, error),
 	opts ...MockFileOption,
-) MockFile {
+) *MockFile {
 	mapFile := &fstest.MapFile{
 		Mode:    fs.ModeDir | 0o755,
 		ModTime: time.Now(),
@@ -281,7 +277,7 @@ func NewMockDir(
 }
 
 // Read implements io.Reader for MockFile.
-func (f *mockFile) Read(b []byte) (n int, err error) {
+func (f *MockFile) Read(b []byte) (n int, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -314,7 +310,7 @@ func (f *mockFile) Read(b []byte) (n int, err error) {
 
 // ReadAt implements io.ReaderAt for MockFile.
 // ReadAt does not affect nor is affected by the underlying seek offset.
-func (f *mockFile) ReadAt(b []byte, off int64) (n int, err error) {
+func (f *MockFile) ReadAt(b []byte, off int64) (n int, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -353,7 +349,7 @@ func (f *mockFile) ReadAt(b []byte, off int64) (n int, err error) {
 }
 
 // Write implements io.Writer for MockFile.
-func (f *mockFile) Write(b []byte) (n int, err error) {
+func (f *MockFile) Write(b []byte) (n int, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -399,7 +395,7 @@ func (f *mockFile) Write(b []byte) (n int, err error) {
 
 // WriteAt implements io.WriterAt for MockFile.
 // WriteAt does not affect nor is affected by the underlying seek offset.
-func (f *mockFile) WriteAt(b []byte, off int64) (n int, err error) {
+func (f *MockFile) WriteAt(b []byte, off int64) (n int, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -445,7 +441,7 @@ func (f *mockFile) WriteAt(b []byte, off int64) (n int, err error) {
 
 // Seek implements io.Seeker for MockFile.
 // It sets the offset for the next Read or Write operation.
-func (f *mockFile) Seek(offset int64, whence int) (n int64, err error) {
+func (f *MockFile) Seek(offset int64, whence int) (n int64, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -490,7 +486,7 @@ func (f *mockFile) Seek(offset int64, whence int) (n int64, err error) {
 // a slice of up to n DirEntry values in directory order.
 // Subsequent calls on the same file will yield further DirEntry values.
 // It implements fs.ReadDirFile for MockFile.
-func (f *mockFile) ReadDir(n int) (entries []fs.DirEntry, err error) {
+func (f *MockFile) ReadDir(n int) (entries []fs.DirEntry, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -526,7 +522,7 @@ func (f *mockFile) ReadDir(n int) (entries []fs.DirEntry, err error) {
 }
 
 // Stat implements fs.File.Stat.
-func (f *mockFile) Stat() (info fs.FileInfo, err error) {
+func (f *MockFile) Stat() (info fs.FileInfo, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -563,7 +559,7 @@ func (f *mockFile) Stat() (info fs.FileInfo, err error) {
 //
 // Close returns fs.ErrClosed if called multiple times, allowing tests to detect
 // double-close bugs.
-func (f *mockFile) Close() (err error) {
+func (f *MockFile) Close() (err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -596,7 +592,7 @@ func (f *mockFile) Close() (err error) {
 }
 
 // ErrorInjector returns the error injector for advanced configuration.
-func (f *mockFile) ErrorInjector() ErrorInjector {
+func (f *MockFile) ErrorInjector() ErrorInjector {
 	return f.injector
 }
 
@@ -604,12 +600,12 @@ func (f *mockFile) ErrorInjector() ErrorInjector {
 // This includes only operations performed on this specific file handle
 // (Read, Write, Close, Stat, ReadDir). It does NOT include filesystem-level
 // operations like MockFS.Open or MockFS.Stat.
-func (f *mockFile) Stats() Stats {
+func (f *MockFile) Stats() Stats {
 	return f.stats.Snapshot()
 }
 
 // LatencySimulator returns the latency simulator for the MockFile.
-func (f *mockFile) LatencySimulator() LatencySimulator {
+func (f *MockFile) LatencySimulator() LatencySimulator {
 	return f.latency
 }
 

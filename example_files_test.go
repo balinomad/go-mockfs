@@ -45,8 +45,7 @@ func ExampleNewMockDir() {
 	dir := mockfs.NewMockDir("mydir", handler)
 
 	// ReadDir returns entries in sorted order
-	readDirFile := dir.(fs.ReadDirFile)
-	list, _ := readDirFile.ReadDir(-1)
+	list, _ := dir.ReadDir(-1)
 
 	fmt.Printf("Directory contains %d entries\n", len(list))
 	for _, e := range list {
@@ -90,16 +89,15 @@ func ExampleMockFile_Seek() {
 	fmt.Printf("First read: %s\n", buf)
 
 	// Seek back to beginning
-	seeker := file.(io.Seeker)
-	seeker.Seek(0, io.SeekStart)
+	file.Seek(0, io.SeekStart)
 
 	// Read again
 	file.Read(buf)
 	fmt.Printf("After rewind: %s\n", buf)
 
 	// Seek to end
-	seeker.Seek(0, io.SeekEnd)
-	pos, _ := seeker.Seek(0, io.SeekCurrent)
+	file.Seek(0, io.SeekEnd)
+	pos, _ := file.Seek(0, io.SeekCurrent)
 	fmt.Printf("Position at end: %d\n", pos)
 	// Output:
 	// First read: Hello
