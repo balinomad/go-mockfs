@@ -143,7 +143,7 @@ type MockFile struct {
 
 **v2**
 ```go
-type mockFile struct {
+type MockFile struct {
     mapFile        *fstest.MapFile   // Direct data ownership
     name           string
     position       int64             // Read position tracking
@@ -161,7 +161,7 @@ type mockFile struct {
 - *v2* `MockFile` is a complete file implementation, not a wrapper
 - Each file handle has independent latency and stats tracking
 - File position and write modes managed internally
-- No direct access to underlying `fs.File`
+- Typically used as `*MockFile` to satisfy `fs.File`
 
 ### Statistics Architecture
 
@@ -220,7 +220,7 @@ func (m *MockFS) Stats() Stats {
 - Success/failure tracking added
 - Byte counters added for Read/Write operations
 - Stats comparison via `Delta()` and `Equal()`
-- Separate tracking: `MockFS.Stats()` for filesystem ops, `MockFile.Stats()` for file-handle ops
+- Separate tracking: `MockFS.Stats()` for filesystem ops, `(*MockFile).Stats()` for file-handle ops
 
 ### Error Injection Architecture
 
@@ -374,7 +374,7 @@ These methods were removed from `MockFS`:
 | Type | *v1* | *v2* | Impact |
 |------|------|------|--------|
 | `Stats` | Struct with exported fields | Interface with methods | Cannot access fields directly; use methods |
-| `MockFile` | Struct with exported `file fs.File` field | Unexported struct, full implementation | Cannot access underlying file; use `MockFile` methods |
+| `MockFile` | Struct with exported `file fs.File` field | Concrete struct (`*MockFile`), full implementation | Cannot access underlying file; use `MockFile` methods |
 | `Operation` | Constants `OpStat=0, OpOpen, OpRead, OpWrite, OpReadDir, OpClose` | Constants `OpStat=1, OpOpen, OpRead, OpWrite, OpClose, OpReadDir, OpMkdir, OpMkdirAll, OpRemove, OpRemoveAll, OpRename` | `OpReadDir` moved; new operations added; `OpUnknown=0` added |
 
 ### Behavior Changes
@@ -634,13 +634,13 @@ if stats.Count(mockfs.OpStat) != 0 {
 }
 
 // File-handle operations (Read, Write, Close on opened files)
-file, _ := mfs.Open("file.txt")
+file, _ := mfs.Open("file.txt") // Returns fs.File (interface)
 buf := make([]byte, 100)
 file.Read(buf)
 file.Read(buf)
 
-// Access MockFile stats
-mockFile := file.(mockfs.MockFile)
+// Type assert fs.File interface to *mockfs.MockFile concrete pointer
+mockFile := file.(*mockfs.MockFile)
 fileStats := mockFile.Stats()
 if fileStats.Count(mockfs.OpRead) != 2 {
     t.Errorf("expected 2 reads, got %d", fileStats.Count(mockfs.OpRead))
@@ -803,7 +803,7 @@ stats := mfs.GetStats()
 ```go
 // File statistics are separate from filesystem statistics
 mfs := mockfs.NewMockFS(mockfs.File("file.txt", "content"))
-f, _ := mfs.Open("file.txt")
+f, _ := mfs.Open("file.txt") // Returns fs.File
 buf := make([]byte, 100)
 f.Read(buf)
 f.Close()
@@ -813,7 +813,7 @@ fsStats := mfs.Stats()
 fsStats.Count(mockfs.OpOpen) // 1 (the Open call on MockFS)
 
 // MockFile stats - file handle operations only
-mockFile := f.(mockfs.MockFile)
+mockFile := f.(*mockfs.MockFile) // Cast to MockFile
 fileStats := mockFile.Stats()
 fileStats.Count(mockfs.OpRead)  // 1 (the Read call on file handle)
 fileStats.Count(mockfs.OpClose) // 1 (the Close call on file handle)
@@ -1125,7 +1125,7 @@ func TestOperationCounts(t *testing.T) {
     mfs := mockfs.NewMockFS(mockfs.File("file.txt", "content"))
 
     // Function under test
-    file, _ := mfs.Open("file.txt")
+    file, _ := mfs.Open("file.txt") // Returns fs.File interface
     buf := make([]byte, 100)
     file.Read(buf)
     file.Close()
@@ -1140,7 +1140,8 @@ func TestOperationCounts(t *testing.T) {
     }
 
     // File-handle operations
-    mockFile := file.(mockfs.MockFile)
+
+    mockFile := file.(*mockfs.MockFile)  // Must assert interface to concrete pointer
     fileStats := mockFile.Stats()
     if fileStats.Count(mockfs.OpRead) != 1 {
         t.Errorf("expected 1 read, got %d", fileStats.Count(mockfs.OpRead))
@@ -1242,7 +1243,7 @@ func TestIntermittentErrors(t *testing.T) {
     // Error after 3 successes
     mfs.FailReadAfter("flaky.txt", io.EOF, 3)
 
-    f, _ := mfs.Open("flaky.txt")
+    f, _ := mfs.Open("flaky.txt")  // Returns fs.File interface
     buf := make([]byte, 1)
 
     // First 3 reads succeed
@@ -1260,7 +1261,7 @@ func TestIntermittentErrors(t *testing.T) {
     }
 
     // New: Verify stats tracked both successes and failure
-    mockFile := f.(mockfs.MockFile)
+    mockFile := f.(*mockfs.MockFile)  // Cast to MockFile
     stats := mockFile.Stats()
     if stats.CountSuccess(mockfs.OpRead) != 3 {
         t.Errorf("expected 3 successful reads, got %d", stats.CountSuccess(mockfs.OpRead))
@@ -1364,8 +1365,8 @@ func TestSubFilesystem(t *testing.T) {
   - [ ] `stats.ReadCalls` → `fileStats.Count(mockfs.OpRead)` (note: file-handle stats)
   - [ ] `stats.WriteCalls` → `fileStats.Count(mockfs.OpWrite)` (note: file-handle stats)
   - [ ] `stats.CloseCalls` → `fileStats.Count(mockfs.OpClose)` (note: file-handle stats)
-- [ ] Understand statistics split: `MockFS.Stats()` tracks filesystem ops, `MockFile.Stats()` tracks file-handle ops
-- [ ] Update code that accesses file-handle operation counts to use `MockFile.Stats()` instead of `MockFS.Stats()`
+- [ ] Understand statistics split: `MockFS.Stats()` tracks filesystem ops, `(*MockFile).Stats()` tracks file-handle ops
+- [ ] Update code that accesses file-handle operation counts to use `(*MockFile).Stats()` instead of `(*MockFS).Stats()`
 
 ### File and Directory Management
 

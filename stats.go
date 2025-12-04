@@ -519,7 +519,7 @@ func (s statsSnapshot) String() string {
 		failCount += s.ops[i].failure
 	}
 
-	return fmt.Sprintf("Stats{Ops: %d (%d failed), Bytes: %d read, %d written}",
+	return fmt.Sprintf("Stats{Ops: %d (%d failures), Bytes: %d read, %d written}",
 		totalOps, failCount, s.bytesRead, s.bytesWritten)
 }
 

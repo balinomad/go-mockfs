@@ -28,10 +28,10 @@
 //	    ),
 //	)
 //
-// Use it like any fs.FS:
+// Use it like any fs.FS (error handling omitted for brevity):
 //
-//	data, err := fs.ReadFile(mfs, "file.txt")
-//	entries, err := fs.ReadDir(mfs, "dir")
+//	data, _ := fs.ReadFile(mfs, "file.txt")
+//	entries, _ := fs.ReadDir(mfs, "dir")
 //
 // # Statistics: Filesystem vs File-Handle Operations
 //
@@ -41,19 +41,20 @@
 // structure itself - Open, Stat, ReadDir, Mkdir, Remove, Rename, WriteFile.
 //
 // File-handle operations (MockFile.Stats()): Operations on individual open
-// files - Read, Write, Close, Seek, ReadDir (on directory handles).
+// files - Read, Write, Close, Seek, Stat, ReadDir (on directory handles).
 //
 // This separation enables precise verification of I/O patterns:
 //
 //	mfs := mockfs.NewMockFS(mockfs.File("file.txt", "content"))
 //	file, _ := mfs.Open("file.txt")   // Tracked in MockFS.Stats()
 //	buf := make([]byte, 100)
-//	file.Read(buf)                    // Tracked in MockFile.Stats()
-//	file.Close()                      // Tracked in MockFile.Stats()
+//	file.Read(buf)                    // Tracked in (*MockFile).Stats()
+//	file.Close()                      // Tracked in (*MockFile).Stats()
 //
 //	fsStats := mfs.Stats()
 //	fsStats.Count(mockfs.OpOpen)      // 1
 //
+//	// Type assert fs.File interface to concrete pointer for specific stats
 //	fileStats := file.(mockfs.MockFile).Stats()
 //	fileStats.Count(mockfs.OpRead)    // 1
 //	fileStats.Count(mockfs.OpClose)   // 1
@@ -231,7 +232,7 @@
 //   - File permissions (MapFile.Mode) are metadata only and not enforced.
 //     Use ErrorInjector to simulate permission errors explicitly.
 //   - Path cleaning uses lexical processing only (no filesystem queries).
-//   - Operations on open files may succeed even if the file is removed from the filesystem
+//   - Operations on open files may succeed even if the file is removed from the MockFS internal map
 //     (matching real filesystem behavior).
 //   - This package is not optimized for large filesystems.
 //   - ReadFile on a directory returns empty data without error (matches MapFS behaviour).

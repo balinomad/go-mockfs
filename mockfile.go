@@ -199,6 +199,7 @@ func newMockFile(
 
 // NewMockFile constructs a MockFile with the given MapFile and options.
 // This is the primary constructor if you already have a *fstest.MapFile.
+// For typical usage, prefer NewMockFileFromString or NewMockFileFromBytes.
 // By default, the file is writable in overwrite mode.
 func NewMockFile(mapFile *fstest.MapFile, name string, opts ...MockFileOption) *MockFile {
 	if mapFile == nil {
@@ -543,9 +544,13 @@ func (f *MockFile) Stat() (info fs.FileInfo, err error) {
 
 	// Build FileInfo from MapFile content
 	name := path.Base(f.name)
-	size := int64(len(f.mapFile.Data))
 	mode := f.mapFile.Mode
 	modTime := f.mapFile.ModTime
+	size := int64(len(f.mapFile.Data))
+	if f.mapFile.Mode.IsDir() {
+		// Directories always report size 0
+		size = 0
+	}
 
 	return &FileInfo{
 		name:    name,
@@ -612,6 +617,7 @@ func (f *MockFile) LatencySimulator() LatencySimulator {
 // NewDirHandler creates a stateful fs.ReadDirFile handler from a static list of entries.
 // The returned handler correctly implements pagination and returns io.EOF
 // when no more entries are available, as required by fs.ReadDirFile.
+// Each handler instance maintains independent state and cannot be reset.
 //
 // Example usage:
 //

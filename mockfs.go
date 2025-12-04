@@ -1252,8 +1252,10 @@ func toBytes(content any) (data []byte, err error) {
 		data = []byte(v)
 	case io.Reader:
 		data, err = io.ReadAll(v)
+		err = fmt.Errorf("ReadAll failed: %w", err)
 	case encoding.BinaryMarshaler:
 		data, err = v.MarshalBinary()
+		err = fmt.Errorf("MarshalBinary failed: %w", err)
 	case fmt.Stringer:
 		data = []byte(v.String())
 	default:

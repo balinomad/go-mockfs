@@ -128,14 +128,16 @@ func TestFileReader(t *testing.T) {
 
 `mockfs` tracks operations at two levels for precise verification:
 
-- **Filesystem operations** (`MockFS.Stats()`): `Open`, `Stat`, `ReadDir`, `Mkdir`, `Remove`, etc.
-- **File-handle operations** (`MockFile.Stats()`): `Read`, `Write`, `Close` on individual open files
+- **Filesystem operations** (`(*MockFS).Stats()`): `Open`, `Stat`, `ReadDir`, `Mkdir`, `Remove`, etc.
+- **File-handle operations** (`(*MockFile).Stats()`): `Read`, `Write`, `Close` on individual open files
 ```go
 file, _ := mfs.Open("file.txt")
 file.Read(buf)
 
-mfs.Stats().Count(mockfs.OpOpen)        // Filesystem: 1 open
-file.(mockfs.MockFile).Stats().Count(mockfs.OpRead)  // File handle: 1 read
+mfs.Stats().Count(mockfs.OpOpen)  // Filesystem: 1 open
+
+// Assert to concrete pointer to access file-handle stats
+file.(*mockfs.MockFile).Stats().Count(mockfs.OpRead)  // File handle: 1 read
 ```
 
 ### Error Injection

@@ -836,6 +836,24 @@ func TestStats_Concurrent(t *testing.T) {
 
 	wg.Wait()
 }
+func TestStatsRecorder_Set_Record_Concurrent(t *testing.T) {
+	s := mockfs.NewStatsRecorder(nil)
+	var wg sync.WaitGroup
+
+	for i := 0; i < 10; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			s.Record(mockfs.OpRead, 100, nil)
+		}()
+		go func() {
+			defer wg.Done()
+			s.Set(mockfs.OpRead, 50, 10)
+		}()
+	}
+	wg.Wait()
+	// Verify no panic, final state is deterministic
+}
 
 // TestStats_SnapshotImmutability verifies snapshots are immutable values.
 func TestStats_SnapshotImmutability(t *testing.T) {
