@@ -622,7 +622,7 @@ func TestErrorInjector_Priority(t *testing.T) {
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 		rule := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
 		inj.Add(mockfs.OpUnknown, rule)
-		assertError(t, inj.CheckAndApply(mockfs.OpOpen, "test.txt"), mockfs.ErrNotExist, "op-specific rule preceeds OpUnknown rule")
+		assertError(t, inj.CheckAndApply(mockfs.OpOpen, "test.txt"), mockfs.ErrNotExist, "op-specific rule precedes OpUnknown rule")
 	})
 }
 
