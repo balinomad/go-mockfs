@@ -15,6 +15,7 @@ import (
 // assertOpCount verifies operation count and failures.
 func assertOpCount(t *testing.T, s mockfs.Stats, op mockfs.Operation, wantTotal int, wantFailures int) {
 	t.Helper()
+
 	if got := s.Count(op); got != wantTotal {
 		t.Errorf("%s count = %d, want %d", op, got, wantTotal)
 	}
@@ -28,6 +29,7 @@ func assertOpCount(t *testing.T, s mockfs.Stats, op mockfs.Operation, wantTotal 
 
 func assertBytes(t *testing.T, s mockfs.Stats, wantRead int, wantWritten int) {
 	t.Helper()
+
 	if got := s.BytesRead(); got != wantRead {
 		t.Errorf("bytes read = %d, want %d", got, wantRead)
 	}
@@ -346,7 +348,6 @@ func TestStats_Count(t *testing.T) {
 	s := mockfs.NewStatsRecorder(nil)
 	s.Set(mockfs.OpStat, 10, 3)
 	assertOpCount(t, s, mockfs.OpStat, 10, 3)
-
 	assertPanic(t, func() { s.Count(mockfs.Operation(-1)) }, "Count invalid op")
 	assertPanic(t, func() { s.CountSuccess(mockfs.Operation(-1)) }, "CountSuccess invalid op")
 	assertPanic(t, func() { s.CountFailure(mockfs.Operation(-1)) }, "CountFailure invalid op")

@@ -33,17 +33,12 @@ func TestNewLatencySimulator(t *testing.T) {
 	})
 
 	t.Run("negative duration panics", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("expected panic for negative duration")
-			}
-		}()
-		mockfs.NewLatencySimulator(-1 * time.Millisecond)
+		requirePanic(t, func() { mockfs.NewLatencySimulator(-1 * time.Millisecond) }, "negative duration")
 	})
 }
 
 func TestNewLatencySimulatorPerOp(t *testing.T) {
-	testCases := []struct {
+	tests := []struct {
 		name        string
 		durations   map[mockfs.Operation]time.Duration
 		opToTest    mockfs.Operation
@@ -81,26 +76,23 @@ func TestNewLatencySimulatorPerOp(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			ls := mockfs.NewLatencySimulatorPerOp(tc.durations)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ls := mockfs.NewLatencySimulatorPerOp(tt.durations)
 			start := time.Now()
-			ls.Simulate(tc.opToTest)
-			if tc.expectedDur == 0 {
-				assertNoDuration(t, start, tc.name)
+			ls.Simulate(tt.opToTest)
+			if tt.expectedDur == 0 {
+				assertNoDuration(t, start, tt.name)
 			} else {
-				assertDuration(t, start, tc.expectedDur, tc.name)
+				assertDuration(t, start, tt.expectedDur, tt.name)
 			}
 		})
 	}
 
 	t.Run("negative duration panics", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("expected a panic for negative per-op duration, but got none")
-			}
-		}()
-		mockfs.NewLatencySimulatorPerOp(map[mockfs.Operation]time.Duration{mockfs.OpRead: -1})
+		requirePanic(t,
+			func() { mockfs.NewLatencySimulatorPerOp(map[mockfs.Operation]time.Duration{mockfs.OpRead: -1}) },
+			"negative per-op duration")
 	})
 }
 

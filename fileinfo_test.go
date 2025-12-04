@@ -9,6 +9,21 @@ import (
 	"github.com/balinomad/go-mockfs/v2"
 )
 
+// --- Helpers ---
+
+// assertFileInfoTime verifies ModTime() matches expected value.
+func assertFileInfoTime(t *testing.T, got time.Time, want time.Time) {
+	t.Helper()
+	if !want.IsZero() && !got.Equal(want) {
+		t.Errorf("ModTime() = %v, want %v", got, want)
+	}
+	if want.IsZero() && (got.Before(time.Now().Add(-time.Second)) || got.After(time.Now())) {
+		t.Errorf("ModTime() = zero, want close to now")
+	}
+}
+
+// --- Tests ---
+
 func TestNewFileInfo(t *testing.T) {
 	tests := []struct {
 		name string // description of this test case
@@ -80,10 +95,8 @@ func TestNewFileInfo(t *testing.T) {
 			if got.Sys() != nil {
 				t.Errorf("Sys() = %v, want nil", got.Sys())
 			}
-			gotFileInfo, gotErr := got.Info()
-			if gotErr != nil {
-				t.Errorf("Info() failed: %v", gotErr)
-			}
+			gotFileInfo, err := got.Info()
+			assertNoError(t, err, "Info()")
 			if !got.Equal(gotFileInfo) {
 				t.Errorf("Info() = %v, want %v", gotFileInfo, got)
 			}
@@ -94,7 +107,7 @@ func TestNewFileInfo(t *testing.T) {
 func TestNewFileInfo_Panic(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
+	tests := []struct {
 		name string
 		in   string
 		mode mockfs.FileMode
@@ -132,7 +145,7 @@ func TestNewFileInfo_Panic(t *testing.T) {
 		},
 	}
 
-	for _, tt := range cases {
+	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fileName := tt.in
 			fileSize := tt.size
@@ -140,18 +153,7 @@ func TestNewFileInfo_Panic(t *testing.T) {
 			t.Parallel()
 			requirePanic(t, func() {
 				_ = mockfs.NewFileInfo(fileName, fileSize, fileMode, time.Now())
-			}, "NewFileInfo")
+			}, "NewFileInfo()")
 		})
-	}
-}
-
-// assertFileInfoTime verifies ModTime() matches expected value.
-func assertFileInfoTime(t *testing.T, got time.Time, want time.Time) {
-	t.Helper()
-	if !want.IsZero() && !got.Equal(want) {
-		t.Errorf("ModTime() = %v, want %v", got, want)
-	}
-	if want.IsZero() && (got.Before(time.Now().Add(-time.Second)) || got.After(time.Now())) {
-		t.Errorf("ModTime() = zero, want close to now")
 	}
 }
