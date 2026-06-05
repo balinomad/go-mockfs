@@ -3,6 +3,7 @@
 Advanced patterns, best practices, and real-world examples for `github.com/balinomad/go-mockfs/v2`.
 
 For basic usage and API reference, see:
+
 - [README](README.md) – Quick start and overview
 - [GoDoc](https://pkg.go.dev/github.com/balinomad/go-mockfs/v2) – Complete API documentation
 
@@ -17,10 +18,10 @@ For basic usage and API reference, see:
 - [Performance Testing](#performance-testing)
 - [Best Practices](#best-practices)
 
-
 ## Testing Error Recovery
 
 ### Testing Retry Logic
+
 ```go
 func TestRetryLogic(t *testing.T) {
     mfs := mockfs.NewMockFS(mockfs.File("data.txt", "content"))
@@ -34,9 +35,8 @@ func TestRetryLogic(t *testing.T) {
         t.Fatalf("function should retry and succeed: %v", err)
     }
 
-    // Verify retry behavior
-    file, _ := mfs.Open("data.txt")
-    mockFile := file.(mockfs.MockFile)
+    // Verify retry behavior via OpenMockFile to avoid a type assertion
+    mockFile, _ := mfs.OpenMockFile("data.txt")
     stats := mockFile.Stats()
     if stats.Count(mockfs.OpRead) < 3 {
         t.Errorf("expected at least 3 read attempts, got %d", stats.Count(mockfs.OpRead))
@@ -45,6 +45,7 @@ func TestRetryLogic(t *testing.T) {
 ```
 
 ### Testing Exponential Backoff
+
 ```go
 func TestExponentialBackoff(t *testing.T) {
     mfs := mockfs.NewMockFS(
@@ -74,10 +75,10 @@ func TestExponentialBackoff(t *testing.T) {
 }
 ```
 
-
 ## Testing Timeout Handling
 
 ### Context Deadline Exceeded
+
 ```go
 func TestTimeoutBehavior(t *testing.T) {
     // Simulate slow I/O
@@ -104,6 +105,7 @@ func TestTimeoutBehavior(t *testing.T) {
 ```
 
 ### Testing Async Operations
+
 ```go
 func TestAsyncTimeout(t *testing.T) {
     // Use async latency to allow concurrent operations
@@ -137,6 +139,7 @@ func TestAsyncTimeout(t *testing.T) {
 ## Testing Concurrent Access
 
 ### Concurrent Reads
+
 ```go
 func TestConcurrentReads(t *testing.T) {
     mfs := mockfs.NewMockFS(
@@ -177,6 +180,7 @@ func TestConcurrentReads(t *testing.T) {
 ```
 
 ### Testing Race Conditions
+
 ```go
 func TestConcurrentWriteRace(t *testing.T) {
     mfs := mockfs.NewMockFS(
@@ -203,11 +207,13 @@ func TestConcurrentWriteRace(t *testing.T) {
     }
 }
 ```
+
 ## Dependency Injection Patterns
 
 ### Abstracting Filesystem Operations
 
 When testing code that uses `os` package functions directly:
+
 ```go
 // Define abstraction
 type FileSystem interface {
@@ -272,6 +278,7 @@ func TestService(t *testing.T) {
 ```
 
 ### Testing Repository Patterns
+
 ```go
 type Repository interface {
     Save(id string, data []byte) error
@@ -325,6 +332,7 @@ func TestRepositoryErrorHandling(t *testing.T) {
 ### Glob Patterns
 
 `mockfs` uses `path.Match` for glob patterns:
+
 ```go
 // Supported patterns
 injector.AddGlob(OpRead, "*.txt", err, ...)           // All .txt in current dir
@@ -340,6 +348,7 @@ injector.AddRegexp(OpRead, `.*\.txt$`, err, ...)
 ```
 
 **Glob vs Regex Performance:**
+
 - Glob patterns are faster for simple cases
 - Use glob when possible: `*.log` instead of `\.log$`
 - Use regex for complex patterns: nested paths, alternation
@@ -347,6 +356,7 @@ injector.AddRegexp(OpRead, `.*\.txt$`, err, ...)
 ### Regular Expressions
 
 Full RE2 syntax support via Go's `regexp` package:
+
 ```go
 // Match all .txt files recursively
 injector.AddRegexp(OpRead, `\.txt$`, err, ...)
@@ -362,6 +372,7 @@ injector.AddRegexp(OpStat, `^config/prod/`, err, ...)  // Only prod configs
 ```
 
 ### Combining Matchers
+
 ```go
 // Multiple matchers in one rule (OR logic)
 m1 := mockfs.NewExactMatcher("file1.txt")
@@ -380,6 +391,7 @@ mfs.ErrorInjector().Add(mockfs.OpOpen, rule)
 ## SubFS Patterns
 
 ### Testing with Sub-Filesystems
+
 ```go
 func TestConfigLoader(t *testing.T) {
     mfs := mockfs.NewMockFS(
@@ -425,6 +437,7 @@ func TestConfigLoader(t *testing.T) {
 ```
 
 ### Nested Sub-Filesystems
+
 ```go
 func TestNestedSubFS(t *testing.T) {
     mfs := mockfs.NewMockFS(
@@ -462,6 +475,7 @@ func TestNestedSubFS(t *testing.T) {
 ## Performance Testing
 
 ### Testing with Latency Profiles
+
 ```go
 func TestPerformanceProfile(t *testing.T) {
     // Simulate realistic I/O latency
@@ -495,6 +509,7 @@ func TestPerformanceProfile(t *testing.T) {
 ```
 
 ### Benchmarking with MockFS
+
 ```go
 func BenchmarkDataProcessing(b *testing.B) {
     mfs := mockfs.NewMockFS(
@@ -511,9 +526,11 @@ func BenchmarkDataProcessing(b *testing.B) {
     }
 }
 ```
+
 ## Best Practices
 
 ### 1. Separate Filesystem and Business Logic
+
 ```go
 // Good: filesystem abstraction
 type DataStore interface {
@@ -538,6 +555,7 @@ func ProcessData(path string) error {
 ```
 
 ### 2. Use Specific Error Types
+
 ```go
 // Good: test specific error conditions
 mfs.FailRead("data.txt", mockfs.ErrCorrupted)
@@ -552,6 +570,7 @@ if err != nil {
 ```
 
 ### 3. Verify Statistics
+
 ```go
 // Good: verify actual behavior
 stats := mfs.Stats()
@@ -567,7 +586,25 @@ mfs.Stats().Expect().
     Assert(t)
 ```
 
-### 4. Test Edge Cases
+### 4. Prefer OpenMockFile Over Type Assertions
+
+```go
+// Good: use OpenMockFile for direct access to file-handle stats
+mockFile, err := mfs.OpenMockFile("file.txt")
+if err != nil {
+    t.Fatal(err)
+}
+defer mockFile.Close()
+
+stats := mockFile.Stats()
+
+// Avoid: type-asserting the fs.File returned by Open
+f, _ := mfs.Open("file.txt")
+mockFile := f.(*mockfs.MockFile) // panics if f is not *MockFile
+```
+
+### 5. Test Edge Cases
+
 ```go
 func TestEdgeCases(t *testing.T) {
     mfs := mockfs.NewMockFS(mockfs.File("file.txt", "data"))
@@ -607,7 +644,8 @@ func TestEdgeCases(t *testing.T) {
 }
 ```
 
-### 5. Clean Up in Defer
+### 6. Clean Up in Defer
+
 ```go
 func TestWithCleanup(t *testing.T) {
     mfs := mockfs.NewMockFS(mockfs.File("file.txt", "data"))
@@ -621,7 +659,8 @@ func TestWithCleanup(t *testing.T) {
 }
 ```
 
-### 6. Use Table-Driven Tests
+### 7. Use Table-Driven Tests
+
 ```go
 func TestMultipleScenarios(t *testing.T) {
     tests := []struct {

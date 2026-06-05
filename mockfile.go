@@ -1,6 +1,7 @@
 package mockfs
 
 import (
+	"bytes"
 	"io"
 	"io/fs"
 	"path"
@@ -233,7 +234,7 @@ func NewMockFile(mapFile *fstest.MapFile, name string, opts ...MockFileOption) *
 // will not affect the file's content.
 func NewMockFileFromBytes(name string, data []byte, opts ...MockFileOption) *MockFile {
 	mapFile := &fstest.MapFile{
-		Data:    append([]byte(nil), data...), // Copy data
+		Data:    bytes.Clone(data),
 		Mode:    0o644,
 		ModTime: time.Now(),
 	}
@@ -383,7 +384,7 @@ func (f *MockFile) Write(b []byte) (n int, err error) {
 
 	case writeModeOverwrite:
 		// Replace entire content
-		f.mapFile.Data = append([]byte(nil), b...) // Copy data
+		f.mapFile.Data = bytes.Clone(b)
 		f.mapFile.ModTime = time.Now()
 		n = len(b)
 		f.position = int64(n)
@@ -408,14 +409,16 @@ func (f *MockFile) WriteAt(b []byte, off int64) (n int, err error) {
 		return 0, err
 	}
 
+	// Simulate latency before checking for errors (models real I/O timing).
+	// This must run before the write-mode check so that read-only files
+	// experience the same I/O timing as writable ones, matching Write behaviour.
+	f.latency.Simulate(OpWrite)
+
 	// Check write mode
 	if f.writeMode == writeModeReadOnly {
 		err = &fs.PathError{Op: OpWrite.String(), Path: f.name, Err: ErrPermission}
 		return 0, err
 	}
-
-	// Simulate latency before checking for errors
-	f.latency.Simulate(OpWrite)
 
 	if err = f.injector.CheckAndApply(OpWrite, f.name); err != nil {
 		return 0, err
@@ -504,19 +507,21 @@ func (f *MockFile) ReadDir(n int) (entries []fs.DirEntry, err error) {
 		return nil, err
 	}
 
+	// Simulate latency and check for injected errors before consulting the
+	// handler. This ensures nil-handler directories (standalone empty dirs)
+	// respect the same latency and error-injection rules as handler-backed ones.
+	f.latency.Simulate(OpReadDir)
+
+	if err = f.injector.CheckAndApply(OpReadDir, f.name); err != nil {
+		return nil, err
+	}
+
 	if f.readDirHandler == nil {
 		// No handler provided; this is a standalone, empty directory.
 		if n <= 0 {
 			return []fs.DirEntry{}, nil
 		}
 		return []fs.DirEntry{}, io.EOF
-	}
-
-	// Simulate latency before checking for errors (models real I/O timing)
-	f.latency.Simulate(OpReadDir)
-
-	if err = f.injector.CheckAndApply(OpReadDir, f.name); err != nil {
-		return nil, err
 	}
 
 	return f.readDirHandler(n)

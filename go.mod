@@ -1,3 +1,3 @@
 module github.com/balinomad/go-mockfs/v2
 
-go 1.19
+go 1.22

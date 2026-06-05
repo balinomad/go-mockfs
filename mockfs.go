@@ -1,12 +1,13 @@
 package mockfs
 
 import (
+	"bytes"
 	"encoding"
 	"fmt"
 	"io"
 	"io/fs"
 	"path"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"testing/fstest"
@@ -331,6 +332,7 @@ func (m *MockFS) Stat(name string) (info fs.FileInfo, err error) {
 // Open opens the named file and returns a MockFile.
 // It implements the fs.FS interface.
 // This is a filesystem-level operation. The returned MockFile handles file-level operations.
+// Use OpenMockFile to obtain the concrete *MockFile directly without a type assertion.
 func (m *MockFS) Open(name string) (file fs.File, err error) {
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpOpen, 0, err) }()
@@ -375,6 +377,18 @@ func (m *MockFS) Open(name string) (file fs.File, err error) {
 		readDirHandler,
 		nil, // Each file gets its own Stats
 	), nil
+}
+
+// OpenMockFile opens the named file and returns the concrete *MockFile directly.
+// This avoids the type assertion required when using Open and is the preferred
+// method when access to Stats, ErrorInjector, or LatencySimulator is needed on
+// the returned file handle.
+func (m *MockFS) OpenMockFile(name string) (*MockFile, error) {
+	f, err := m.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return f.(*MockFile), nil
 }
 
 // ReadFile implements the fs.ReadFileFS interface.
@@ -434,7 +448,12 @@ func (m *MockFS) ReadDir(name string) (entries []fs.DirEntry, err error) {
 }
 
 // Sub implements fs.SubFS to return a sub-filesystem.
+// Passing "." returns the receiver unchanged, matching stdlib fs.Sub behaviour.
 func (m *MockFS) Sub(dir string) (fs.FS, error) {
+	if dir == "." {
+		return m, nil
+	}
+
 	cleanDir, info, err := m.validateSubdir(dir)
 	if err != nil {
 		return nil, err
@@ -497,7 +516,7 @@ func (m *MockFS) AddFile(filePath string, content any, mode ...FileMode) error {
 	}
 
 	m.files[cleanPath] = &fstest.MapFile{
-		Data:    data, // already deep copied
+		Data:    data, // already deep copied by toBytes
 		Mode:    (perm & ModePerm) &^ ModeDir,
 		ModTime: time.Now(),
 	}
@@ -871,9 +890,7 @@ func (m *MockFS) Rename(oldpath, newpath string) (err error) {
 
 	// Copy to new location
 	newFile := *oldFile
-	if oldFile.Data != nil {
-		newFile.Data = append([]byte(nil), oldFile.Data...)
-	}
+	newFile.Data = bytes.Clone(oldFile.Data)
 	newFile.ModTime = time.Now()
 	m.files[cleanNew] = &newFile
 
@@ -885,9 +902,7 @@ func (m *MockFS) Rename(oldpath, newpath string) (err error) {
 			if strings.HasPrefix(p, oldPrefix) {
 				newP := newPrefix + p[len(oldPrefix):]
 				childFile := *f
-				if f.Data != nil {
-					childFile.Data = append([]byte(nil), f.Data...)
-				}
+				childFile.Data = bytes.Clone(f.Data)
 				m.files[newP] = &childFile
 				delete(m.files, p)
 			}
@@ -933,9 +948,8 @@ func (m *MockFS) WriteFile(filePath string, data []byte, perm FileMode) (err err
 			return err
 		}
 
-		// Create a new MapFile entry
 		m.files[cleanPath] = &fstest.MapFile{
-			Data:    append([]byte(nil), data...), // Copy data
+			Data:    bytes.Clone(data),
 			Mode:    perm &^ ModeDir,
 			ModTime: time.Now(),
 		}
@@ -945,14 +959,12 @@ func (m *MockFS) WriteFile(filePath string, data []byte, perm FileMode) (err err
 	// Apply write mode
 	switch m.writeMode {
 	case writeModeAppend:
-		// Append data to existing file
 		existing.Data = append(existing.Data, data...)
 		existing.ModTime = time.Now()
 		return nil
 
 	case writeModeOverwrite:
-		// Overwrite data for existing file
-		existing.Data = append([]byte(nil), data...) // Make a copy
+		existing.Data = bytes.Clone(data)
 		existing.ModTime = time.Now()
 		return nil
 
@@ -974,8 +986,8 @@ func (m *MockFS) createReadDirHandler(dirPath string) func(int) ([]fs.DirEntry, 
 	entries := m.collectDirEntries(dirPath, prefix)
 
 	// Sort for deterministic output
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name() < entries[j].Name()
+	slices.SortFunc(entries, func(a, b fs.DirEntry) int {
+		return strings.Compare(a.Name(), b.Name())
 	})
 
 	return createReadDirClosure(entries)
@@ -1084,9 +1096,7 @@ func createReadDirClosure(entries []fs.DirEntry) func(int) ([]fs.DirEntry, error
 
 // validateSubdir cleans and validates the target directory path for Sub.
 func (m *MockFS) validateSubdir(dir string) (cleanDir string, info fs.FileInfo, err error) {
-	// Special case: fs.Sub() has specific behavior for ".", which we must replicate
-	// by disallowing it here, as it doesn't make sense for our mock SubFS
-	if dir == "." || dir == "/" || !fs.ValidPath(dir) {
+	if !fs.ValidPath(dir) {
 		return "", nil, &fs.PathError{Op: "Sub", Path: dir, Err: ErrInvalid}
 	}
 	cleanDir = path.Clean(dir)
@@ -1131,12 +1141,9 @@ func (m *MockFS) copyFilesToSubFS(subFS *MockFS, cleanDir string, dirInfo fs.Fil
 			// Get path relative to subDir
 			subPath := p[len(prefix):]
 
-			// Deep copy the MapFile to the sub filesystem
 			if file != nil {
 				newFile := *file
-				if file.Data != nil {
-					newFile.Data = append([]byte(nil), file.Data...)
-				}
+				newFile.Data = bytes.Clone(file.Data)
 				subFS.files[subPath] = &newFile
 			}
 		}
@@ -1245,9 +1252,7 @@ func toBytes(content any) (data []byte, err error) {
 
 	switch v := content.(type) {
 	case []byte:
-		// Clone to ensure immutability and return non-nil slice.
-		data = make([]byte, len(v))
-		copy(data, v)
+		data = bytes.Clone(v)
 	case string:
 		data = []byte(v)
 	case io.Reader:

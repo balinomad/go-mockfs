@@ -70,9 +70,12 @@ func (fi *FileInfo) Size() int64 {
 	return fi.size
 }
 
+// Mode returns the file's mode and permission bits.
 func (fi *FileInfo) Mode() FileMode {
 	return fi.mode
 }
+
+// ModTime returns the time the file was last modified.
 func (fi *FileInfo) ModTime() time.Time {
 	return fi.modTime
 }

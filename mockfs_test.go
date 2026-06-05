@@ -663,7 +663,6 @@ func TestMockFS_Sub(t *testing.T) {
 		}{
 			{"path not exist", "missing", mockfs.ErrNotExist},
 			{"path is a file", "file.txt", mockfs.ErrNotDir},
-			{"invalid path dot", ".", mockfs.ErrInvalid},
 			{"invalid path slash", "/", mockfs.ErrInvalid},
 			{"invalid path parent", "../", mockfs.ErrInvalid},
 		}
@@ -673,6 +672,14 @@ func TestMockFS_Sub(t *testing.T) {
 				_, err := mfsParent.Sub(tt.path)
 				assertError(t, err, tt.wantErr)
 			})
+		}
+	})
+
+	t.Run("dot returns receiver", func(t *testing.T) {
+		same, err := mfsParent.Sub(".")
+		requireNoError(t, err)
+		if same != mfsParent {
+			t.Error(`Sub(".") should return the receiver unchanged`)
 		}
 	})
 }

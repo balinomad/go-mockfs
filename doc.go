@@ -54,11 +54,16 @@
 //	fsStats := mfs.Stats()
 //	fsStats.Count(mockfs.OpOpen)      // 1
 //
-//	// Type assert fs.File interface to concrete pointer for specific stats
-//	fileStats := file.(mockfs.MockFile).Stats()
+//	// Preferred: use OpenMockFile to obtain *MockFile directly.
+//	mockFile, _ := mfs.OpenMockFile("file.txt")
+//	fileStats := mockFile.Stats()
 //	fileStats.Count(mockfs.OpRead)    // 1
 //	fileStats.Count(mockfs.OpClose)   // 1
 //	fileStats.BytesRead()             // 7
+//
+//	// Alternative: type-assert the fs.File returned by Open.
+//	f, _ := mfs.Open("file.txt")
+//	fileStats = f.(*mockfs.MockFile).Stats()
 //
 // # Error Injection
 //
@@ -165,7 +170,8 @@
 //
 // # SubFS Support
 //
-// Full fs.SubFS implementation with automatic path adjustment for error rules:
+// Full fs.SubFS implementation with automatic path adjustment for error rules.
+// Passing "." returns the same MockFS (matching stdlib fs.Sub behaviour):
 //
 //	mfs := mockfs.NewMockFS(
 //	    mockfs.Dir("app",
