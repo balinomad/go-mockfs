@@ -321,7 +321,7 @@ func TestErrorRule_CloneForSub(t *testing.T) {
 
 		// verify the cloned rule has same properties by testing behavior
 		// first 5 calls should succeed
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			assertError(t, cloned.CheckAndApply(mockfs.OpWrite, "file.txt"), nil, fmt.Sprintf("call %d (before AfterN)", i+1))
 		}
 
@@ -773,7 +773,7 @@ func TestErrorInjector_EdgeCases(t *testing.T) {
 
 	t.Run("very long path", func(t *testing.T) {
 		longPath := ""
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			longPath += "very/long/path/segment/"
 		}
 		longPath += "file.txt"
@@ -855,11 +855,11 @@ func TestErrorInjector_Add_Concurrent(t *testing.T) {
 	inj := mockfs.NewErrorInjector()
 	var wg sync.WaitGroup
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			for j := 0; j < 100; j++ {
+			for range 100 {
 				inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 			}
 		}(i)
@@ -882,7 +882,7 @@ func TestErrorInjector_CheckAndApply_Concurrent(t *testing.T) {
 	var mu sync.Mutex
 
 	// concurrent checks
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -926,7 +926,7 @@ func TestErrorInjector_MixedOperations_Concurrent(t *testing.T) {
 		},
 	}
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		for _, op := range ops {
 			wg.Add(1)
 			go func(fn func()) {
@@ -948,7 +948,7 @@ func TestErrorInjector_ErrorModeOnce_Concurrent(t *testing.T) {
 	var mu sync.Mutex
 
 	// concurrent checks - only one should get the error
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -1039,7 +1039,7 @@ func TestErrorInjector_RealWorldScenarios(t *testing.T) {
 		// simulate network error after 3 successful reads
 		inj.AddExact(mockfs.OpRead, "remote/data.txt", mockfs.ErrTimeout, mockfs.ErrorModeAfterSuccesses, 3)
 
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			assertNoError(t, inj.CheckAndApply(mockfs.OpRead, "remote/data.txt"), fmt.Sprintf("call %d", i+1))
 		}
 		assertError(t, inj.CheckAndApply(mockfs.OpRead, "remote/data.txt"), mockfs.ErrTimeout, "call 4")
@@ -1096,7 +1096,7 @@ func BenchmarkErrorInjector_CheckAndApply_Match(b *testing.B) {
 
 func BenchmarkErrorInjector_CheckAndApply_MultipleRules(b *testing.B) {
 	inj := mockfs.NewErrorInjector()
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		inj.AddExact(mockfs.OpOpen, "other.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 	}
 	inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
@@ -1118,7 +1118,7 @@ func BenchmarkErrorInjector_CheckAndApply_WithWildcard(b *testing.B) {
 
 func BenchmarkErrorInjector_CloneForSub(b *testing.B) {
 	inj := mockfs.NewErrorInjector()
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 	}
 	b.ResetTimer()

@@ -800,7 +800,7 @@ func TestStats_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Concurrent writers
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -822,7 +822,7 @@ func TestStats_Concurrent(t *testing.T) {
 	}
 
 	// Concurrent readers (unchanged)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -840,7 +840,7 @@ func TestStatsRecorder_Set_Record_Concurrent(t *testing.T) {
 	s := mockfs.NewStatsRecorder(nil)
 	var wg sync.WaitGroup
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()

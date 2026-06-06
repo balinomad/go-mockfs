@@ -120,7 +120,7 @@ func TestAsyncTimeout(t *testing.T) {
     // Multiple concurrent operations should complete in ~500ms, not 1500ms
     start := time.Now()
     var wg sync.WaitGroup
-    for i := 0; i < 3; i++ {
+    for i := range 3 {
         wg.Add(1)
         go func() {
             defer wg.Done()
@@ -149,7 +149,7 @@ func TestConcurrentReads(t *testing.T) {
     var wg sync.WaitGroup
     errors := make(chan error, 10)
 
-    for i := 0; i < 10; i++ {
+    for range 10 {
         wg.Add(1)
         go func() {
             defer wg.Done()
@@ -190,7 +190,7 @@ func TestConcurrentWriteRace(t *testing.T) {
 
     // Deliberately create race condition
     var wg sync.WaitGroup
-    for i := 0; i < 5; i++ {
+    for i := range 5 {
         wg.Add(1)
         go func(n int) {
             defer wg.Done()

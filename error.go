@@ -84,6 +84,8 @@ type ErrorRule struct {
 //   - after - used only for ErrorModeAfterSuccesses and specifies the number of successful calls
 //     before the error is returned.
 //   - matchers - an optional list of path matchers. If not provided, the rule applies to all paths.
+//
+// Panics if after is negative: this is a programmer error, not a runtime condition.
 func NewErrorRule(err error, mode ErrorMode, after int, matchers ...PathMatcher) *ErrorRule {
 	return &ErrorRule{
 		Err:      err,
@@ -459,6 +461,8 @@ func (ei *errorInjector) CheckAndApply(op Operation, path string) error {
 }
 
 // mustAfter converts a public int 'after' to internal uint64 and panics on invalid input.
+//
+// Panics if after is negative: this is a programmer error, not a runtime condition.
 func mustAfter(after int) uint64 {
 	if after < 0 {
 		panic(fmt.Sprintf("mockfs: invalid after value %d — must be >= 0", after))

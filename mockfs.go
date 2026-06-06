@@ -256,6 +256,9 @@ var (
 // NewMockFS creates a new MockFS with the given MapFile data and options.
 // Nil MapFile entries in the initial map are ignored.
 // If no root directory (".") is provided, one is created automatically.
+//
+// Panics if any option returns an error (e.g. an invalid path passed to
+// File() or Dir()). These represent programmer errors in test setup code.
 func NewMockFS(opts ...MockFSOption) *MockFS {
 	// Ensure root directory exists
 	files := map[string]*fstest.MapFile{

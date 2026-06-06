@@ -19,21 +19,6 @@ const (
 	writeModeReadOnly                   // Write is not allowed.
 )
 
-// fileBackend is an interface for accessing the underlying file, stats, and error injector.
-type fileBackend interface {
-	// Stats returns a snapshot of operation statistics for this file handle.
-	// This includes only operations performed on this specific file handle
-	// (Read, Write, Close, Stat, ReadDir). It does NOT include filesystem-level
-	// operations. Use MockFS.Stats() to inspect filesystem-level operations.
-	Stats() Stats
-
-	// ErrorInjector returns the error injector for this file.
-	ErrorInjector() ErrorInjector
-
-	// LatencySimulator returns the latency simulator for this file.
-	LatencySimulator() LatencySimulator
-}
-
 // MockFile represents an open file. It implements the following interfaces:
 //   - fs.File
 //   - fs.ReadDirFile
@@ -65,7 +50,6 @@ var (
 	_ io.WriterAt    = (*MockFile)(nil)
 	_ io.Closer      = (*MockFile)(nil)
 	_ io.Seeker      = (*MockFile)(nil)
-	_ fileBackend    = (*MockFile)(nil)
 )
 
 // fileOptions holds the configurable state for a new MockFile.
@@ -163,6 +147,8 @@ func WithFileStats(stats StatsRecorder) MockFileOption {
 //   - latencySimulator: simulator for operation latency (may be nil for no latency).
 //   - readDirHandler: handler for ReadDir operations on directories (may be nil).
 //   - stats: operation stats recorder. If nil, a new one is created for this file handle.
+//
+// Panics if mapFile is nil: this is a programmer error, not a runtime condition.
 func newMockFile(
 	mapFile *fstest.MapFile,
 	name string,
@@ -202,6 +188,8 @@ func newMockFile(
 // This is the primary constructor if you already have a *fstest.MapFile.
 // For typical usage, prefer NewMockFileFromString or NewMockFileFromBytes.
 // By default, the file is writable in overwrite mode.
+//
+// Panics if mapFile is nil: this is a programmer error, not a runtime condition.
 func NewMockFile(mapFile *fstest.MapFile, name string, opts ...MockFileOption) *MockFile {
 	if mapFile == nil {
 		panic("mockfs: mapFile cannot be nil")

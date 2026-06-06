@@ -55,7 +55,8 @@ type latencySimulator struct {
 
 // NewLatencySimulator returns a LatencySimulator with a global duration for all operations.
 // If duration is 0, no latency is simulated.
-// Panics if duration is negative.
+//
+// Panics if duration is negative: this is a programmer error, not a runtime condition.
 func NewLatencySimulator(duration time.Duration) LatencySimulator {
 	if duration < 0 {
 		panic(fmt.Sprintf("mockfs: negative duration not allowed: %v", duration))
@@ -70,7 +71,8 @@ func NewLatencySimulator(duration time.Duration) LatencySimulator {
 // NewLatencySimulatorPerOp creates a simulator that uses per-operation durations.
 // If an operation is missing from the map, it falls back to OpUnknown's duration,
 // then to zero (no sleep) if OpUnknown is also not specified.
-// Panics if any duration is negative.
+//
+// Panics if any duration is negative: this is a programmer error, not a runtime condition.
 func NewLatencySimulatorPerOp(durations map[Operation]time.Duration) LatencySimulator {
 	ls := &latencySimulator{}
 	for op, dur := range durations {

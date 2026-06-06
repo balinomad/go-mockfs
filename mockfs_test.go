@@ -1436,7 +1436,7 @@ func TestMockFS_ErrorInjection(t *testing.T) {
 		defer file.Close()
 
 		buf := make([]byte, 4)
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			_, err = file.Read(buf)
 			requireNoError(t, err, fmt.Sprintf("read %d", i+1))
 		}
@@ -1456,7 +1456,7 @@ func TestMockFS_ErrorInjection(t *testing.T) {
 		file, _ := mfs.Open("flaky.txt")
 		buf := make([]byte, 1)
 
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			_, err := file.Read(buf)
 			assertError(t, err, io.EOF, fmt.Sprintf("read %d", i+1))
 		}
@@ -1621,7 +1621,7 @@ func TestMockFS_ErrorInjection_Next(t *testing.T) {
 	buf := make([]byte, 1)
 
 	// First 3 reads fail
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_, err := f.Read(buf)
 		if err != io.EOF {
 			t.Errorf("read %d: expected EOF, got %v", i+1, err)
@@ -1773,7 +1773,7 @@ func TestMockFS_Read_Write_Concurrent(t *testing.T) {
 	numGoroutines := 50
 
 	// Pre-create files to avoid ErrNotExist
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		path := fmt.Sprintf("file-%d.txt", i)
 		if err := mfs.AddFile(path, "", 0o644); err != nil {
 			t.Fatalf("setup failed: %v", err)
@@ -1781,7 +1781,7 @@ func TestMockFS_Read_Write_Concurrent(t *testing.T) {
 	}
 
 	// Mix of reads, writes, and stats
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -1829,7 +1829,7 @@ func TestMockFS_Remove_Rename_Concurrent(t *testing.T) {
 	numGoroutines := 20
 
 	// Pre-populate with directories
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		_ = mfs.AddDir(path.Join("dir", fmt.Sprintf("sub-%d", i)), 0o755)
 	}
 	_ = mfs.AddDir("other_dir", 0o755)
@@ -1853,7 +1853,7 @@ func TestMockFS_Remove_Rename_Concurrent(t *testing.T) {
 	}()
 
 	// Other goroutines: Remove subdirectories
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()

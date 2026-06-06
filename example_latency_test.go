@@ -83,7 +83,7 @@ func ExampleLatencySimulator_Simulate_async() {
 
 	// Async mode: both operations can run concurrently
 	done := make(chan bool, 2)
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		go func() {
 			sim.Simulate(mockfs.OpRead, mockfs.Async())
 			done <- true

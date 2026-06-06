@@ -1,82 +1,83 @@
-# `mockfs` *v1* to *v2* Migration Guide
+# `mockfs` _v1_ to _v2_ Migration Guide
 
 ## Table of Contents
 
-- [`mockfs` *v1* to *v2* Migration Guide](#mockfs-v1-to-v2-migration-guide)
-    - [Table of Contents](#table-of-contents)
-    - [Overview](#overview)
-        - [What Changed](#what-changed)
-        - [Key Improvements](#key-improvements)
-    - [Architectural Changes](#architectural-changes)
-        - [File Storage](#file-storage)
-        - [MockFile Implementation](#mockfile-implementation)
-        - [Statistics Architecture](#statistics-architecture)
-        - [Error Injection Architecture](#error-injection-architecture)
-        - [Latency Simulation](#latency-simulation)
-        - [WritableFS Interface](#writablefs-interface)
-        - [SubFS Support](#subfs-support)
-    - [Breaking Changes Summary](#breaking-changes-summary)
-        - [Removed Methods](#removed-methods)
-        - [Type Changes](#type-changes)
-        - [Behavior Changes](#behavior-changes)
-        - [New Required Steps](#new-required-steps)
-        - [Convenience Methods](#convenience-methods)
-    - [Step-by-Step Migration](#step-by-step-migration)
-        - [Creating a Mock Filesystem](#creating-a-mock-filesystem)
-        - [Adding Files](#adding-files)
-        - [Adding Directories](#adding-directories)
-        - [Removing Paths](#removing-paths)
-        - [Error Injection - Simple Cases](#error-injection---simple-cases)
-        - [Error Injection - Pattern Matching](#error-injection---pattern-matching)
-        - [Error Injection - One-Time Errors](#error-injection---one-time-errors)
-        - [Error Injection - After N Successes](#error-injection---after-n-successes)
-        - [Error Injection - All Operations on a Path](#error-injection---all-operations-on-a-path)
-        - [Marking Paths as Non-Existent](#marking-paths-as-non-existent)
-        - [Clearing Errors](#clearing-errors)
-        - [Statistics - Reading](#statistics---reading)
-        - [Statistics - Reset](#statistics---reset)
-        - [Write Operations - Basic](#write-operations---basic)
-        - [Write Operations - Advanced](#write-operations---advanced)
-        - [Latency - Per-Operation](#latency---per-operation)
-        - [Using Standalone MockFile](#using-standalone-mockfile)
-        - [File Statistics](#file-statistics)
-    - [5. New Features](#5-new-features)
-        - [Glob Pattern Matching](#glob-pattern-matching)
-        - [Wildcard Matcher](#wildcard-matcher)
-        - [Latency Simulation Options](#latency-simulation-options)
-        - [Stats Interface Methods](#stats-interface-methods)
-        - [WritableFS Interface](#writablefs-interface-1)
-        - [Shared Error Injector](#shared-error-injector)
-        - [Standalone MockFile Constructors](#standalone-mockfile-constructors)
-        - [SubFS Support](#subfs-support-1)
-    - [Common Migration Patterns](#common-migration-patterns)
-        - [Pattern 1: Testing Read Errors](#pattern-1-testing-read-errors)
-        - [Pattern 2: Testing with Latency](#pattern-2-testing-with-latency)
-        - [Pattern 3: Testing Statistics](#pattern-3-testing-statistics)
-        - [Pattern 4: Testing File Operations Independently](#pattern-4-testing-file-operations-independently)
-        - [Pattern 5: Advanced Error Scenarios](#pattern-5-advanced-error-scenarios)
-        - [Pattern 6: Testing with Glob Patterns (New in *v2*)](#pattern-6-testing-with-glob-patterns-new-in-v2)
-        - [Pattern 7: Testing SubFS (New in *v2*)](#pattern-7-testing-subfs-new-in-v2)
-    - [Migration Checklist](#migration-checklist)
-        - [Semantic Import Versioning](#semantic-import-versioning)
-        - [Core API Changes](#core-api-changes)
-        - [File and Directory Management](#file-and-directory-management)
-        - [Error Injection - Convenience Methods](#error-injection---convenience-methods)
-        - [Error Injection - Advanced](#error-injection---advanced)
-        - [Write Operations](#write-operations)
-        - [Operation Constants](#operation-constants)
-        - [New Features to Consider](#new-features-to-consider)
-        - [Testing and Validation](#testing-and-validation)
-        - [Documentation](#documentation)
-    - [Getting Help](#getting-help)
+- [`mockfs` _v1_ to _v2_ Migration Guide](#mockfs-v1-to-v2-migration-guide)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+    - [What Changed](#what-changed)
+    - [Key Improvements](#key-improvements)
+  - [Architectural Changes](#architectural-changes)
+    - [File Storage](#file-storage)
+    - [MockFile Implementation](#mockfile-implementation)
+    - [Statistics Architecture](#statistics-architecture)
+    - [Error Injection Architecture](#error-injection-architecture)
+    - [Latency Simulation](#latency-simulation)
+    - [WritableFS Interface](#writablefs-interface)
+    - [SubFS Support](#subfs-support)
+  - [Breaking Changes Summary](#breaking-changes-summary)
+    - [Removed Methods](#removed-methods)
+    - [Type Changes](#type-changes)
+    - [Behavior Changes](#behavior-changes)
+    - [New Required Steps](#new-required-steps)
+    - [Convenience Methods](#convenience-methods)
+  - [Step-by-Step Migration](#step-by-step-migration)
+    - [Creating a Mock Filesystem](#creating-a-mock-filesystem)
+    - [Adding Files](#adding-files)
+    - [Adding Directories](#adding-directories)
+    - [Removing Paths](#removing-paths)
+    - [Error Injection - Simple Cases](#error-injection---simple-cases)
+    - [Error Injection - Pattern Matching](#error-injection---pattern-matching)
+    - [Error Injection - One-Time Errors](#error-injection---one-time-errors)
+    - [Error Injection - After N Successes](#error-injection---after-n-successes)
+    - [Error Injection - All Operations on a Path](#error-injection---all-operations-on-a-path)
+    - [Marking Paths as Non-Existent](#marking-paths-as-non-existent)
+    - [Clearing Errors](#clearing-errors)
+    - [Statistics - Reading](#statistics---reading)
+    - [Statistics - Reset](#statistics---reset)
+    - [Write Operations - Basic](#write-operations---basic)
+    - [Write Operations - Advanced](#write-operations---advanced)
+    - [Latency - Per-Operation](#latency---per-operation)
+    - [Using Standalone MockFile](#using-standalone-mockfile)
+    - [File Statistics](#file-statistics)
+  - [5. New Features](#5-new-features)
+    - [Glob Pattern Matching](#glob-pattern-matching)
+    - [Wildcard Matcher](#wildcard-matcher)
+    - [Latency Simulation Options](#latency-simulation-options)
+    - [Stats Interface Methods](#stats-interface-methods)
+    - [WritableFS Interface](#writablefs-interface-1)
+    - [Shared Error Injector](#shared-error-injector)
+    - [Standalone MockFile Constructors](#standalone-mockfile-constructors)
+    - [SubFS Support](#subfs-support-1)
+  - [Common Migration Patterns](#common-migration-patterns)
+    - [Pattern 1: Testing Read Errors](#pattern-1-testing-read-errors)
+    - [Pattern 2: Testing with Latency](#pattern-2-testing-with-latency)
+    - [Pattern 3: Testing Statistics](#pattern-3-testing-statistics)
+    - [Pattern 4: Testing File Operations Independently](#pattern-4-testing-file-operations-independently)
+    - [Pattern 5: Advanced Error Scenarios](#pattern-5-advanced-error-scenarios)
+    - [Pattern 6: Testing with Glob Patterns (New in _v2_)](#pattern-6-testing-with-glob-patterns-new-in-v2)
+    - [Pattern 7: Testing SubFS (New in _v2_)](#pattern-7-testing-subfs-new-in-v2)
+  - [Migration Checklist](#migration-checklist)
+    - [Semantic Import Versioning](#semantic-import-versioning)
+    - [Core API Changes](#core-api-changes)
+    - [File and Directory Management](#file-and-directory-management)
+    - [Error Injection - Convenience Methods](#error-injection---convenience-methods)
+    - [Error Injection - Advanced](#error-injection---advanced)
+    - [Write Operations](#write-operations)
+    - [Operation Constants](#operation-constants)
+    - [New Features to Consider](#new-features-to-consider)
+    - [Testing and Validation](#testing-and-validation)
+    - [Documentation](#documentation)
+  - [Getting Help](#getting-help)
 
 ## Overview
 
-*Version 2.0.0* represents a major architectural redesign of the `mockfs` library focused on improved API ergonomics, enhanced testability, and more flexible configuration patterns.
+_Version 2.0.0_ represents a major architectural redesign of the `mockfs` library focused on improved API ergonomics, enhanced testability, and more flexible configuration patterns.
 
 ### What Changed
 
-***v1* Architecture:**
+**_v1_ Architecture:**
+
 - Monolithic design with tight coupling
 - Wrapped `fstest.MapFS` directly as embedded field
 - `MockFile` was a thin wrapper around `fs.File` with reference back to parent `MockFS`
@@ -87,7 +88,8 @@
 - Latency simulation: global or per-operation via `map[Operation]time.Duration`
 - Limited `fs.SubFS` support
 
-***v2* Architecture:**
+**_v2_ Architecture:**
+
 - Uses `MapFile` for file storage (not embedded `fstest.MapFS`)
 - `MockFile` is a full implementation managing its own state, data, and position
 - Error injection via `ErrorRule` with `PathMatcher` interface hierarchy (Exact/Glob/Regexp/Wildcard matchers)
@@ -111,6 +113,7 @@
 ### File Storage
 
 **v1**
+
 ```go
 type MockFS struct {
     fsys fstest.MapFS  // Embedded
@@ -119,6 +122,7 @@ type MockFS struct {
 ```
 
 **v2**
+
 ```go
 type MockFS struct {
     files map[string]*fstest.MapFile  // Direct map ownership
@@ -126,11 +130,12 @@ type MockFS struct {
 }
 ```
 
-**Impact:** *v2* has full control over file lifecycle and modification. The underlying `fstest.MapFS` is no longer exposed.
+**Impact:** _v2_ has full control over file lifecycle and modification. The underlying `fstest.MapFS` is no longer exposed.
 
 ### MockFile Implementation
 
 **v1**
+
 ```go
 type MockFile struct {
     file   fs.File    // Wrapped underlying file
@@ -142,6 +147,7 @@ type MockFile struct {
 ```
 
 **v2**
+
 ```go
 type MockFile struct {
     mapFile        *fstest.MapFile   // Direct data ownership
@@ -158,7 +164,8 @@ type MockFile struct {
 ```
 
 **Impact:**
-- *v2* `MockFile` is a complete file implementation, not a wrapper
+
+- _v2_ `MockFile` is a complete file implementation, not a wrapper
 - Each file handle has independent latency and stats tracking
 - File position and write modes managed internally
 - Typically used as `*MockFile` to satisfy `fs.File`
@@ -166,6 +173,7 @@ type MockFile struct {
 ### Statistics Architecture
 
 **v1**: Single `Stats` struct with public fields
+
 ```go
 type Stats struct {
     StatCalls    int
@@ -184,6 +192,7 @@ func (m *MockFS) GetStats() Stats {
 ```
 
 **v2**: `Stats` and `StatsRecorder` interfaces, split by scope
+
 ```go
 // Read-only interface
 type Stats interface {
@@ -216,7 +225,8 @@ func (m *MockFS) Stats() Stats {
 ```
 
 **Impact:**
-- *v2* stats are immutable snapshots, enabling safe concurrent reads
+
+- _v2_ stats are immutable snapshots, enabling safe concurrent reads
 - Success/failure tracking added
 - Byte counters added for Read/Write operations
 - Stats comparison via `Delta()` and `Equal()`
@@ -225,6 +235,7 @@ func (m *MockFS) Stats() Stats {
 ### Error Injection Architecture
 
 **v1**
+
 ```go
 type ErrorConfig struct {
     Error    error
@@ -242,6 +253,7 @@ func (m *MockFS) AddErrorPattern(op Operation, pattern string, err error, mode E
 ```
 
 **v2**
+
 ```go
 // Path matching abstraction
 type PathMatcher interface {
@@ -277,7 +289,8 @@ type ErrorInjector interface {
 ```
 
 **Impact:**
-- *v2* uses `PathMatcher` interface hierarchy (Exact/Glob/Regexp/Wildcard)
+
+- _v2_ uses `PathMatcher` interface hierarchy (Exact/Glob/Regexp/Wildcard)
 - Glob patterns via `path.Match` semantics (e.g., `"dir/*.txt"`)
 - Cross-operation helpers (`AddExactForAllOps`, `AddGlobForAllOps`, etc.)
 - `CloneForSub()` enables automatic rule adjustment for sub-filesystems
@@ -286,6 +299,7 @@ type ErrorInjector interface {
 ### Latency Simulation
 
 **v1**: Simple duration, serialized by default
+
 ```go
 type MockFS struct {
     latency time.Duration  // Single global duration
@@ -296,6 +310,7 @@ func WithLatency(d time.Duration) Option
 ```
 
 **v2**: `LatencySimulator` interface with advanced control
+
 ```go
 type LatencySimulator interface {
     Simulate(op Operation, opts ...SimOpt)
@@ -313,7 +328,8 @@ func OnceAsync() SimOpt  // Both Once and Async
 ```
 
 **Impact:**
-- *v2* latency is per-file-handle with independent `Once()` state
+
+- _v2_ latency is per-file-handle with independent `Once()` state
 - `Async()` mode enables non-serialized I/O simulation
 - `Clone()` gives each file handle independent tracking while preserving duration config
 - `Reset()` clears `Once()` state (automatically called on file close)
@@ -323,6 +339,7 @@ func OnceAsync() SimOpt  // Both Once and Async
 **v1**: Write support via `WithWritesEnabled()` option and callback pattern.
 
 **v2**
+
 ```go
 type WritableFS interface {
     fs.FS
@@ -336,7 +353,8 @@ type WritableFS interface {
 ```
 
 **Impact:**
-- *v2* provides full write operations as first-class methods
+
+- _v2_ provides full write operations as first-class methods
 - Proper directory hierarchy management with `MkdirAll`
 - `Rename` supports moving directories with all children
 - Write modes: append, overwrite, or read-only via options
@@ -346,6 +364,7 @@ type WritableFS interface {
 **v1**: `Sub()` implementation present but limited path adjustment logic.
 
 **v2**: Full `fs.SubFS` support with:
+
 - Automatic path adjustment for error rules via `PathMatcher.CloneForSub()`
 - Independent stats for sub-filesystems
 - Shared error injector with adjusted matchers
@@ -357,34 +376,34 @@ type WritableFS interface {
 
 These methods were removed from `MockFS`:
 
-| *v1* | *v2* | Migration |
-|------|------|-----------|
+| _v1_                                           | _v2_                                              | Migration                                                      |
+| ---------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------- |
 | `NewMockFS(data map[string]*MapFile, opts...)` | `NewMockFS(initial map[string]*MapFile, opts...)` | Parameter renamed from `data` to `initial`; behavior unchanged |
-| `WithWritesEnabled()` | `WithOverwrite()` / `WithAppend()` | Use explicit write mode option |
-| `WithWriteCallback(func)` | N/A | Use `WritableFS` methods directly |
-| `GetStats()` | `Stats()` | Rename only |
-| `AddError(op, *ErrorConfig)` | `ErrorInjector().Add(op, *ErrorRule)` | Use `ErrorInjector()` accessor |
-| `AddErrorExactMatch(...)` | `ErrorInjector().AddExact(...)` | Use `ErrorInjector()` accessor |
-| `AddErrorPattern(...)` | `ErrorInjector().AddRegexp(...)` | Use `ErrorInjector()` accessor |
-| `AddPathError(...)` | `ErrorInjector().AddExactForAllOps(...)` | Use cross-op helper |
-| `AddPathErrorPattern(...)` | `ErrorInjector().AddRegexpForAllOps(...)` | Use cross-op helper |
+| `WithWritesEnabled()`                          | `WithOverwrite()` / `WithAppend()`                | Use explicit write mode option                                 |
+| `WithWriteCallback(func)`                      | N/A                                               | Use `WritableFS` methods directly                              |
+| `GetStats()`                                   | `Stats()`                                         | Rename only                                                    |
+| `AddError(op, *ErrorConfig)`                   | `ErrorInjector().Add(op, *ErrorRule)`             | Use `ErrorInjector()` accessor                                 |
+| `AddErrorExactMatch(...)`                      | `ErrorInjector().AddExact(...)`                   | Use `ErrorInjector()` accessor                                 |
+| `AddErrorPattern(...)`                         | `ErrorInjector().AddRegexp(...)`                  | Use `ErrorInjector()` accessor                                 |
+| `AddPathError(...)`                            | `ErrorInjector().AddExactForAllOps(...)`          | Use cross-op helper                                            |
+| `AddPathErrorPattern(...)`                     | `ErrorInjector().AddRegexpForAllOps(...)`         | Use cross-op helper                                            |
 
 ### Type Changes
 
-| Type | *v1* | *v2* | Impact |
-|------|------|------|--------|
-| `Stats` | Struct with exported fields | Interface with methods | Cannot access fields directly; use methods |
-| `MockFile` | Struct with exported `file fs.File` field | Concrete struct (`*MockFile`), full implementation | Cannot access underlying file; use `MockFile` methods |
+| Type        | _v1_                                                              | _v2_                                                                                                                    | Impact                                                       |
+| ----------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `Stats`     | Struct with exported fields                                       | Interface with methods                                                                                                  | Cannot access fields directly; use methods                   |
+| `MockFile`  | Struct with exported `file fs.File` field                         | Concrete struct (`*MockFile`), full implementation                                                                      | Cannot access underlying file; use `MockFile` methods        |
 | `Operation` | Constants `OpStat=0, OpOpen, OpRead, OpWrite, OpReadDir, OpClose` | Constants `OpStat=1, OpOpen, OpRead, OpWrite, OpClose, OpReadDir, OpMkdir, OpMkdirAll, OpRemove, OpRemoveAll, OpRename` | `OpReadDir` moved; new operations added; `OpUnknown=0` added |
 
 ### Behavior Changes
 
-- **Stats mutation**: *v1* `GetStats()` returned mutable copy; *v2* `Stats()` returns immutable snapshot
-- **File handle independence**: *v2* each file has independent latency/stats; *v1* shared global latency
-- **Error injection scope**: *v2* distinguishes filesystem-level ops from file-handle ops
-- **Path cleaning**: *v2* consistently uses `path.Clean()` for all paths; *v1* used `filepath.Clean()`
-- **Operation tracking**: *v2* tracks success/failure separately; *v1* tracked calls only
-- **Byte tracking**: *v2* tracks `BytesRead()`/`BytesWritten()`; *v1* had no byte counters
+- **Stats mutation**: _v1_ `GetStats()` returned mutable copy; _v2_ `Stats()` returns immutable snapshot
+- **File handle independence**: _v2_ each file has independent latency/stats; _v1_ shared global latency
+- **Error injection scope**: _v2_ distinguishes filesystem-level ops from file-handle ops
+- **Path cleaning**: _v2_ consistently uses `path.Clean()` for all paths; _v1_ used `filepath.Clean()`
+- **Operation tracking**: _v2_ tracks success/failure separately; _v1_ tracked calls only
+- **Byte tracking**: _v2_ tracks `BytesRead()`/`BytesWritten()`; _v1_ had no byte counters
 
 ### New Required Steps
 
@@ -395,39 +414,40 @@ These methods were removed from `MockFS`:
 
 ### Convenience Methods
 
-*v2* provides convenience methods directly on `MockFS` that wrap `ErrorInjector()` calls. These replace *v1*'s `Add*Error` methods while retaining the same behavior.
+_v2_ provides convenience methods directly on `MockFS` that wrap `ErrorInjector()` calls. These replace _v1_'s `Add*Error` methods while retaining the same behavior.
 
-| *v1* Method | *v2* Equivalent |
-|-------------|-----------------|
-| `AddStatError(path, err)` | `FailStat(path, err)` |
-| `AddOpenError(path, err)` | `FailOpen(path, err)` |
-| `AddReadError(path, err)` | `FailRead(path, err)` |
-| `AddWriteError(path, err)` | `FailWrite(path, err)` |
-| `AddReadDirError(path, err)` | `FailReadDir(path, err)` |
-| `AddCloseError(path, err)` | `FailClose(path, err)` |
-| `AddOpenErrorOnce(path, err)` | `FailOpenOnce(path, err)` |
+| _v1_ Method                        | _v2_ Equivalent               |
+| ---------------------------------- | ----------------------------- |
+| `AddStatError(path, err)`          | `FailStat(path, err)`         |
+| `AddOpenError(path, err)`          | `FailOpen(path, err)`         |
+| `AddReadError(path, err)`          | `FailRead(path, err)`         |
+| `AddWriteError(path, err)`         | `FailWrite(path, err)`        |
+| `AddReadDirError(path, err)`       | `FailReadDir(path, err)`      |
+| `AddCloseError(path, err)`         | `FailClose(path, err)`        |
+| `AddOpenErrorOnce(path, err)`      | `FailOpenOnce(path, err)`     |
 | `AddReadErrorAfterN(path, err, n)` | `FailReadAfter(path, err, n)` |
 
-New convenience methods in *v2* include:
+New convenience methods in _v2_ include:
 
-| *v2* Method | Description |
-|-------------|-------------|
-| `FailStatOnce(path, err)` | Stat fails once |
-| `FailReadOnce(path, err)` | Read fails once |
-| `FailWriteOnce(path, err)` | Write fails once |
-| `FailReadDirOnce(path, err)` | ReadDir fails once |
-| `FailCloseOnce(path, err)` | Close fails once |
-| `FailMkdir(path, err)` / `FailMkdirOnce(path, err)` | Mkdir errors |
-| `FailMkdirAll(path, err)` / `FailMkdirAllOnce(path, err)` | MkdirAll errors |
-| `FailRemove(path, err)` / `FailRemoveOnce(path, err)` | Remove errors |
-| `FailRemoveAll(path, err)` / `FailRemoveAllOnce(path, err)` | RemoveAll errors |
-| `FailRename(path, err)` / `FailRenameOnce(path, err)` | Rename errors |
+| _v2_ Method                                                 | Description        |
+| ----------------------------------------------------------- | ------------------ |
+| `FailStatOnce(path, err)`                                   | Stat fails once    |
+| `FailReadOnce(path, err)`                                   | Read fails once    |
+| `FailWriteOnce(path, err)`                                  | Write fails once   |
+| `FailReadDirOnce(path, err)`                                | ReadDir fails once |
+| `FailCloseOnce(path, err)`                                  | Close fails once   |
+| `FailMkdir(path, err)` / `FailMkdirOnce(path, err)`         | Mkdir errors       |
+| `FailMkdirAll(path, err)` / `FailMkdirAllOnce(path, err)`   | MkdirAll errors    |
+| `FailRemove(path, err)` / `FailRemoveOnce(path, err)`       | Remove errors      |
+| `FailRemoveAll(path, err)` / `FailRemoveAllOnce(path, err)` | RemoveAll errors   |
+| `FailRename(path, err)` / `FailRenameOnce(path, err)`       | Rename errors      |
 
 ## Step-by-Step Migration
 
 ### Creating a Mock Filesystem
 
 **Before (v1)**:
+
 ```go
 mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
     mockfs.File("file.txt": {Data: []byte("content"), Mode: 0o644, ModTime: time.Now()},
@@ -436,6 +456,7 @@ mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
 ```
 
 **After (v2)**:
+
 ```go
 mfs := mockfs.NewMockFS(
     mockfs.File("file.txt", "content"),
@@ -449,12 +470,14 @@ mfs := mockfs.NewMockFS(
 ### Adding Files
 
 **Before (v1)**:
+
 ```go
 mfs.AddFileString("config.json", `{"key": "value"}`, 0o644)
 mfs.AddFileBytes("data.bin", []byte{0x00, 0x01}, 0o644)
 ```
 
 **After (v2)**:
+
 ```go
 // AddFileString renamed to AddFile, now returns error
 err := mfs.AddFile("config.json", `{"key": "value"}`, 0o644)
@@ -466,11 +489,13 @@ err = mfs.AddFileBytes("data.bin", []byte{0x00, 0x01}, 0o644)
 ### Adding Directories
 
 **Before (v1)**:
+
 ```go
 mfs.AddDirectory("logs", 0o755)
 ```
 
 **After (v2)**:
+
 ```go
 // Renamed method, now returns error
 err := mfs.AddDir("logs", 0o755)
@@ -479,11 +504,13 @@ err := mfs.AddDir("logs", 0o755)
 ### Removing Paths
 
 **Before (v1)**:
+
 ```go
 mfs.RemovePath("temp.txt")
 ```
 
 **After (v2)**:
+
 ```go
 // Renamed method, now returns error
 err := mfs.RemoveEntry("temp.txt")
@@ -492,6 +519,7 @@ err := mfs.RemoveEntry("temp.txt")
 ### Error Injection - Simple Cases
 
 **Before (v1)**:
+
 ```go
 mfs.AddStatError("config.json", mockfs.ErrPermission)
 mfs.AddOpenError("secret.txt", mockfs.ErrNotExist)
@@ -499,6 +527,7 @@ mfs.AddReadError("data.txt", mockfs.ErrUnexpectedEOF)
 ```
 
 **After (v2)**:
+
 ```go
 // Use renamed convenience methods
 mfs.FailStat("config.json", mockfs.ErrPermission)
@@ -509,12 +538,14 @@ mfs.FailRead("data.txt", mockfs.ErrUnexpectedEOF)
 ### Error Injection - Pattern Matching
 
 **Before (v1)**:
+
 ```go
 // Regex pattern
 err := mfs.AddErrorPattern(mockfs.OpRead, `\.log$`, mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
 ```
 
 **After (v2)**:
+
 ```go
 // Access ErrorInjector interface for regex
 err := mfs.ErrorInjector().AddRegexp(mockfs.OpRead, `\.log$`, mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
@@ -526,11 +557,13 @@ err = mfs.ErrorInjector().AddGlob(mockfs.OpRead, "*.log", mockfs.ErrCorrupted, m
 ### Error Injection - One-Time Errors
 
 **Before (v1)**:
+
 ```go
 mfs.AddOpenErrorOnce("data.db", mockfs.ErrTimeout)
 ```
 
 **After (v2)**:
+
 ```go
 // Use renamed convenience method
 mfs.FailOpenOnce("data.db", mockfs.ErrTimeout)
@@ -542,11 +575,13 @@ mfs.ErrorInjector().AddExact(mockfs.OpOpen, "data.db", mockfs.ErrTimeout, mockfs
 ### Error Injection - After N Successes
 
 **Before (v1)**:
+
 ```go
 mfs.AddReadErrorAfterN("large.bin", io.EOF, 3)
 ```
 
 **After (v2)**:
+
 ```go
 // Use renamed convenience method
 mfs.FailReadAfter("large.bin", io.EOF, 3)
@@ -558,11 +593,13 @@ mfs.ErrorInjector().AddExact(mockfs.OpRead, "large.bin", io.EOF, mockfs.ErrorMod
 ### Error Injection - All Operations on a Path
 
 **Before (v1)**:
+
 ```go
 mfs.AddPathError("unstable.dat", mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
 ```
 
 **After (v2)**:
+
 ```go
 // Via ErrorInjector
 mfs.ErrorInjector().AddExactForAllOps("unstable.dat", mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
@@ -571,12 +608,14 @@ mfs.ErrorInjector().AddExactForAllOps("unstable.dat", mockfs.ErrCorrupted, mockf
 ### Marking Paths as Non-Existent
 
 **Before (v1)**:
+
 ```go
 mfs.MarkNonExistent("missing.txt", "old.json")
 mfs.MarkDirectoryNonExistent("temp")
 ```
 
 **After (v2)**:
+
 ```go
 // MarkNonExistent still exists (same API)
 mfs.MarkNonExistent("missing.txt", "old.json")
@@ -591,11 +630,13 @@ mfs.ErrorInjector().AddRegexp(mockfs.OpOpen, `^temp/`, mockfs.ErrNotExist, mockf
 ### Clearing Errors
 
 **Before (v1)**:
+
 ```go
 mfs.ClearErrors()
 ```
 
 **After (v2)**:
+
 ```go
 mfs.ClearErrors() // Same API
 ```
@@ -605,6 +646,7 @@ mfs.ClearErrors() // Same API
 ### Statistics - Reading
 
 **Before (v1)**:
+
 ```go
 // All operations tracked in MockFS stats
 stats := mfs.GetStats()
@@ -620,6 +662,7 @@ if stats.StatCalls != 0 {
 ```
 
 **After (v2)**:
+
 ```go
 // Stats split: MockFS tracks filesystem ops, MockFile tracks file-handle ops
 // Stats is now an interface with methods
@@ -657,11 +700,13 @@ bytesRead := fileStats.BytesRead()
 ### Statistics - Reset
 
 **Before (v1)**:
+
 ```go
 mfs.ResetStats()
 ```
 
 **After (v2)**:
+
 ```go
 mfs.ResetStats() // Same API
 ```
@@ -671,6 +716,7 @@ mfs.ResetStats() // Same API
 ### Write Operations - Basic
 
 **Before (v1)**:
+
 ```go
 // Via WriteCallback
 callback := func(path string, data []byte) error {
@@ -688,6 +734,7 @@ n, err := file.(io.Writer).Write([]byte("data"))
 ```
 
 **After (v2)**:
+
 ```go
 // Use WriteFile method (part of WritableFS interface)
 mfs := mockfs.NewMockFS(mockfs.WithCreateIfMissing(true))
@@ -706,6 +753,7 @@ n, err := file.(io.Writer).Write([]byte("data"))
 ### Write Operations - Advanced
 
 **Before (v1)**:
+
 ```go
 // Directory operations via manual map manipulation
 mfs := mockfs.NewMockFS(nil)
@@ -719,6 +767,7 @@ mfs.RemovePath("file.txt")
 ```
 
 **After (v2)**:
+
 ```go
 // Full WritableFS interface
 mfs := mockfs.NewMockFS()
@@ -733,12 +782,14 @@ err = mfs.WriteFile("file.txt", data, 0o644)
 ### Latency - Per-Operation
 
 **Before (v1)**:
+
 ```go
 // Only uniform latency supported
 mfs := mockfs.NewMockFS(mockfs.WithLatency(100*time.Millisecond))
 ```
 
 **After (v2)**:
+
 ```go
 // Per-operation latency configuration
 mfs := mockfs.NewMockFS(mockfs.WithPerOperationLatency(map[mockfs.Operation]time.Duration{
@@ -751,6 +802,7 @@ mfs := mockfs.NewMockFS(mockfs.WithPerOperationLatency(map[mockfs.Operation]time
 ### Using Standalone MockFile
 
 **Before (v1)**:
+
 ```go
 // MockFile requires MockFS context - no standalone constructor
 // Must create via MockFS.Open()
@@ -765,6 +817,7 @@ err := ProcessFile(file)
 ```
 
 **After (v2)**:
+
 ```go
 // Create standalone file for testing functions that accept io.ReadWriter
 file := mockfs.NewMockFileFromString("test.txt", "content")
@@ -783,6 +836,7 @@ err := ProcessFile(file)
 ### File Statistics
 
 **Before (v1)**:
+
 ```go
 // All operations counted in MockFS stats (including file-handle operations)
 mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
@@ -800,6 +854,7 @@ stats := mfs.GetStats()
 ```
 
 **After (v2)**:
+
 ```go
 // File statistics are separate from filesystem statistics
 mfs := mockfs.NewMockFS(mockfs.File("file.txt", "content"))
@@ -824,7 +879,8 @@ fileStats.BytesRead()           // Number of bytes read
 
 ### Glob Pattern Matching
 
-*v1* only supported regex patterns. *v2* adds glob pattern matching using `path.Match` semantics.
+_v1_ only supported regex patterns. _v2_ adds glob pattern matching using `path.Match` semantics.
+
 ```go
 // Match all .txt files
 mfs.ErrorInjector().AddGlob(mockfs.OpRead, "*.txt", io.EOF, mockfs.ErrorModeAlways, 0)
@@ -838,7 +894,8 @@ mfs.ErrorInjector().AddGlobForAllOps("temp/*", mockfs.ErrNotExist, mockfs.ErrorM
 
 ### Wildcard Matcher
 
-*v2* introduces `WildcardMatcher` to match all paths without specifying patterns.
+_v2_ introduces `WildcardMatcher` to match all paths without specifying patterns.
+
 ```go
 // Apply error to all paths for a specific operation
 mfs.ErrorInjector().AddAll(mockfs.OpWrite, mockfs.ErrDiskFull, mockfs.ErrorModeAlways, 0)
@@ -853,7 +910,8 @@ mfs.ErrorInjector().Add(mockfs.OpRead, rule)
 
 ### Latency Simulation Options
 
-*v1* had basic latency simulation with global duration only. *v2* adds advanced control with simulation options.
+_v1_ had basic latency simulation with global duration only. _v2_ adds advanced control with simulation options.
+
 ```go
 // Create a simulator
 sim := mockfs.NewLatencySimulator(50 * time.Millisecond)
@@ -885,7 +943,8 @@ mfs = mockfs.NewMockFS(mockfs.WithPerOperationLatency(map[mockfs.Operation]time.
 
 ### Stats Interface Methods
 
-*v1* exposed stats as a struct with public fields. *v2* provides a `Stats` interface with methods for querying and comparing statistics.
+_v1_ exposed stats as a struct with public fields. _v2_ provides a `Stats` interface with methods for querying and comparing statistics.
+
 ```go
 stats := mfs.Stats()
 
@@ -918,7 +977,8 @@ fmt.Println(stats.String()) // "Stats{Ops: 10 (2 failed), Bytes: 1024 read, 512 
 
 ### WritableFS Interface
 
-*v1* required manual map manipulation or write callbacks for filesystem modifications. *v2* provides a complete `WritableFS` interface with proper hierarchy management.
+_v1_ required manual map manipulation or write callbacks for filesystem modifications. _v2_ provides a complete `WritableFS` interface with proper hierarchy management.
+
 ```go
 mfs := mockfs.NewMockFS()
 
@@ -944,7 +1004,8 @@ err = mfs.WriteFile("new.txt", []byte("content"), 0o644)
 
 ### Shared Error Injector
 
-*v2* allows sharing error injection rules across multiple filesystems or files.
+_v2_ allows sharing error injection rules across multiple filesystems or files.
+
 ```go
 // Create shared injector
 injector := mockfs.NewErrorInjector()
@@ -967,7 +1028,8 @@ injector.Clear()
 
 ### Standalone MockFile Constructors
 
-*v2* provides constructors for creating `MockFile` instances without requiring a `MockFS` context, enabling easier unit testing of functions that accept `io.Reader`, `io.Writer`, or `io.ReadWriter`.
+_v2_ provides constructors for creating `MockFile` instances without requiring a `MockFS` context, enabling easier unit testing of functions that accept `io.Reader`, `io.Writer`, or `io.ReadWriter`.
+
 ```go
 // From string content
 file := mockfs.NewMockFileFromString("test.txt", "content")
@@ -996,7 +1058,8 @@ err := ProcessReader(file)
 
 ### SubFS Support
 
-*v2* provides full `fs.SubFS` implementation with automatic path adjustment for error rules.
+_v2_ provides full `fs.SubFS` implementation with automatic path adjustment for error rules.
+
 ```go
 mfs := mockfs.NewMockFS(
     mockfs.Dir("app",
@@ -1029,6 +1092,7 @@ stats := subMockFS.Stats()
 ### Pattern 1: Testing Read Errors
 
 **Before (v1)**:
+
 ```go
 func TestReadError(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
@@ -1044,6 +1108,7 @@ func TestReadError(t *testing.T) {
 ```
 
 **After (v2)**:
+
 ```go
 func TestReadError(t *testing.T) {
     mfs := mockfs.NewMockFS(mockfs.File("data.txt", "content"))
@@ -1059,6 +1124,7 @@ func TestReadError(t *testing.T) {
 ### Pattern 2: Testing with Latency
 
 **Before (v1)**:
+
 ```go
 func TestTimeout(t *testing.T) {
     mfs := mockfs.NewMockFS(mockfs.WithLatency(2*time.Second))
@@ -1075,6 +1141,7 @@ func TestTimeout(t *testing.T) {
 ```
 
 **After (v2)**:
+
 ```go
 func TestTimeout(t *testing.T) {
     mfs := mockfs.NewMockFS(mockfs.WithLatency(2*time.Second))
@@ -1093,6 +1160,7 @@ func TestTimeout(t *testing.T) {
 ### Pattern 3: Testing Statistics
 
 **Before (v1)**:
+
 ```go
 func TestOperationCounts(t *testing.T) {
     mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
@@ -1120,6 +1188,7 @@ func TestOperationCounts(t *testing.T) {
 ```
 
 **After (v2)**:
+
 ```go
 func TestOperationCounts(t *testing.T) {
     mfs := mockfs.NewMockFS(mockfs.File("file.txt", "content"))
@@ -1165,6 +1234,7 @@ func TestOperationCounts(t *testing.T) {
 ### Pattern 4: Testing File Operations Independently
 
 **Before (v1)**:
+
 ```go
 func TestFileReader(t *testing.T) {
     // Must use MockFS to create file
@@ -1184,6 +1254,7 @@ func TestFileReader(t *testing.T) {
 ```
 
 **After (v2)**:
+
 ```go
 func TestFileReader(t *testing.T) {
     // Test a function that accepts io.Reader
@@ -1206,6 +1277,7 @@ func TestFileReader(t *testing.T) {
 ### Pattern 5: Advanced Error Scenarios
 
 **Before (v1)**:
+
 ```go
 func TestIntermittentErrors(t *testing.T) {
     mfs := mockfs.NewMockFS(mockfs.File("flaky.txt", "datadatadatadata"))
@@ -1220,7 +1292,7 @@ func TestIntermittentErrors(t *testing.T) {
     buf := make([]byte, 1)
 
     // First 3 reads succeed
-    for i := 0; i < 3; i++ {
+    for i := range 3 {
         _, err := f.Read(buf)
         if err != nil {
             t.Errorf("read %d failed unexpectedly: %v", i, err)
@@ -1236,6 +1308,7 @@ func TestIntermittentErrors(t *testing.T) {
 ```
 
 **After (v2)**:
+
 ```go
 func TestIntermittentErrors(t *testing.T) {
     mfs := mockfs.NewMockFS(mockfs.File("flaky.txt", "datadatadatadata"))
@@ -1247,7 +1320,7 @@ func TestIntermittentErrors(t *testing.T) {
     buf := make([]byte, 1)
 
     // First 3 reads succeed
-    for i := 0; i < 3; i++ {
+    for i := range 3 {
         _, err := f.Read(buf)
         if err != nil {
             t.Errorf("read %d failed unexpectedly: %v", i, err)
@@ -1272,9 +1345,10 @@ func TestIntermittentErrors(t *testing.T) {
 }
 ```
 
-### Pattern 6: Testing with Glob Patterns (New in *v2*)
+### Pattern 6: Testing with Glob Patterns (New in _v2_)
 
-*v2* introduces glob patterns for easier path matching.
+_v2_ introduces glob patterns for easier path matching.
+
 ```go
 func TestGlobPatternErrors(t *testing.T) {
     mfs := mockfs.NewMockFS(
@@ -1304,9 +1378,10 @@ func TestGlobPatternErrors(t *testing.T) {
 }
 ```
 
-### Pattern 7: Testing SubFS (New in *v2*)
+### Pattern 7: Testing SubFS (New in _v2_)
 
-*v2* provides full `fs.SubFS` support.
+_v2_ provides full `fs.SubFS` support.
+
 ```go
 func TestSubFilesystem(t *testing.T) {
     mfs := mockfs.NewMockFS(
@@ -1413,12 +1488,12 @@ func TestSubFilesystem(t *testing.T) {
 ### Operation Constants
 
 - [ ] Verify all `Operation` constant references - numbering changed:
-  - [ ] `OpUnknown` added as 0 (new in *v2*)
+  - [ ] `OpUnknown` added as 0 (new in _v2_)
   - [ ] Constants between `OpStat` and `OpWrite` shifted by +1: `OpStat` changed from 0 to 1, `OpOpen` from 1 to 2, etc.
-  - [ ] `OpSeek` added after `OpWrite` (new in *v2*)
+  - [ ] `OpSeek` added after `OpWrite` (new in _v2_)
   - [ ] `OpReadDir` moved after `OpClose`
-  - [ ] `OpMkdir`, `OpMkdirAll`, `OpRemove`, `OpRemoveAll`, `OpRename` added after `OpReadDir` (new in *v2*)
-  - [ ] The number of valid operations marked with `NumOperations` (new in *v2*)
+  - [ ] `OpMkdir`, `OpMkdirAll`, `OpRemove`, `OpRemoveAll`, `OpRename` added after `OpReadDir` (new in _v2_)
+  - [ ] The number of valid operations marked with `NumOperations` (new in _v2_)
 - [ ] Update any switch statements or arrays indexed by `Operation`
 
 ### New Features to Consider
@@ -1443,7 +1518,7 @@ func TestSubFilesystem(t *testing.T) {
   - [ ] Stats assertions correctly distinguish filesystem vs file-handle operations
   - [ ] Error injection still triggers at expected points
   - [ ] Latency simulation still provides expected delays
-- [ ] Update test assertions that relied on *v1* specific behavior:
+- [ ] Update test assertions that relied on _v1_ specific behavior:
   - [ ] File-handle operation counts now in `MockFile.Stats()` not `MockFS.Stats()`
   - [ ] Stats snapshots are immutable - no need to copy before comparison
 

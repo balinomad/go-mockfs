@@ -115,15 +115,20 @@ type StatsRecorder interface {
 	Stats
 
 	// Record logs an operation result and bytes transferred (if applicable).
-	// Panics if the operation is invalid.
+	//
+	// Panics if the operation is invalid: this is a programmer error, not a runtime condition.
 	Record(op Operation, bytes int, err error)
 
 	// Set directly sets the total and failure counts for an operation.
+	//
 	// Panics if the operation is invalid, failures is negative, or failures > total.
+	// This is a programmer error, not a runtime condition.
 	Set(op Operation, total int, failures int)
 
 	// SetBytes sets the byte counters directly.
 	// This is useful for initialization or restoration from storage.
+	//
+	// Panics if read or written are negative: this is a programmer error, not a runtime condition.
 	SetBytes(read int, written int)
 
 	// Reset resets all counters to zero.
@@ -173,6 +178,8 @@ func NewStatsRecorder(initial Stats) StatsRecorder {
 }
 
 // Record logs an operation result and bytes transferred.
+//
+// Panics if the operation is invalid: this is a programmer error, not a runtime condition.
 func (r *statsRecorder) Record(op Operation, bytes int, err error) {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: StatsRecorder.Record called with invalid operation: %d", op))
@@ -198,6 +205,9 @@ func (r *statsRecorder) Record(op Operation, bytes int, err error) {
 }
 
 // Set sets the total and failure counts for an operation.
+//
+// Panics if the operation is invalid, failures is negative, or failures > total.
+// This is a programmer error, not a runtime condition.
 func (r *statsRecorder) Set(op Operation, total int, failures int) {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: StatsRecorder.Set called with invalid operation: %d", op))
@@ -217,6 +227,8 @@ func (r *statsRecorder) Set(op Operation, total int, failures int) {
 }
 
 // SetBytes sets the byte counters directly.
+//
+// Panics if read or written are negative: this is a programmer error, not a runtime condition.
 func (r *statsRecorder) SetBytes(read int, written int) {
 	if read < 0 {
 		panic(fmt.Sprintf("mockfs: StatsRecorder.SetBytes: read (%d) cannot be negative", read))
@@ -239,7 +251,7 @@ func (r *statsRecorder) Reset() {
 
 	r.bytesRead = 0
 	r.bytesWritten = 0
-	for i := 0; i < int(NumOperations); i++ {
+	for i := range int(NumOperations) {
 		r.ops[i].total = 0
 		r.ops[i].failure = 0
 	}
@@ -254,7 +266,7 @@ func (r *statsRecorder) Snapshot() Stats {
 		bytesRead:    int(r.bytesRead),
 		bytesWritten: int(r.bytesWritten),
 	}
-	for i := 0; i < int(NumOperations); i++ {
+	for i := range int(NumOperations) {
 		snap.ops[i].total = int(r.ops[i].total)
 		snap.ops[i].failure = int(r.ops[i].failure)
 	}
@@ -263,7 +275,8 @@ func (r *statsRecorder) Snapshot() Stats {
 }
 
 // Count reports the total number of times the given operation was called.
-// It panics if the operation is invalid.
+//
+// Panics if the operation is invalid: this is a programmer error, not a runtime condition.
 func (r *statsRecorder) Count(op Operation) int {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: Stats.Count called with invalid operation: %d", op))
@@ -276,7 +289,8 @@ func (r *statsRecorder) Count(op Operation) int {
 }
 
 // CountSuccess reports the number of times the given operation succeeded.
-// It panics if the operation is invalid.
+//
+// Panics if the operation is invalid: this is a programmer error, not a runtime condition.
 func (r *statsRecorder) CountSuccess(op Operation) int {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: Stats.CountSuccess called with invalid operation: %d", op))
@@ -289,7 +303,8 @@ func (r *statsRecorder) CountSuccess(op Operation) int {
 }
 
 // CountFailure reports the number of times the given operation failed.
-// It panics if the operation is invalid.
+//
+// Panics if the operation is invalid: this is a programmer error, not a runtime condition.
 func (r *statsRecorder) CountFailure(op Operation) int {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: Stats.CountFailure called with invalid operation: %d", op))
@@ -307,7 +322,7 @@ func (r *statsRecorder) Operations() int {
 	defer r.mu.RUnlock()
 
 	sum := 0
-	for i := 0; i < int(NumOperations); i++ {
+	for i := range int(NumOperations) {
 		sum += int(r.ops[i].total)
 	}
 
@@ -335,7 +350,7 @@ func (r *statsRecorder) HasFailures() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	for i := 0; i < int(NumOperations); i++ {
+	for i := range int(NumOperations) {
 		if r.ops[i].failure > 0 {
 			return true
 		}
@@ -350,7 +365,7 @@ func (r *statsRecorder) FailedOperations() []Operation {
 	defer r.mu.RUnlock()
 
 	var failed []Operation
-	for i := 0; i < int(NumOperations); i++ {
+	for i := range int(NumOperations) {
 		if r.ops[i].failure > 0 {
 			failed = append(failed, Operation(i))
 		}
@@ -400,6 +415,8 @@ type statsSnapshot struct {
 var _ Stats = (*statsSnapshot)(nil)
 
 // Count reports the total number of times the given operation was called.
+//
+// Panics if the operation is invalid: this is a programmer error, not a runtime condition.
 func (s statsSnapshot) Count(op Operation) int {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: Stats.Count called with invalid operation: %d", op))
@@ -409,6 +426,8 @@ func (s statsSnapshot) Count(op Operation) int {
 }
 
 // CountSuccess reports the number of times the given operation succeeded.
+//
+// Panics if the operation is invalid: this is a programmer error, not a runtime condition.
 func (s statsSnapshot) CountSuccess(op Operation) int {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: Stats.CountSuccess called with invalid operation: %d", op))
@@ -418,6 +437,8 @@ func (s statsSnapshot) CountSuccess(op Operation) int {
 }
 
 // CountFailure reports the number of times the given operation failed.
+//
+// Panics if the operation is invalid: this is a programmer error, not a runtime condition.
 func (s statsSnapshot) CountFailure(op Operation) int {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: Stats.CountFailure called with invalid operation: %d", op))
@@ -429,7 +450,7 @@ func (s statsSnapshot) CountFailure(op Operation) int {
 // Operations reports the total number of operations across all types.
 func (s statsSnapshot) Operations() int {
 	sum := 0
-	for i := 0; i < int(NumOperations); i++ {
+	for i := range int(NumOperations) {
 		sum += s.ops[i].total
 	}
 
@@ -448,7 +469,7 @@ func (s statsSnapshot) BytesWritten() int {
 
 // HasFailures reports whether any operation has failed.
 func (s statsSnapshot) HasFailures() bool {
-	for i := 0; i < int(NumOperations); i++ {
+	for i := range int(NumOperations) {
 		if s.ops[i].failure > 0 {
 			return true
 		}
@@ -460,7 +481,7 @@ func (s statsSnapshot) HasFailures() bool {
 // FailedOperations returns operations that have at least one failure.
 func (s statsSnapshot) FailedOperations() []Operation {
 	var failed []Operation
-	for i := 0; i < int(NumOperations); i++ {
+	for i := range int(NumOperations) {
 		if s.ops[i].failure > 0 {
 			failed = append(failed, Operation(i))
 		}
@@ -479,7 +500,7 @@ func (s statsSnapshot) Delta(other Stats) Stats {
 		bytesRead:    s.bytesRead - other.BytesRead(),
 		bytesWritten: s.bytesWritten - other.BytesWritten(),
 	}
-	for i := 0; i < int(NumOperations); i++ {
+	for i := range int(NumOperations) {
 		op := Operation(i)
 		if !op.IsValid() {
 			continue
@@ -497,7 +518,7 @@ func (s statsSnapshot) Equal(other Stats) bool {
 		return false
 	}
 
-	for i := 0; i < int(NumOperations); i++ {
+	for i := range int(NumOperations) {
 		op := Operation(i)
 		if !op.IsValid() {
 			continue
@@ -515,7 +536,7 @@ func (s statsSnapshot) String() string {
 	totalOps := s.Operations()
 	failCount := 0
 
-	for i := 0; i < int(NumOperations); i++ {
+	for i := range int(NumOperations) {
 		failCount += s.ops[i].failure
 	}
 

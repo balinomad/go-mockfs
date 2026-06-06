@@ -118,7 +118,7 @@ func TestLatencySimulator_Simulate_Concurrency(t *testing.T) {
 		endTimes := make([]time.Time, numGoroutines)
 
 		wg.Add(numGoroutines)
-		for i := 0; i < numGoroutines; i++ {
+		for i := range numGoroutines {
 			go func(idx int) {
 				defer wg.Done()
 				startTimes[idx] = time.Now()
@@ -154,7 +154,7 @@ func TestLatencySimulator_Simulate_Concurrency(t *testing.T) {
 		start := time.Now()
 		var wg sync.WaitGroup
 		wg.Add(numGoroutines)
-		for i := 0; i < numGoroutines; i++ {
+		for range numGoroutines {
 			go func() {
 				defer wg.Done()
 				ls.Simulate(mockfs.OpRead, mockfs.Async())
@@ -173,7 +173,7 @@ func TestLatencySimulator_Simulate_Async(t *testing.T) {
 	start := time.Now()
 	var wg sync.WaitGroup
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -223,7 +223,7 @@ func TestLatencySimulator_Simulate_OnceAsync(t *testing.T) {
 	start := time.Now()
 
 	// Launch 10 concurrent calls with OnceAsync
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -258,7 +258,7 @@ func TestLatencySimulator_Simulate_OnceSerialized(t *testing.T) {
 	start := time.Now()
 
 	// Launch multiple goroutines with Once (serialized)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -368,7 +368,7 @@ func TestLatencySimulator_ConcurrentReset(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Run multiple operations
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -443,7 +443,7 @@ func TestSimOpt_Async(t *testing.T) {
 	start := time.Now()
 	var wg sync.WaitGroup
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -510,7 +510,7 @@ func TestSimOpt_MultipleOptions(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Launch concurrent calls with both options
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

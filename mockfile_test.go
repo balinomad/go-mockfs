@@ -1512,7 +1512,7 @@ func TestMockFile_ConcurrentReads(t *testing.T) {
 	var wg sync.WaitGroup
 	errors := make(chan error, 10)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -1541,7 +1541,7 @@ func TestMockFile_ConcurrentWrites(t *testing.T) {
 	var wg sync.WaitGroup
 	errors := make(chan error, 10)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(val int) {
 			defer wg.Done()
@@ -1570,7 +1570,7 @@ func TestMockFile_ConcurrentCloses(t *testing.T) {
 	var wg sync.WaitGroup
 	closedCount := int32(0)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -1709,7 +1709,7 @@ func TestMockFile_ConcurrentReadWrite(t *testing.T) {
 	done := make(chan bool)
 
 	// Concurrent readers
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -1721,7 +1721,7 @@ func TestMockFile_ConcurrentReadWrite(t *testing.T) {
 	}
 
 	// Concurrent writers
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -1751,7 +1751,7 @@ func TestMockFile_ConcurrentStats(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

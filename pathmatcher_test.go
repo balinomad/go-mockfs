@@ -194,7 +194,7 @@ func TestExactMatcher_Concurrent(t *testing.T) {
 	m := mockfs.NewExactMatcher("test.txt")
 
 	done := make(chan bool)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			for j := 0; j < 100; j++ {
 				_ = m.Matches("test.txt")
@@ -203,7 +203,7 @@ func TestExactMatcher_Concurrent(t *testing.T) {
 		}()
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 }
@@ -211,7 +211,7 @@ func TestExactMatcher_Concurrent(t *testing.T) {
 // TestExactMatcher_LongPaths tests ExactMatcher with very long paths.
 func TestExactMatcher_LongPaths(t *testing.T) {
 	longPath := ""
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		longPath += "very/long/path/segment/"
 	}
 	longPath += "file.txt"
@@ -527,7 +527,7 @@ func TestRegexpMatcher_Concurrent(t *testing.T) {
 	}
 
 	done := make(chan bool)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			for j := 0; j < 100; j++ {
 				_ = m.Matches("test.txt")
@@ -536,7 +536,7 @@ func TestRegexpMatcher_Concurrent(t *testing.T) {
 		}()
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 }
@@ -780,7 +780,7 @@ func TestGlobMatcher_Concurrent(t *testing.T) {
 	requireNoError(t, err, "NewGlobMatcher()")
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
