@@ -232,6 +232,44 @@
 //
 // This strict behavior helps tests catch real-world bugs that might otherwise be hidden.
 //
+// # Panic Policy
+//
+// Functions in this package panic on programmer errors — mistakes in the test
+// setup code itself, not runtime I/O failures or missing files. In a testing
+// context this distinction matters:
+//
+//   - A test failure (the code under test misbehaving) surfaces through
+//     [testing.T.Error] or [testing.T.Fatal]. It is expected and recoverable.
+//   - A misconfigured mock (nil MapFile, negative latency, invalid path passed
+//     to [File] or [Dir]) is a bug in the test code. Panicking immediately
+//     points at the offending call site with a full stack trace, making it
+//     faster to diagnose than an ignored or masked error return.
+//
+// This follows the same convention as the standard library's Must helpers
+// ([regexp.MustCompile], [template.Must]) and is intentional.
+//
+// Functions that panic and their trigger conditions:
+//
+//   - [NewMockFS]: any option returns an error (invalid name or path in
+//     [File] or [Dir]; unsupported argument type passed to [Dir]).
+//   - [NewMockFile]: mapFile is nil.
+//   - [NewLatencySimulator]: duration is negative.
+//   - [NewLatencySimulatorPerOp]: any duration in the map is negative.
+//   - [NewErrorRule]: after is negative when mode is [ErrorModeAfterSuccesses]
+//     or [ErrorModeNext] — the only two modes that read the after value.
+//     For [ErrorModeAlways] and [ErrorModeOnce], after is ignored and any
+//     value is accepted.
+//   - [NewFileInfo]: name is empty, is not a valid fs path, or size is
+//     non-zero for a directory entry.
+//   - [StatsRecorder.Record]: operation constant is out of range.
+//   - [StatsRecorder.Set]: operation is out of range, failures is negative,
+//     or failures exceeds total.
+//   - [StatsRecorder.SetBytes]: read or written is negative.
+//
+// Every other failure mode — missing files, injected errors, permission
+// denials, I/O faults — is returned as an error value in the standard Go
+// fashion and is the primary mechanism for testing error-handling logic.
+//
 // # Limitations
 //
 //   - Symlinks are not supported (mode can be set, but not followed).
