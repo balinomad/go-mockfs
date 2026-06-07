@@ -90,7 +90,7 @@ func NewErrorRule(err error, mode ErrorMode, after int, matchers ...PathMatcher)
 	return &ErrorRule{
 		Err:      err,
 		Mode:     mode,
-		AfterN:   mustAfter(after),
+		AfterN:   mustAfter(after, mode),
 		matchers: matchers,
 	}
 }
@@ -460,14 +460,21 @@ func (ei *errorInjector) CheckAndApply(op Operation, path string) error {
 	return nil
 }
 
-// mustAfter converts a public int 'after' to internal uint64 and panics on invalid input.
-//
-// Panics if after is negative: this is a programmer error, not a runtime condition.
-func mustAfter(after int) uint64 {
-	if after < 0 {
-		panic(fmt.Sprintf("mockfs: invalid after value %d — must be >= 0", after))
+// mustAfter converts the public int 'after' to uint64 and panics on invalid
+// input, but only for modes that actually use the value.
+// For ErrorModeAlways and ErrorModeOnce, after is ignored and normalised to 0.
+func mustAfter(after int, mode ErrorMode) uint64 {
+	switch mode {
+	case ErrorModeAfterSuccesses, ErrorModeNext:
+		if after < 0 {
+			panic(fmt.Sprintf(
+				"mockfs: invalid after value %d for mode %v — must be >= 0",
+				after, mode,
+			))
+		}
+		return uint64(after)
+	default:
+		// after is not meaningful for this mode; stored as 0.
+		return 0
 	}
-
-	// after=0 means fail immediately (zero successes allowed)
-	return uint64(after)
 }
