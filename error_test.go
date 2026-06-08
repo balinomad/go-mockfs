@@ -253,7 +253,7 @@ func TestErrorRule_Panics(t *testing.T) {
 	})
 
 	t.Run("negative after", func(t *testing.T) {
-		requirePanic(t, func() { mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAlways, -1) }, "negative after")
+		requirePanic(t, func() { mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAfterSuccesses, -1) }, "negative after")
 	})
 }
 
