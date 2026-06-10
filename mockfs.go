@@ -920,8 +920,13 @@ func (m *MockFS) Rename(oldpath, newpath string) (err error) {
 // WriteFile writes data to a file in the filesystem.
 func (m *MockFS) WriteFile(filePath string, data []byte, perm FileMode) (err error) {
 	// Record the result of this operation on exit
-	// We record len(data) as bytes written, assuming a full write or failure
-	defer func() { m.stats.Record(OpWrite, len(data), err) }()
+	defer func() {
+		written := 0
+		if err == nil {
+			written = len(data)
+		}
+		m.stats.Record(OpWrite, written, err)
+	}()
 
 	cleanPath, err := m.validateAndCleanPath(filePath, OpWrite)
 	if err != nil {
