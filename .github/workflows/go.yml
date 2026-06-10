@@ -15,6 +15,12 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.22", "stable"]
+
     steps:
       - uses: actions/checkout@v4
 
