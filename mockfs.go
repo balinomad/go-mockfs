@@ -1077,9 +1077,9 @@ func createReadDirClosure(entries []fs.DirEntry) func(int) ([]fs.DirEntry, error
 		// Check if we are already at the end
 		if offset >= entryCount {
 			if n > 0 {
-				return nil, io.EOF
+				return []fs.DirEntry{}, io.EOF
 			}
-			return nil, nil
+			return []fs.DirEntry{}, nil
 		}
 
 		// Calculate the end of the batch
