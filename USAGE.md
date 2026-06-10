@@ -124,7 +124,7 @@ func TestAsyncTimeout(t *testing.T) {
         wg.Add(1)
         go func() {
             defer wg.Done()
-            _, _ = fs.ReadFile(mfs, "file.txt")
+            fs.ReadFile(mfs, "file.txt")
         }()
     }
     wg.Wait()

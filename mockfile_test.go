@@ -180,7 +180,7 @@ func TestNewDirHandler(t *testing.T) {
 	t.Run("read all after exhausted", func(t *testing.T) {
 		t.Parallel()
 		handler := mockfs.NewDirHandler(entries)
-		_, _ = handler(-1)
+		handler(-1) //nolint:errcheck
 		result, err := handler(-1)
 		requireNoError(t, err)
 		if len(result) != 0 {
@@ -191,7 +191,7 @@ func TestNewDirHandler(t *testing.T) {
 	t.Run("read all after already exhausted with n > 0", func(t *testing.T) {
 		t.Parallel()
 		handler := mockfs.NewDirHandler(entries)
-		_, _ = handler(-1)        // Exhaust
+		handler(-1)               //nolint:errcheck
 		result, err := handler(5) // Try to read with n > 0
 		if err != io.EOF {
 			t.Errorf("expected io.EOF after exhaustion, got %v", err)
@@ -223,7 +223,7 @@ func TestNewDirHandler(t *testing.T) {
 		handler := mockfs.NewDirHandler(moreEntries)
 
 		// Read 2, then request 5 (but only 1 remains)
-		_, _ = handler(2)
+		handler(2) //nolint:errcheck
 		result, err := handler(5)
 		if err != io.EOF {
 			t.Errorf("expected io.EOF, got %v", err)
@@ -245,7 +245,7 @@ func TestFileOptions(t *testing.T) {
 		file := mockfs.NewMockFileFromString("test.txt", "data", mockfs.WithFileStats(sharedStats))
 
 		buf := make([]byte, 4)
-		_, _ = file.Read(buf)
+		file.Read(buf) //nolint:errcheck
 
 		if sharedStats.Count(mockfs.OpRead) != 1 {
 			t.Errorf("shared stats not updated: count = %d, want 1", sharedStats.Count(mockfs.OpRead))
@@ -596,8 +596,8 @@ func TestMockFile_ReadAt_Stats(t *testing.T) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("0123456789"))
 
 	buf := make([]byte, 3)
-	file.ReadAt(buf, 0)
-	file.ReadAt(buf, 5)
+	file.ReadAt(buf, 0) //nolint:errcheck
+	file.ReadAt(buf, 5) //nolint:errcheck
 
 	stats := file.Stats()
 	if stats.Count(mockfs.OpRead) != 2 {
@@ -804,7 +804,7 @@ func TestMockFile_WriteAt(t *testing.T) {
 			}
 
 			// Read back entire content
-			_, _ = file.Seek(0, io.SeekStart)
+			file.Seek(0, io.SeekStart) //nolint:errcheck
 			buf := make([]byte, 100)
 			nRead, _ := file.Read(buf)
 			if got := string(buf[:nRead]); got != tt.wantFinal {
@@ -869,8 +869,8 @@ func TestMockFile_WriteAt_Stats(t *testing.T) {
 
 	file := mockfs.NewMockFileFromBytes("test.txt", make([]byte, 20))
 
-	file.WriteAt([]byte("ABC"), 0)
-	file.WriteAt([]byte("XY"), 10)
+	file.WriteAt([]byte("ABC"), 0) //nolint:errcheck
+	file.WriteAt([]byte("XY"), 10) //nolint:errcheck
 
 	stats := file.Stats()
 	if stats.Count(mockfs.OpWrite) != 2 {
@@ -1001,7 +1001,7 @@ func TestMockFile_ReadDir(t *testing.T) {
 		dir := mockfs.NewMockDir("latentdir", nil, mockfs.WithFileLatency(testDuration))
 
 		start := time.Now()
-		_, _ = dir.ReadDir(-1)
+		dir.ReadDir(-1) //nolint:errcheck
 		assertDuration(t, start, testDuration, "nil handler must apply configured latency")
 	})
 
@@ -1273,10 +1273,10 @@ func TestMockFile_Stats(t *testing.T) {
 
 	// Perform operations
 	buf := make([]byte, 4)
-	_, _ = file.Read(buf)
-	_, _ = file.Write([]byte("new"))
-	_, _ = file.Stat()
-	_ = file.Close()
+	file.Read(buf)            //nolint:errcheck
+	file.Write([]byte("new")) //nolint:errcheck
+	file.Stat()               //nolint:errcheck
+	file.Close()              //nolint:errcheck
 
 	// Get stats after operations
 	stats := file.Stats()
@@ -1300,13 +1300,13 @@ func TestMockFile_Stats_Snapshot(t *testing.T) {
 
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"))
 	buf := make([]byte, 4)
-	_, _ = file.Read(buf)
+	file.Read(buf) //nolint:errcheck
 
 	snap1 := file.Stats()
 	reads1 := snap1.Count(mockfs.OpRead)
 
 	// Perform another read
-	_, _ = file.Read(buf)
+	file.Read(buf) //nolint:errcheck
 
 	if snap1.Count(mockfs.OpRead) != reads1 {
 		t.Error("snapshot was modified after file operation")
@@ -1414,7 +1414,7 @@ func TestMockFile_LatencyReset(t *testing.T) {
 	// Read with latency
 	buf := make([]byte, 4)
 	start := time.Now()
-	_, _ = file.Read(buf)
+	file.Read(buf) //nolint:errcheck
 	assertDuration(t, start, testDuration, "first read")
 
 	// Close should reset
@@ -1479,21 +1479,21 @@ func TestMockFile_LatencyCloning(t *testing.T) {
 	// Open two files - each should get cloned latency simulator
 	f1, err := mfs.Open("file1.txt")
 	requireNoError(t, err, "open file1")
-	defer f1.Close()
+	defer f1.Close() //nolint:errcheck
 
 	f2, err := mfs.Open("file2.txt")
 	requireNoError(t, err, "open file2")
-	defer f2.Close()
+	defer f2.Close() //nolint:errcheck
 
 	// Both files should experience latency independently
 	buf := make([]byte, 5)
 
 	start := time.Now()
-	_, _ = f1.Read(buf)
+	f1.Read(buf) //nolint:errcheck
 	assertDuration(t, start, testDuration, "file1 first read")
 
 	start = time.Now()
-	_, _ = f2.Read(buf)
+	f2.Read(buf) //nolint:errcheck
 	assertDuration(t, start, testDuration, "file2 first read")
 }
 
@@ -1715,7 +1715,7 @@ func TestMockFile_ConcurrentReadWrite(t *testing.T) {
 			defer wg.Done()
 			buf := make([]byte, 12)
 			for j := 0; j < 10; j++ {
-				_, _ = file.Read(buf)
+				file.Read(buf) //nolint:errcheck
 			}
 		}()
 	}
@@ -1726,7 +1726,7 @@ func TestMockFile_ConcurrentReadWrite(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 10; j++ {
-				_, _ = file.Write([]byte("new"))
+				file.Write([]byte("new")) //nolint:errcheck
 			}
 		}()
 	}
@@ -1757,7 +1757,7 @@ func TestMockFile_ConcurrentStats(t *testing.T) {
 			defer wg.Done()
 			buf := make([]byte, 4)
 			for j := 0; j < 100; j++ {
-				_, _ = file.Read(buf)
+				file.Read(buf)   //nolint:errcheck
 				_ = file.Stats() // Concurrent stats access
 			}
 		}()
@@ -1781,7 +1781,7 @@ func BenchmarkMockFile_Read(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = file.Read(buf)
+		file.Read(buf) //nolint:errcheck
 	}
 }
 
@@ -1792,7 +1792,7 @@ func BenchmarkMockFile_Write(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = file.Write(data)
+		file.Write(data) //nolint:errcheck
 	}
 }
 
@@ -1802,7 +1802,7 @@ func BenchmarkMockFile_Stat(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = file.Stat()
+		file.Stat() //nolint:errcheck
 	}
 }
 
@@ -1810,7 +1810,7 @@ func BenchmarkMockFile_Stat(b *testing.B) {
 func BenchmarkMockFile_Stats(b *testing.B) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("test"))
 	buf := make([]byte, 4)
-	_, _ = file.Read(buf)
+	file.Read(buf) //nolint:errcheck
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

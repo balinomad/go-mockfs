@@ -249,7 +249,7 @@ func TestErrorRule_Panics(t *testing.T) {
 		rule := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorMode(999), 0, mockfs.NewWildcardMatcher())
 		inj := mockfs.NewErrorInjector()
 		inj.Add(mockfs.OpRead, rule)
-		requirePanic(t, func() { inj.CheckAndApply(mockfs.OpRead, "test.txt") }, "invalid ErrorMode")
+		requirePanic(t, func() { inj.CheckAndApply(mockfs.OpRead, "test.txt") }, "invalid ErrorMode") //nolint:errcheck
 	})
 
 	t.Run("negative after", func(t *testing.T) {

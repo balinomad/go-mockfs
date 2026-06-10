@@ -102,7 +102,7 @@ func TestNewMockFS(t *testing.T) {
 			},
 			check: func(t *testing.T, m *mockfs.MockFS) {
 				start := time.Now()
-				_, _ = m.Stat("file.txt")
+				m.Stat("file.txt") //nolint:errcheck
 				if time.Since(start) < 5*time.Millisecond {
 					t.Error("expected latency to be applied")
 				}
@@ -284,7 +284,7 @@ func TestNewMockFS_AutoCreateRoot(t *testing.T) {
 			check: func(t *testing.T, m *mockfs.MockFS) {
 				dir, err := m.Open(".")
 				requireNoError(t, err)
-				defer dir.Close()
+				defer func() { _ = dir.Close() }()
 
 				entries, err := m.ReadDir(".")
 				requireNoError(t, err)
@@ -447,7 +447,7 @@ func TestMockFS_Open(t *testing.T) {
 				return
 			}
 			requireNoError(t, err)
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			if tt.check != nil {
 				tt.check(t, f)
 			}
@@ -1433,7 +1433,7 @@ func TestMockFS_ErrorInjection(t *testing.T) {
 
 		file, err := mfs.Open("file.txt")
 		requireNoError(t, err)
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		buf := make([]byte, 4)
 		for i := range 2 {
@@ -1516,7 +1516,7 @@ func TestMockFS_ErrorInjection_Once(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				defer f.Close()
+				defer func() { _ = f.Close() }()
 				buf := make([]byte, 4)
 				_, err = f.Read(buf)
 				return err
@@ -1641,13 +1641,13 @@ func TestMockFS_Stats(t *testing.T) {
 	mfs := mockfs.NewMockFS(mockfs.File("a", ""), mockfs.File("b", ""))
 
 	// Perform some operations
-	_, _ = mfs.Stat("a")
-	_, _ = mfs.Stat("a")
+	mfs.Stat("a") //nolint:errcheck
+	mfs.Stat("a") //nolint:errcheck
 	file, _ := mfs.Open("b")
 	if file != nil {
 		_ = file.Close()
 	}
-	_ = mfs.Remove("a")
+	mfs.Remove("a") //nolint:errcheck
 
 	stats := mfs.Stats()
 
@@ -1721,7 +1721,7 @@ func TestMockFS_Options(t *testing.T) {
 			},
 			verify: func(t *testing.T, m *mockfs.MockFS) {
 				start := time.Now()
-				_, _ = m.Stat(".")
+				m.Stat(".") //nolint:errcheck
 				if time.Since(start) < 5*time.Millisecond {
 					t.Error("expected latency not applied")
 				}
@@ -1736,7 +1736,7 @@ func TestMockFS_Options(t *testing.T) {
 			},
 			verify: func(t *testing.T, m *mockfs.MockFS) {
 				start := time.Now()
-				_, _ = m.Stat(".")
+				m.Stat(".") //nolint:errcheck
 				if time.Since(start) < 5*time.Millisecond {
 					t.Error("expected per-op latency not applied")
 				}
@@ -1746,7 +1746,7 @@ func TestMockFS_Options(t *testing.T) {
 			name: "reset stats",
 			opts: nil,
 			verify: func(t *testing.T, m *mockfs.MockFS) {
-				_, _ = m.Stat(".")
+				m.Stat(".") //nolint:errcheck
 				m.ResetStats()
 				if m.Stats().Count(mockfs.OpStat) != 0 {
 					t.Error("ResetStats did not clear stats")
@@ -1925,7 +1925,7 @@ func Test_toBytes(t *testing.T) {
 				if errOpen != nil {
 					t.Fatalf("file open failed: %v", errOpen)
 				}
-				defer f.Close()
+				defer func() { _ = f.Close() }()
 
 				got, err = io.ReadAll(f)
 			}()
@@ -1977,7 +1977,7 @@ func Test_toBytes_MutationSafety(t *testing.T) {
 	// Read from FS
 	file, err := mfs.Open(fname)
 	requireNoError(t, err, "open file")
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	got, err := io.ReadAll(file)
 	requireNoError(t, err, "read all")

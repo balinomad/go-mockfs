@@ -1138,6 +1138,6 @@ func BenchmarkRegexpMatcher_Compile(b *testing.B) {
 	pattern := "^dir/.*/.*\\.txt$"
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = mockfs.NewRegexpMatcher(pattern)
+		mockfs.NewRegexpMatcher(pattern) //nolint:errcheck
 	}
 }
