@@ -462,7 +462,7 @@ func (m *MockFS) Sub(dir string) (fs.FS, error) {
 		return nil, err
 	}
 
-	subFS := NewMockFS(nil)
+	subFS := NewMockFS()
 	subFS.latency = m.latency
 	subFS.writeMode = m.writeMode
 	subFS.createIfMissing = m.createIfMissing
