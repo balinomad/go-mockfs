@@ -130,7 +130,7 @@ type GlobMatcher struct {
 
 // NewGlobMatcher creates a matcher for a glob pattern.
 // Returns path.ErrBadPattern if the pattern is malformed.
-func NewGlobMatcher(pattern string) (PathMatcher, error) {
+func NewGlobMatcher(pattern string) (*GlobMatcher, error) {
 	// Validate the pattern
 	if _, err := path.Match(pattern, ""); err == path.ErrBadPattern {
 		return nil, path.ErrBadPattern
