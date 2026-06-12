@@ -14,10 +14,14 @@ import (
 type ErrorMode int
 
 const (
-	ErrorModeAlways         ErrorMode = iota // ErrorModeAlways means the error is returned every time.
-	ErrorModeOnce                            // ErrorModeOnce means the error is returned once, then cleared.
-	ErrorModeAfterSuccesses                  // ErrorModeAfterSuccesses means the error is returned after N successful calls.
-	ErrorModeNext                            // ErrorModeNext means the error is returned next N times, then cleared.
+	// ErrorModeAlways means the error is returned every time.
+	ErrorModeAlways ErrorMode = iota
+	// ErrorModeOnce means the error is returned once, then cleared.
+	ErrorModeOnce
+	// ErrorModeAfterSuccesses means the error is returned after N successful calls.
+	ErrorModeAfterSuccesses
+	// ErrorModeNext means the error is returned next N times, then cleared.
+	ErrorModeNext
 )
 
 // Generic file system errors.
@@ -147,21 +151,32 @@ type Operation int
 const (
 	// InvalidOperation is an invalid operation.
 	InvalidOperation Operation = iota - 1
-
-	OpUnknown // OpUnknown represents the unknown operation.
-
-	OpStat      // OpStat represents the Stat operation.
-	OpOpen      // OpOpen represents the Open operation.
-	OpRead      // OpRead represents the Read operation.
-	OpWrite     // OpWrite represents the Write operation.
-	OpSeek      // OpSeek represents the Seek operation.
-	OpClose     // OpClose represents the Close operation.
-	OpReadDir   // OpReadDir represents the ReadDir operation.
-	OpMkdir     // OpMkdir represents the Mkdir operation.
-	OpMkdirAll  // OpMkdirAll represents the MkdirAll operation.
-	OpRemove    // OpRemove represents the Remove operation.
-	OpRemoveAll // OpRemoveAll represents the RemoveAll operation.
-	OpRename    // OpRename represents the Rename operation.
+	// OpUnknown represents the unknown operation.
+	OpUnknown
+	// OpStat represents the Stat operation.
+	OpStat
+	// OpOpen represents the Open operation.
+	OpOpen
+	// OpRead represents the Read operation.
+	OpRead
+	// OpWrite represents the Write operation.
+	OpWrite
+	// OpSeek represents the Seek operation.
+	OpSeek
+	// OpClose represents the Close operation.
+	OpClose
+	// OpReadDir represents the ReadDir operation.
+	OpReadDir
+	// OpMkdir represents the Mkdir operation.
+	OpMkdir
+	// OpMkdirAll represents the MkdirAll operation.
+	OpMkdirAll
+	// OpRemove represents the Remove operation.
+	OpRemove
+	// OpRemoveAll represents the RemoveAll operation.
+	OpRemoveAll
+	// OpRename represents the Rename operation.
+	OpRename
 
 	// NumOperations is the number of available operations.
 	NumOperations

@@ -161,7 +161,7 @@ func NewStatsRecorder(initial Stats) StatsRecorder {
 	r := &statsRecorder{}
 
 	if initial != nil {
-		for op := Operation(0); op < NumOperations; op++ {
+		for op := range NumOperations {
 			if !op.IsValid() {
 				continue
 			}
@@ -395,8 +395,8 @@ func (r *statsRecorder) String() string {
 }
 
 // Expect returns a fluent assertion for the current state.
-func (s *statsRecorder) Expect() StatsAssertion {
-	return s.Snapshot().Expect()
+func (r *statsRecorder) Expect() StatsAssertion {
+	return r.Snapshot().Expect()
 }
 
 // --- Stats Snapshot Implementation ---

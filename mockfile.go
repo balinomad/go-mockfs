@@ -267,7 +267,10 @@ func NewMockDir(
 }
 
 // Read implements io.Reader for MockFile.
-func (f *MockFile) Read(b []byte) (n int, err error) {
+func (f *MockFile) Read(b []byte) (int, error) {
+	var n int
+	var err error
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -300,7 +303,10 @@ func (f *MockFile) Read(b []byte) (n int, err error) {
 
 // ReadAt implements io.ReaderAt for MockFile.
 // ReadAt does not affect nor is affected by the underlying seek offset.
-func (f *MockFile) ReadAt(b []byte, off int64) (n int, err error) {
+func (f *MockFile) ReadAt(b []byte, off int64) (int, error) {
+	var n int
+	var err error
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -339,7 +345,10 @@ func (f *MockFile) ReadAt(b []byte, off int64) (n int, err error) {
 }
 
 // Write implements io.Writer for MockFile.
-func (f *MockFile) Write(b []byte) (n int, err error) {
+func (f *MockFile) Write(b []byte) (int, error) {
+	var n int
+	var err error
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -385,7 +394,10 @@ func (f *MockFile) Write(b []byte) (n int, err error) {
 
 // WriteAt implements io.WriterAt for MockFile.
 // WriteAt does not affect nor is affected by the underlying seek offset.
-func (f *MockFile) WriteAt(b []byte, off int64) (n int, err error) {
+func (f *MockFile) WriteAt(b []byte, off int64) (int, error) {
+	var n int
+	var err error
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -433,7 +445,10 @@ func (f *MockFile) WriteAt(b []byte, off int64) (n int, err error) {
 
 // Seek implements io.Seeker for MockFile.
 // It sets the offset for the next Read or Write operation.
-func (f *MockFile) Seek(offset int64, whence int) (n int64, err error) {
+func (f *MockFile) Seek(offset int64, whence int) (int64, error) {
+	var n int64
+	var err error
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -478,7 +493,9 @@ func (f *MockFile) Seek(offset int64, whence int) (n int64, err error) {
 // a slice of up to n DirEntry values in directory order.
 // Subsequent calls on the same file will yield further DirEntry values.
 // It implements fs.ReadDirFile for MockFile.
-func (f *MockFile) ReadDir(n int) (entries []fs.DirEntry, err error) {
+func (f *MockFile) ReadDir(n int) ([]fs.DirEntry, error) {
+	var err error
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -516,7 +533,9 @@ func (f *MockFile) ReadDir(n int) (entries []fs.DirEntry, err error) {
 }
 
 // Stat implements fs.File.Stat.
-func (f *MockFile) Stat() (info fs.FileInfo, err error) {
+func (f *MockFile) Stat() (fs.FileInfo, error) {
+	var err error
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -557,7 +576,9 @@ func (f *MockFile) Stat() (info fs.FileInfo, err error) {
 //
 // Close returns fs.ErrClosed if called multiple times, allowing tests to detect
 // double-close bugs.
-func (f *MockFile) Close() (err error) {
+func (f *MockFile) Close() error {
+	var err error
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 

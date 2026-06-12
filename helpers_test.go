@@ -17,21 +17,21 @@ const (
 // --- Require helpers use Fatal for immediate failure ---
 
 // requireNoError fails test immediately if err is non-nil.
-func requireNoError(t testing.TB, err error, name ...string) {
-	t.Helper()
+func requireNoError(tb testing.TB, err error, name ...string) {
+	tb.Helper()
 
 	if err != nil {
-		t.Fatalf("%sexpected no error, got %q", prefix(name...), err)
+		tb.Fatalf("%sexpected no error, got %q", prefix(name...), err)
 	}
 }
 
 // requirePanic fails test immediately if fn does not panic.
-func requirePanic(t testing.TB, fn func(), name ...string) {
-	t.Helper()
+func requirePanic(tb testing.TB, fn func(), name ...string) {
+	tb.Helper()
 
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatalf("%sexpected panic, but none occurred", prefix(name...))
+			tb.Fatalf("%sexpected panic, but none occurred", prefix(name...))
 		}
 	}()
 
@@ -41,12 +41,12 @@ func requirePanic(t testing.TB, fn func(), name ...string) {
 // --- Assert helpers use Error for deferred failure ---
 
 // assertPanic verifies that fn panics; fails test if no panic occurs.
-func assertPanic(t testing.TB, fn func(), name ...string) {
-	t.Helper()
+func assertPanic(tb testing.TB, fn func(), name ...string) {
+	tb.Helper()
 
 	defer func() {
 		if r := recover(); r == nil {
-			t.Errorf("%sexpected panic, but none occurred", prefix(name...))
+			tb.Errorf("%sexpected panic, but none occurred", prefix(name...))
 		}
 	}()
 
@@ -54,18 +54,18 @@ func assertPanic(t testing.TB, fn func(), name ...string) {
 }
 
 // assertError asserts that got matches want. Handles fs.PathError wrapping.
-func assertError(t testing.TB, got error, want error, name ...string) {
-	t.Helper()
+func assertError(tb testing.TB, got error, want error, name ...string) {
+	tb.Helper()
 
 	if got == nil {
 		if want != nil {
-			t.Errorf("%sexpected error %q, got nil", prefix(name...), want)
+			tb.Errorf("%sexpected error %q, got nil", prefix(name...), want)
 		}
 		return
 	}
 
 	if want == nil {
-		t.Errorf("%sexpected nil, got error %q", prefix(name...), got)
+		tb.Errorf("%sexpected nil, got error %q", prefix(name...), got)
 		return
 	}
 
@@ -75,42 +75,42 @@ func assertError(t testing.TB, got error, want error, name ...string) {
 		if errors.As(got, &pathErr) && errors.Is(pathErr.Err, want) {
 			return
 		}
-		t.Errorf("%sexpected error %q, got %q", prefix(name...), want, got)
+		tb.Errorf("%sexpected error %q, got %q", prefix(name...), want, got)
 	}
 }
 
 // assertNoError reports a non-fatal test error if err is non-nil.
-func assertNoError(t testing.TB, err error, name ...string) {
-	t.Helper()
+func assertNoError(tb testing.TB, err error, name ...string) {
+	tb.Helper()
 
 	if err != nil {
-		t.Errorf("%sexpected no error, got %q", prefix(name...), err)
+		tb.Errorf("%sexpected no error, got %q", prefix(name...), err)
 	}
 }
 
 // assertAnyError reports a non-fatal test error if err is nil.
-func assertAnyError(t testing.TB, err error, name ...string) {
-	t.Helper()
+func assertAnyError(tb testing.TB, err error, name ...string) {
+	tb.Helper()
 
 	if err == nil {
-		t.Errorf("%sexpected error, got nil", prefix(name...))
+		tb.Errorf("%sexpected error, got nil", prefix(name...))
 	}
 }
 
 // assertErrorWant asserts that got records an error if wantErr is true, and no error if wantErr is false.
 // If expected is not nil, it is used as the expected error. Otherwise an error is expected if wantErr is true.
 // Handles fs.PathError wrapping.
-func assertErrorWant(t testing.TB, got error, wantErr bool, expected error, name ...string) {
-	t.Helper()
+func assertErrorWant(tb testing.TB, got error, wantErr bool, expected error, name ...string) {
+	tb.Helper()
 
 	// No error returned
 	if got == nil {
 		if wantErr {
 			// Expected an error but got nil
 			if expected != nil {
-				t.Errorf("%sexpected error %q, but none occurred", prefix(name...), expected)
+				tb.Errorf("%sexpected error %q, but none occurred", prefix(name...), expected)
 			} else {
-				t.Errorf("%sexpected error, but none occurred", prefix(name...))
+				tb.Errorf("%sexpected error, but none occurred", prefix(name...))
 			}
 		}
 		return
@@ -118,43 +118,43 @@ func assertErrorWant(t testing.TB, got error, wantErr bool, expected error, name
 
 	// Error returned but we didn't want any
 	if !wantErr {
-		assertNoError(t, got, name...)
+		assertNoError(tb, got, name...)
 		return
 	}
 
 	// Error returned AND we wanted one; compare if expected is provided
 	if expected != nil {
-		assertError(t, got, expected, name...)
+		assertError(tb, got, expected, name...)
 	}
 }
 
 // assertDuration checks if elapsed time is within expected range.
-func assertDuration(t testing.TB, start time.Time, expected time.Duration, name ...string) {
-	t.Helper()
+func assertDuration(tb testing.TB, start time.Time, expected time.Duration, name ...string) {
+	tb.Helper()
 
 	elapsed := time.Since(start)
 	if elapsed < expected-tolerance || elapsed > expected+tolerance {
-		t.Errorf("%sexpected duration %v (±%v), got %v", prefix(name...), expected, tolerance, elapsed)
+		tb.Errorf("%sexpected duration %v (±%v), got %v", prefix(name...), expected, tolerance, elapsed)
 	}
 }
 
 // assertNoDuration checks that operation completed quickly (no sleep).
-func assertNoDuration(t testing.TB, start time.Time, name ...string) {
-	t.Helper()
+func assertNoDuration(tb testing.TB, start time.Time, name ...string) {
+	tb.Helper()
 
 	elapsed := time.Since(start)
 	if elapsed > tolerance {
-		t.Errorf("%sexpected duration < %v, got %v", prefix(name...), tolerance, elapsed)
+		tb.Errorf("%sexpected duration < %v, got %v", prefix(name...), tolerance, elapsed)
 	}
 }
 
 // mustReadFile reads the entire file or fails the test.
-func mustReadFile(t testing.TB, fsys fs.ReadFileFS, name string, label ...string) []byte {
-	t.Helper()
+func mustReadFile(tb testing.TB, fsys fs.ReadFileFS, name string) []byte {
+	tb.Helper()
 
 	data, err := fsys.ReadFile(name)
 	if err != nil {
-		t.Fatalf("%sReadFile(%q) failed: %v", prefix(label...), name, err)
+		tb.Fatalf("ReadFile(%q) failed: %v", name, err)
 	}
 
 	return data

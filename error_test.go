@@ -855,14 +855,14 @@ func TestErrorInjector_Add_Concurrent(t *testing.T) {
 	inj := mockfs.NewErrorInjector()
 	var wg sync.WaitGroup
 
-	for i := range 10 {
+	for range 10 {
 		wg.Add(1)
-		go func(n int) {
+		go func() {
 			defer wg.Done()
 			for range 100 {
 				inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 			}
-		}(i)
+		}()
 	}
 
 	wg.Wait()

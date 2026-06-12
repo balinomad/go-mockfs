@@ -101,6 +101,7 @@ type regexpParentMatcher struct {
 	prefix string // normalized, without trailing slash
 }
 
+// Matches returns true if the path matches the regexp.
 func (r *regexpParentMatcher) Matches(path string) bool {
 	// If the candidate path represents the directory root inside the sub-FS,
 	// treat it as the prefix itself (equivalent to ".")
@@ -112,6 +113,10 @@ func (r *regexpParentMatcher) Matches(path string) bool {
 	return r.re.MatchString(parentPath)
 }
 
+// CloneForSub returns a matcher adjusted for a sub-namespace (used by SubFS).
+// It converts a parent-path matcher into a matcher that matches the relative path
+// inside the sub-file system. If the original path is not under prefix, it returns
+// a matcher that never matches.
 func (r *regexpParentMatcher) CloneForSub(prefix string) PathMatcher {
 	prefix = strings.TrimSuffix(prefix, "/")
 	if prefix == "" || prefix == "." {
@@ -163,6 +168,7 @@ type globParentMatcher struct {
 	prefix  string // normalized, without trailing slash
 }
 
+// Matches returns true if the path matches the glob pattern.
 func (g *globParentMatcher) Matches(subPath string) bool {
 	var parentPath string
 	// If the candidate path represents the directory root inside the sub-FS,
@@ -179,6 +185,10 @@ func (g *globParentMatcher) Matches(subPath string) bool {
 	return matched
 }
 
+// CloneForSub returns a matcher adjusted for a sub-namespace (used by SubFS).
+// It converts a parent-path matcher into a matcher that matches the relative path
+// inside the sub-file system. If the original path is not under prefix, it returns
+// a matcher that never matches.
 func (g *globParentMatcher) CloneForSub(prefix string) PathMatcher {
 	prefix = strings.TrimSuffix(prefix, "/")
 	if prefix == "" || prefix == "." {

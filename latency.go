@@ -33,6 +33,7 @@ type simOptions struct {
 	async bool
 }
 
+// SimOpt is a Simulate() option.
 type SimOpt func(*simOptions)
 
 // Once makes Simulate apply latency at most once for the operation type.

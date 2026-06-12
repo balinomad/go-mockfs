@@ -52,7 +52,7 @@ func (p *panicBinaryMarshaler) MarshalBinary() ([]byte, error) {
 
 type errorReader struct{}
 
-func (e *errorReader) Read(p []byte) (n int, err error) {
+func (e *errorReader) Read(p []byte) (int, error) {
 	return 0, errors.New("read error")
 }
 
@@ -73,6 +73,7 @@ func TestNewMockFS(t *testing.T) {
 		{
 			name: "empty filesystem",
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				_, err := m.Stat(".")
 				requireNoError(t, err)
 			},
@@ -84,6 +85,7 @@ func TestNewMockFS(t *testing.T) {
 				mockfs.File("nil.txt", nil), // Should not be ignored
 			},
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				content := mustReadFile(t, m, "file.txt")
 				if string(content) != "original" {
 					t.Errorf("non-nil filecontent = %q, want %q", content, "original")
@@ -101,6 +103,7 @@ func TestNewMockFS(t *testing.T) {
 				mockfs.WithLatency(10 * time.Millisecond),
 			},
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				start := time.Now()
 				m.Stat("file.txt") //nolint:errcheck
 				if time.Since(start) < 5*time.Millisecond {
@@ -115,6 +118,7 @@ func TestNewMockFS(t *testing.T) {
 				mockfs.WithErrorInjector(customInjector),
 			},
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				_, err := m.Stat("file.txt")
 				assertError(t, err, customErr)
 			},
@@ -244,6 +248,7 @@ func TestNewMockFS_AutoCreateRoot(t *testing.T) {
 		{
 			name: "empty map",
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				info, err := m.Stat(".")
 				requireNoError(t, err)
 				if !info.IsDir() || info.Mode()&fs.ModeDir == 0 {
@@ -258,6 +263,7 @@ func TestNewMockFS_AutoCreateRoot(t *testing.T) {
 				mockfs.Dir("dir", mockfs.File("nested.txt", "nested")),
 			},
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				info, err := m.Stat(".")
 				requireNoError(t, err)
 				if !info.IsDir() {
@@ -271,6 +277,7 @@ func TestNewMockFS_AutoCreateRoot(t *testing.T) {
 			name: "nil entries",
 			opts: []mockfs.MockFSOption{mockfs.File("file.txt", nil)},
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				info, err := m.Stat(".")
 				requireNoError(t, err, "Stat(\".\") with nil entries")
 				if !info.IsDir() {
@@ -282,6 +289,7 @@ func TestNewMockFS_AutoCreateRoot(t *testing.T) {
 			name: "operations on root",
 			opts: []mockfs.MockFSOption{mockfs.File("file.txt", "test")},
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				dir, err := m.Open(".")
 				requireNoError(t, err)
 				defer func() { _ = dir.Close() }()
@@ -397,6 +405,7 @@ func TestMockFS_Open(t *testing.T) {
 			},
 			path: "a.txt",
 			check: func(t *testing.T, f fs.File) {
+				t.Helper()
 				content, err := io.ReadAll(f)
 				requireNoError(t, err)
 				if string(content) != "data" {
@@ -702,6 +711,7 @@ func TestMockFS_AddFile(t *testing.T) {
 				return m.AddFile("file.txt", "hello", 0o644)
 			},
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				content := mustReadFile(t, m, "file.txt")
 				if string(content) != "hello" {
 					t.Error("content mismatch")
@@ -714,6 +724,7 @@ func TestMockFS_AddFile(t *testing.T) {
 				return m.AddFile("bin.dat", []byte{0, 1, 2}, 0o600)
 			},
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				content := mustReadFile(t, m, "bin.dat")
 				if !bytes.Equal(content, []byte{0, 1, 2}) {
 					t.Error("content mismatch")
@@ -822,6 +833,7 @@ func TestMockFS_RemoveEntry(t *testing.T) {
 			},
 			remove: "file.txt",
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				_, err := m.Stat("file.txt")
 				assertError(t, err, mockfs.ErrNotExist)
 			},
@@ -959,9 +971,10 @@ func TestMockFS_MkdirAll(t *testing.T) {
 			perm:    0o755,
 			wantErr: nil,
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				for _, p := range []string{"new", "new/nested", "new/nested/dir"} {
 					info, err := m.Stat(p)
-					requireNoError(t, err, fmt.Sprintf("stat %s", p))
+					requireNoError(t, err, "stat "+p)
 					if !info.IsDir() {
 						t.Errorf("%s is not a directory", p)
 					}
@@ -1028,6 +1041,7 @@ func TestMockFS_Remove(t *testing.T) {
 			path:    "file.txt",
 			wantErr: nil,
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				_, err := m.Stat("file.txt")
 				assertError(t, err, mockfs.ErrNotExist)
 			},
@@ -1096,9 +1110,10 @@ func TestMockFS_RemoveAll(t *testing.T) {
 			path:    "dir",
 			wantErr: nil,
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				for _, p := range []string{"dir", "dir/file.txt", "dir/sub", "dir/sub/nested.txt"} {
 					_, err := m.Stat(p)
-					assertError(t, err, mockfs.ErrNotExist, fmt.Sprintf("path %s", p))
+					assertError(t, err, mockfs.ErrNotExist, "path "+p)
 				}
 			},
 		},
@@ -1151,6 +1166,7 @@ func TestMockFS_Rename(t *testing.T) {
 			newpath: "new.txt",
 			wantErr: nil,
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				_, err := m.Stat("old.txt")
 				assertError(t, err, mockfs.ErrNotExist, "old path")
 
@@ -1170,6 +1186,7 @@ func TestMockFS_Rename(t *testing.T) {
 			newpath: "newdir",
 			wantErr: nil,
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				_, err := m.Stat("olddir")
 				assertError(t, err, mockfs.ErrNotExist, "old dir")
 
@@ -1262,6 +1279,7 @@ func TestMockFS_WriteFile(t *testing.T) {
 			data: []byte("new"),
 			perm: 0o644,
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				content := mustReadFile(t, m, "file.txt")
 				if string(content) != "new" {
 					t.Errorf("content = %q, want %q", content, "new")
@@ -1278,6 +1296,7 @@ func TestMockFS_WriteFile(t *testing.T) {
 			data: []byte("new"),
 			perm: 0o644,
 			check: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				content := mustReadFile(t, m, "file.txt")
 				if string(content) != "oldnew" {
 					t.Errorf("content = %q, want %q", content, "oldnew")
@@ -1680,6 +1699,7 @@ func TestMockFS_Options(t *testing.T) {
 			name: "with read only",
 			opts: []mockfs.MockFSOption{mockfs.WithReadOnly()},
 			verify: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				err := m.WriteFile("test.txt", []byte("data"), 0o644)
 				assertError(t, err, mockfs.ErrPermission)
 			},
@@ -1691,6 +1711,7 @@ func TestMockFS_Options(t *testing.T) {
 				mockfs.WithOverwrite(),
 			},
 			verify: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				err := m.WriteFile("file.txt", []byte("new"), 0o644)
 				requireNoError(t, err)
 				content := mustReadFile(t, m, "file.txt")
@@ -1706,6 +1727,7 @@ func TestMockFS_Options(t *testing.T) {
 				mockfs.WithAppend(),
 			},
 			verify: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				err := m.WriteFile("file.txt", []byte("new"), 0o644)
 				requireNoError(t, err)
 				content := mustReadFile(t, m, "file.txt")
@@ -1720,6 +1742,7 @@ func TestMockFS_Options(t *testing.T) {
 				mockfs.WithLatencySimulator(mockfs.NewLatencySimulator(10 * time.Millisecond)),
 			},
 			verify: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				start := time.Now()
 				m.Stat(".") //nolint:errcheck
 				if time.Since(start) < 5*time.Millisecond {
@@ -1735,6 +1758,7 @@ func TestMockFS_Options(t *testing.T) {
 				}),
 			},
 			verify: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				start := time.Now()
 				m.Stat(".") //nolint:errcheck
 				if time.Since(start) < 5*time.Millisecond {
@@ -1746,6 +1770,7 @@ func TestMockFS_Options(t *testing.T) {
 			name: "reset stats",
 			opts: nil,
 			verify: func(t *testing.T, m *mockfs.MockFS) {
+				t.Helper()
 				m.Stat(".") //nolint:errcheck
 				m.ResetStats()
 				if m.Stats().Count(mockfs.OpStat) != 0 {

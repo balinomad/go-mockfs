@@ -294,7 +294,9 @@ func NewMockFS(opts ...MockFSOption) *MockFS {
 // Stat returns file information for the given path.
 // It implements the fs.StatFS interface.
 // This is a filesystem-level operation that does not open the file.
-func (m *MockFS) Stat(name string) (info fs.FileInfo, err error) {
+func (m *MockFS) Stat(name string) (fs.FileInfo, error) {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpStat, 0, err) }()
 
@@ -336,7 +338,9 @@ func (m *MockFS) Stat(name string) (info fs.FileInfo, err error) {
 // It implements the fs.FS interface.
 // This is a filesystem-level operation. The returned MockFile handles file-level operations.
 // Use OpenMockFile to obtain the concrete *MockFile directly without a type assertion.
-func (m *MockFS) Open(name string) (file fs.File, err error) {
+func (m *MockFS) Open(name string) (fs.File, error) {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpOpen, 0, err) }()
 
@@ -416,7 +420,9 @@ func (m *MockFS) ReadFile(name string) ([]byte, error) {
 
 // ReadDir implements the fs.ReadDirFS interface.
 // This is a filesystem-level operation.
-func (m *MockFS) ReadDir(name string) (entries []fs.DirEntry, err error) {
+func (m *MockFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpReadDir, 0, err) }()
 
@@ -715,7 +721,7 @@ func (m *MockFS) MarkNonExistent(paths ...string) {
 	for _, p := range paths {
 		cleanPath := path.Clean(p)
 		_ = m.RemoveEntry(cleanPath) // Remove from map first
-		m.injector.AddGlobForAllOps(cleanPath, ErrNotExist, ErrorModeAlways, 0)
+		_ = m.injector.AddGlobForAllOps(cleanPath, ErrNotExist, ErrorModeAlways, 0)
 	}
 }
 
@@ -742,7 +748,9 @@ func (m *MockFS) ResetStats() {
 // --- WritableFS Implementation ---
 
 // Mkdir creates a directory in the filesystem.
-func (m *MockFS) Mkdir(dirPath string, perm FileMode) (err error) {
+func (m *MockFS) Mkdir(dirPath string, perm FileMode) error {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpMkdir, 0, err) }()
 
@@ -768,7 +776,9 @@ func (m *MockFS) Mkdir(dirPath string, perm FileMode) (err error) {
 }
 
 // MkdirAll creates a directory path and all parents if needed.
-func (m *MockFS) MkdirAll(dirPath string, perm FileMode) (err error) {
+func (m *MockFS) MkdirAll(dirPath string, perm FileMode) error {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpMkdirAll, 0, err) }()
 
@@ -791,7 +801,9 @@ func (m *MockFS) MkdirAll(dirPath string, perm FileMode) (err error) {
 
 // Remove removes a file or directory from the filesystem.
 // Directories must be empty to be removed.
-func (m *MockFS) Remove(filePath string) (err error) {
+func (m *MockFS) Remove(filePath string) error {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpRemove, 0, err) }()
 
@@ -831,7 +843,9 @@ func (m *MockFS) Remove(filePath string) (err error) {
 }
 
 // RemoveAll removes a path and any children recursively.
-func (m *MockFS) RemoveAll(filePath string) (err error) {
+func (m *MockFS) RemoveAll(filePath string) error {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpRemoveAll, 0, err) }()
 
@@ -862,7 +876,9 @@ func (m *MockFS) RemoveAll(filePath string) (err error) {
 
 // Rename renames a file or directory in the filesystem.
 // If the destination already exists, it will be overwritten.
-func (m *MockFS) Rename(oldpath, newpath string) (err error) {
+func (m *MockFS) Rename(oldpath, newpath string) error {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpRename, 0, err) }()
 
@@ -918,7 +934,9 @@ func (m *MockFS) Rename(oldpath, newpath string) (err error) {
 }
 
 // WriteFile writes data to a file in the filesystem.
-func (m *MockFS) WriteFile(filePath string, data []byte, perm FileMode) (err error) {
+func (m *MockFS) WriteFile(filePath string, data []byte, perm FileMode) error {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() {
 		written := 0
@@ -1103,11 +1121,11 @@ func createReadDirClosure(entries []fs.DirEntry) func(int) ([]fs.DirEntry, error
 }
 
 // validateSubdir cleans and validates the target directory path for Sub.
-func (m *MockFS) validateSubdir(dir string) (cleanDir string, info fs.FileInfo, err error) {
+func (m *MockFS) validateSubdir(dir string) (string, fs.FileInfo, error) {
 	if !fs.ValidPath(dir) {
 		return "", nil, &fs.PathError{Op: "Sub", Path: dir, Err: ErrInvalid}
 	}
-	cleanDir = path.Clean(dir)
+	cleanDir := path.Clean(dir)
 
 	// Check if directory exists
 	m.mu.RLock()
@@ -1122,7 +1140,7 @@ func (m *MockFS) validateSubdir(dir string) (cleanDir string, info fs.FileInfo, 
 		return "", nil, &fs.PathError{Op: "Sub", Path: dir, Err: ErrNotDir}
 	}
 
-	info = &FileInfo{
+	info := &FileInfo{
 		name:    path.Base(cleanDir),
 		size:    0,
 		mode:    mapFile.Mode,
@@ -1245,7 +1263,10 @@ func (m *MockFS) validateAndCleanPath(p string, op Operation) (string, error) {
 
 // toBytes converts a variety of input types into a byte slice.
 // It never panics and never returns nil if error is nil, but may return an empty slice.
-func toBytes(content any) (data []byte, err error) {
+func toBytes(content any) ([]byte, error) {
+	var data []byte
+	var err error
+
 	// Recover from panics to wrap with type information before re-panicking in caller.
 	defer func() {
 		if r := recover(); r != nil {

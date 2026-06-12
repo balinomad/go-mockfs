@@ -3,6 +3,7 @@ package mockfs_test
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -61,7 +62,7 @@ func TestNewStatsRecorder(t *testing.T) {
 			t.Fatal("returned nil")
 		}
 		assertBytes(t, s, 0, 0)
-		for op := mockfs.Operation(0); op < mockfs.NumOperations; op++ {
+		for op := range mockfs.NumOperations {
 			if !op.IsValid() {
 				continue
 			}
@@ -410,12 +411,7 @@ func TestStats_FailedOperations(t *testing.T) {
 	}
 
 	hasOp := func(ops []mockfs.Operation, op mockfs.Operation) bool {
-		for _, o := range ops {
-			if o == op {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(ops, op)
 	}
 
 	if !hasOp(failed, mockfs.OpOpen) || !hasOp(failed, mockfs.OpWrite) {

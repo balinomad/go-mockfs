@@ -2,6 +2,7 @@ package mockfs_test
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -210,11 +211,7 @@ func TestExactMatcher_Concurrent(t *testing.T) {
 
 // TestExactMatcher_LongPaths tests ExactMatcher with very long paths.
 func TestExactMatcher_LongPaths(t *testing.T) {
-	longPath := ""
-	for range 100 {
-		longPath += "very/long/path/segment/"
-	}
-	longPath += "file.txt"
+	longPath := strings.Repeat("very/long/path/segment/", 100) + "file.txt"
 
 	m := mockfs.NewExactMatcher(longPath)
 	if !m.Matches(longPath) {
