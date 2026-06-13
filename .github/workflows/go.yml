@@ -1,45 +1,176 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
-
-name: Go build & test
-permissions:
-  contents: read
+name: Go
 
 on:
   push:
-    branches: ["**"]
+    branches: ["main"]
   pull_request:
-    branches: ["**"]
+    branches: ["main"]
   workflow_dispatch: {}
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+# Cancel in-progress runs on the same branch when a new push arrives.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
+permissions:
+  contents: read
+
+jobs:
+  # go.mod and go.sum must be tidy before merge.
+  mod-tidy:
+    name: go mod tidy
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run go mod tidy
+        env:
+          CGO_ENABLED: "0"
+        run: go mod tidy
+
+      - name: Fail if go.mod or go.sum are dirty
+        run: |
+          if [ -n "$(git status --porcelain go.mod go.sum)" ]; then
+            echo "::error::go.mod or go.sum changed after 'go mod tidy' — commit the result"
+            git diff go.mod go.sum
+            exit 1
+          fi
+
+  # Static analysis gate. Linter set and settings are defined in .golangci.yml.
+  # gosec (G101, G202, G304, G401, G402, G404, G501 and all other rules) is
+  # enabled there; this job is the binding CI enforcement point.
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          # golangci-lint-action manages its own cache; disable setup-go's
+          # default cache to prevent interference.
+          cache: false
+
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          # Pin to a specific v2 release for reproducibility.
+          # Update deliberately; do not use 'latest' in production pipelines.
+          version: v2.2.0
+          args: --timeout=4m
+
+  # Vulnerability scan against the Go vulnerability database.
+  # Fails the build on any reachable known CVE in the dependency graph.
+  vulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          # govulncheck-action manages its own cache.
+          cache: false
+
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-file: go.mod
+          # Pinned to v1.1.3 to prevent non-reproducible run behavior.
+          govulncheck-version: v1.3.0
+
+  # ──── Cross-compilation ────────────────────────────────────────────────────
+  # Verify the production binary cross-compiles cleanly for the deployment target.
+  # Tests run on ubuntu-latest (linux/amd64); the deployed container runs linux/arm64.
+  # Cross-compilation catches platform-specific issues before they reach the host.
+  build:
+    name: build (linux/arm64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cross-compile for linux/arm64
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: arm64
+        run: go build -o /dev/null ./...
+
+  # ── Unit tests ─────────────────────────────────────────────────────────────
+  # CGO_ENABLED=0 enforces the project's no-CGO constraint on all platforms.
+  # Race detector: Go 1.22+ supports -race with CGO_ENABLED=0 on Linux only.
+  # macOS and Windows require CGO for -race; they run without it.
+  # -count=1 disables the test result cache so failures are never hidden
+  # by a stale passing result.
+  test:
+    name: test (${{ matrix.os }}, Go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      CGO_ENABLED: "0"
     strategy:
       fail-fast: false
       matrix:
-        go: ["1.22", "stable"]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go: ["go.mod", "stable"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read minimum Go version from go.mod
-        id: goversion
-        run: echo "GO_VERSION=$(grep '^go ' go.mod | cut -d' ' -f2)" >> $GITHUB_ENV
-
-      - name: Set up Go
+      - name: Set up Go (from go.mod)
+        if: matrix.go == 'go.mod'
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: "go.mod"
 
-      - name: Build
-        run: go build -v ./...
+      - name: Set up Go (stable)
+        if: matrix.go == 'stable'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
 
-      - name: Test with coverage
-        run: go test -race -shuffle=on -covermode=atomic -coverprofile=coverage.txt ./...
+      - name: Run tests with race detector (Linux)
+        if: runner.os == 'Linux'
+        run: go test -race -count=1 -shuffle=on -covermode=atomic -coverprofile=coverage.out ./...
 
-      - name: Upload coverage reports to Codecov
+      - name: Run tests (macOS / Windows)
+        if: runner.os != 'Linux'
+        run: go test -count=1 -shuffle=on ./...
+
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.go == 'go.mod'
         uses: codecov/codecov-action@v5
         with:
+          files: coverage.out
           token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+  # ── Branch protection gate ─────────────────────────────────────────────────
+  # Require all jobs to pass. Configure this job as a required status check in
+  # the branch protection rules for main.
+  ci-gate:
+    name: CI gate
+    if: always()
+    needs: [mod-tidy, lint, vulncheck, build, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all jobs to succeed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
