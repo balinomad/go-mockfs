@@ -1,17 +1,23 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: tidy test fulltest bench cover fullcover cyclo fullcyclo examples
+.PHONY: tidy upgrade lint test fulltest bench cover fullcover cyclo fullcyclo examples
 
 tidy:
-	@go clean -modcache || true
-	@go get -u ./... || true
-	@go mod tidy || true
+	go mod tidy
+
+upgrade:
+	go get -u ./...
+	go mod tidy
+
+lint:
+	golangci-lint run ./...
+
 test:
 	@go test -race -timeout 30s ./...
 
 fulltest:
 	@clear
-	@go test -race -v -count=1 -timeout 30s ./...
+	@go test -race -v -count=1 -shuffle=on -timeout 30s ./...
 
 bench:
 	@go test -bench . -benchmem -run ^$$ -timeout 30s ./...
@@ -19,7 +25,7 @@ bench:
 cover:
 	@clear
 	@tmp=$$(mktemp); \
-	go test -coverprofile="$${tmp}" ./... && \
+	go test -race -covermode=atomic -coverprofile="$${tmp}" ./... && \
 	go tool cover -func="$${tmp}"; \
 	rm "$${tmp}"
 
@@ -30,7 +36,7 @@ fullcover:
 	for pkg in $$(go list ./...); do \
 		echo "-> $$pkg"; \
 		outfile=".cover/$$(echo $$pkg | tr '/' '_' ).cov"; \
-		go test -covermode=atomic -coverprofile="$$outfile" $$pkg || echo "   [tests failed] $$pkg (continuing)"; \
+		go test -race -covermode=atomic -coverprofile="$$outfile" $$pkg || echo "   [tests failed] $$pkg (continuing)"; \
 	done; \
 	ls .cover/*.cov >/dev/null 2>&1 || { echo "No coverage profiles generated"; exit 1; }; \
 	echo "mode: atomic" > .cover/coverage.txt; \
