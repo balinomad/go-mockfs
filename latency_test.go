@@ -10,7 +10,10 @@ import (
 )
 
 func TestNewLatencySimulator(t *testing.T) {
+	t.Parallel()
+
 	t.Run("zero duration", func(t *testing.T) {
+		t.Parallel()
 		ls := mockfs.NewLatencySimulator(0)
 		if ls == nil {
 			t.Fatal("returned nil, expected non-nil simulator")
@@ -22,6 +25,7 @@ func TestNewLatencySimulator(t *testing.T) {
 	})
 
 	t.Run("positive duration", func(t *testing.T) {
+		t.Parallel()
 		ls := mockfs.NewLatencySimulator(testDuration)
 		if ls == nil {
 			t.Fatal("returned nil, expected non-nil simulator")
@@ -33,11 +37,14 @@ func TestNewLatencySimulator(t *testing.T) {
 	})
 
 	t.Run("negative duration panics", func(t *testing.T) {
+		t.Parallel()
 		requirePanic(t, func() { mockfs.NewLatencySimulator(-1 * time.Millisecond) }, "negative duration")
 	})
 }
 
 func TestNewLatencySimulatorPerOp(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		durations   map[mockfs.Operation]time.Duration
@@ -78,6 +85,7 @@ func TestNewLatencySimulatorPerOp(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ls := mockfs.NewLatencySimulatorPerOp(tt.durations)
 			start := time.Now()
 			ls.Simulate(tt.opToTest)
@@ -90,6 +98,7 @@ func TestNewLatencySimulatorPerOp(t *testing.T) {
 	}
 
 	t.Run("negative duration panics", func(t *testing.T) {
+		t.Parallel()
 		requirePanic(t,
 			func() { mockfs.NewLatencySimulatorPerOp(map[mockfs.Operation]time.Duration{mockfs.OpRead: -1}) },
 			"negative per-op duration")
@@ -97,6 +106,7 @@ func TestNewLatencySimulatorPerOp(t *testing.T) {
 }
 
 func TestNewNoopLatencySimulator(t *testing.T) {
+	t.Parallel()
 	ls := mockfs.NewNoopLatencySimulator()
 	if ls == nil {
 		t.Fatal("returned nil, expected non-nil simulator")
@@ -109,7 +119,10 @@ func TestNewNoopLatencySimulator(t *testing.T) {
 }
 
 func TestLatencySimulator_Simulate_Concurrency(t *testing.T) {
+	t.Parallel()
+
 	t.Run("default is serialized", func(t *testing.T) {
+		t.Parallel()
 		ls := mockfs.NewLatencySimulator(testDuration)
 		numGoroutines := 3
 
@@ -148,6 +161,7 @@ func TestLatencySimulator_Simulate_Concurrency(t *testing.T) {
 	})
 
 	t.Run("async is parallel", func(t *testing.T) {
+		t.Parallel()
 		ls := mockfs.NewLatencySimulator(testDuration)
 		numGoroutines := 3
 
@@ -168,6 +182,7 @@ func TestLatencySimulator_Simulate_Concurrency(t *testing.T) {
 }
 
 func TestLatencySimulator_Simulate_Async(t *testing.T) {
+	t.Parallel()
 	ls := mockfs.NewLatencySimulator(testDuration)
 
 	start := time.Now()
@@ -191,11 +206,11 @@ func TestLatencySimulator_Simulate_Async(t *testing.T) {
 }
 
 func TestLatencySimulator_Simulate_Once(t *testing.T) {
+	t.Parallel()
 	ls := mockfs.NewLatencySimulator(testDuration)
 
 	start := time.Now()
 	ls.Simulate(mockfs.OpRead, mockfs.Once())
-	firstElapsed := time.Since(start)
 
 	// First call should sleep
 	assertDuration(t, start, testDuration, "once first call")
@@ -209,11 +224,10 @@ func TestLatencySimulator_Simulate_Once(t *testing.T) {
 	start = time.Now()
 	ls.Simulate(mockfs.OpWrite, mockfs.Once())
 	assertDuration(t, start, testDuration, "once different operation")
-
-	_ = firstElapsed // Use the variable
 }
 
 func TestLatencySimulator_Simulate_OnceAsync(t *testing.T) {
+	t.Parallel()
 	ls := mockfs.NewLatencySimulator(testDuration)
 
 	var wg sync.WaitGroup
@@ -250,6 +264,7 @@ func TestLatencySimulator_Simulate_OnceAsync(t *testing.T) {
 }
 
 func TestLatencySimulator_Simulate_OnceSerialized(t *testing.T) {
+	t.Parallel()
 	ls := mockfs.NewLatencySimulator(testDuration)
 
 	var wg sync.WaitGroup
@@ -282,7 +297,10 @@ func TestLatencySimulator_Simulate_OnceSerialized(t *testing.T) {
 }
 
 func TestLatencySimulator_MixedOptions(t *testing.T) {
+	t.Parallel()
+
 	t.Run("once then non-once", func(t *testing.T) {
+		t.Parallel()
 		ls := mockfs.NewLatencySimulator(testDuration)
 
 		// First with Once
@@ -297,6 +315,7 @@ func TestLatencySimulator_MixedOptions(t *testing.T) {
 	})
 
 	t.Run("async then serialized", func(t *testing.T) {
+		t.Parallel()
 		ls := mockfs.NewLatencySimulator(testDuration)
 
 		// Async call
@@ -312,6 +331,7 @@ func TestLatencySimulator_MixedOptions(t *testing.T) {
 }
 
 func TestReset(t *testing.T) {
+	t.Parallel()
 	ls := mockfs.NewLatencySimulator(testDuration)
 
 	// First call with Once
@@ -334,6 +354,7 @@ func TestReset(t *testing.T) {
 }
 
 func TestReset_MultipleOperations(t *testing.T) {
+	t.Parallel()
 	ls := mockfs.NewLatencySimulator(testDuration)
 
 	// Mark multiple operations as seen
@@ -362,6 +383,7 @@ func TestReset_MultipleOperations(t *testing.T) {
 }
 
 func TestLatencySimulator_ConcurrentReset(t *testing.T) {
+	t.Parallel()
 	// This test verifies Reset is safe when called after operations complete
 	ls := mockfs.NewLatencySimulator(testDuration)
 
@@ -388,6 +410,7 @@ func TestLatencySimulator_ConcurrentReset(t *testing.T) {
 }
 
 func TestLatencySimulator_MultipleOperationTypes(t *testing.T) {
+	t.Parallel()
 	durations := map[mockfs.Operation]time.Duration{
 		mockfs.OpRead:  testDuration,
 		mockfs.OpWrite: testDurationLong,
@@ -409,6 +432,7 @@ func TestLatencySimulator_MultipleOperationTypes(t *testing.T) {
 }
 
 func TestLatencySimulator_ZeroDurationOperation(t *testing.T) {
+	t.Parallel()
 	ls := mockfs.NewLatencySimulatorPerOp(map[mockfs.Operation]time.Duration{
 		mockfs.OpRead:  testDuration,
 		mockfs.OpWrite: 0, // Explicit zero
@@ -424,6 +448,7 @@ func TestLatencySimulator_ZeroDurationOperation(t *testing.T) {
 }
 
 func TestSimOpt_Once(t *testing.T) {
+	t.Parallel()
 	// Test Once() behavior: first call sleeps, second doesn't
 	ls := mockfs.NewLatencySimulator(testDuration)
 
@@ -437,6 +462,7 @@ func TestSimOpt_Once(t *testing.T) {
 }
 
 func TestSimOpt_Async(t *testing.T) {
+	t.Parallel()
 	// Test Async() behavior: multiple concurrent calls complete in ~testDuration
 	ls := mockfs.NewLatencySimulator(testDuration)
 
@@ -461,6 +487,7 @@ func TestSimOpt_Async(t *testing.T) {
 }
 
 func TestSimOpt_OnceAsync(t *testing.T) {
+	t.Parallel()
 	// Test OnceAsync() behavior: combines both Once and Async
 	ls := mockfs.NewLatencySimulator(testDuration)
 
@@ -474,17 +501,15 @@ func TestSimOpt_OnceAsync(t *testing.T) {
 		ls.Simulate(mockfs.OpRead, mockfs.OnceAsync())
 	}()
 	wg.Wait()
-	firstElapsed := time.Since(start)
 	assertDuration(t, start, testDuration, "OnceAsync first call should sleep")
 
 	// Second call should not sleep (Once behavior)
 	start = time.Now()
 	ls.Simulate(mockfs.OpRead, mockfs.OnceAsync())
 	assertNoDuration(t, start, "OnceAsync second call should not sleep")
-
-	_ = firstElapsed // Use the variable
 }
 func TestLatencySimulator_ClonePreservesPerOpDurations(t *testing.T) {
+	t.Parallel()
 	durations := map[mockfs.Operation]time.Duration{
 		mockfs.OpRead:  testDuration,
 		mockfs.OpWrite: testDurationLong,
@@ -503,6 +528,7 @@ func TestLatencySimulator_ClonePreservesPerOpDurations(t *testing.T) {
 }
 
 func TestSimOpt_MultipleOptions(t *testing.T) {
+	t.Parallel()
 	// Test applying both Once() and Async() separately
 	ls := mockfs.NewLatencySimulator(testDuration)
 
@@ -533,6 +559,7 @@ func TestSimOpt_MultipleOptions(t *testing.T) {
 }
 
 func TestLatencySimulator_MultipleOptOrder(t *testing.T) {
+	t.Parallel()
 	ls1 := mockfs.NewLatencySimulator(testDuration)
 	ls2 := mockfs.NewLatencySimulator(testDuration)
 

@@ -127,6 +127,7 @@ func TestNewMockFS(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS(tt.opts...)
 			if mfs == nil {
 				t.Fatal("NewMockFS returned nil")
@@ -167,6 +168,7 @@ func TestNewMockFS_Builder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
+			t.Parallel()
 			info, err := mfs.Stat(tt.path)
 			requireNoError(t, err)
 			if info.IsDir() != tt.isDir {
@@ -220,6 +222,7 @@ func TestNewMockFS_OptionPanic(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			defer func() {
 				r := recover()
 				if r == nil {
@@ -305,6 +308,7 @@ func TestNewMockFS_AutoCreateRoot(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS(tt.opts...)
 			tt.check(t, mfs)
 		})
@@ -315,6 +319,7 @@ func TestMockFS_Injector(t *testing.T) {
 	t.Parallel()
 
 	t.Run("default injector", func(t *testing.T) {
+		t.Parallel()
 		mfs := mockfs.NewMockFS()
 		if mfs.ErrorInjector() == nil {
 			t.Error("default injector is nil")
@@ -322,6 +327,7 @@ func TestMockFS_Injector(t *testing.T) {
 	})
 
 	t.Run("custom injector", func(t *testing.T) {
+		t.Parallel()
 		customInjector := mockfs.NewErrorInjector()
 		mfs := mockfs.NewMockFS(mockfs.WithErrorInjector(customInjector))
 		if mfs.ErrorInjector() != customInjector {
@@ -373,6 +379,7 @@ func TestMockFS_Stat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			info, err := mfs.Stat(tt.path)
 			if tt.wantErr != nil {
 				assertError(t, err, tt.wantErr)
@@ -445,6 +452,7 @@ func TestMockFS_Open(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS()
 			if tt.setup != nil {
 				tt.setup(mfs)
@@ -464,6 +472,7 @@ func TestMockFS_Open(t *testing.T) {
 	}
 
 	t.Run("once error then success", func(t *testing.T) {
+		t.Parallel()
 		mfs := mockfs.NewMockFS()
 		_ = mfs.AddFile("other.txt", "data", 0o644)
 		mfs.FailOpenOnce("other.txt", mockfs.ErrPermission)
@@ -522,6 +531,7 @@ func TestMockFS_ReadFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS()
 			if tt.setup != nil {
 				tt.setup(mfs)
@@ -595,6 +605,7 @@ func TestMockFS_ReadDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS()
 			if tt.setup != nil {
 				tt.setup(mfs)
@@ -643,6 +654,7 @@ func TestMockFS_Sub(t *testing.T) {
 	mfsParent.FailStat("other.txt", injectedErr) // Should not be visible in sub-fs
 
 	t.Run("happy path", func(t *testing.T) {
+		t.Parallel()
 		mfsSub, err := mfsParent.Sub("app")
 		requireNoError(t, err)
 
@@ -665,6 +677,7 @@ func TestMockFS_Sub(t *testing.T) {
 	})
 
 	t.Run("error cases", func(t *testing.T) {
+		t.Parallel()
 		tests := []struct {
 			name    string
 			path    string
@@ -678,6 +691,7 @@ func TestMockFS_Sub(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
 				_, err := mfsParent.Sub(tt.path)
 				assertError(t, err, tt.wantErr)
 			})
@@ -685,6 +699,7 @@ func TestMockFS_Sub(t *testing.T) {
 	})
 
 	t.Run("dot returns receiver", func(t *testing.T) {
+		t.Parallel()
 		same, err := mfsParent.Sub(".")
 		requireNoError(t, err)
 		if same != mfsParent {
@@ -777,6 +792,7 @@ func TestMockFS_AddFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS()
 			assertErrorWant(t, tt.setup(mfs), tt.wantErr, tt.expectedErr, "AddFile()")
 			if !tt.wantErr && tt.check != nil {
@@ -801,6 +817,7 @@ func TestMockFS_AddDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS()
 			err := mfs.AddDir(tt.path, tt.mode)
 			if tt.wantErr != nil {
@@ -851,6 +868,7 @@ func TestMockFS_RemoveEntry(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS()
 			if tt.setup != nil {
 				tt.setup(mfs)
@@ -930,6 +948,7 @@ func TestMockFS_Mkdir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS(
 				mockfs.Dir("dir",
 					mockfs.File("file.txt", "content"),
@@ -1010,6 +1029,7 @@ func TestMockFS_MkdirAll(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS()
 			tt.setup(mfs)
 
@@ -1078,6 +1098,7 @@ func TestMockFS_Remove(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS()
 			tt.setup(mfs)
 
@@ -1133,6 +1154,7 @@ func TestMockFS_RemoveAll(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS()
 			tt.setup(mfs)
 
@@ -1228,6 +1250,7 @@ func TestMockFS_Rename(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS()
 			tt.setup(mfs)
 
@@ -1323,6 +1346,7 @@ func TestMockFS_WriteFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS(tt.opts...)
 			if tt.setup != nil {
 				tt.setup(mfs)
@@ -1434,6 +1458,7 @@ func TestMockFS_FailMethods(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS()
 			tt.setup(mfs)
 			err := tt.operation(mfs)
@@ -1446,6 +1471,7 @@ func TestMockFS_ErrorInjection(t *testing.T) {
 	t.Parallel()
 
 	t.Run("fail after n successes", func(t *testing.T) {
+		t.Parallel()
 		mfs := mockfs.NewMockFS(mockfs.File("file.txt", "...read me..."))
 		injectedErr := errors.New("read failed")
 		mfs.FailReadAfter("file.txt", injectedErr, 2)
@@ -1469,6 +1495,7 @@ func TestMockFS_ErrorInjection(t *testing.T) {
 	})
 
 	t.Run("fail read next", func(t *testing.T) {
+		t.Parallel()
 		mfs := mockfs.NewMockFS(mockfs.File("flaky.txt", "datadatadatadata"))
 		mfs.FailReadNext("flaky.txt", io.EOF, 3)
 
@@ -1485,6 +1512,7 @@ func TestMockFS_ErrorInjection(t *testing.T) {
 	})
 
 	t.Run("mark non existent", func(t *testing.T) {
+		t.Parallel()
 		mfs := mockfs.NewMockFS(mockfs.File("file.txt", nil))
 		mfs.MarkNonExistent("file.txt")
 
@@ -1498,6 +1526,7 @@ func TestMockFS_ErrorInjection(t *testing.T) {
 	})
 
 	t.Run("clear errors", func(t *testing.T) {
+		t.Parallel()
 		mfs := mockfs.NewMockFS(mockfs.File("file.txt", ""))
 		mfs.FailStat("file.txt", mockfs.ErrPermission)
 
@@ -1614,6 +1643,7 @@ func TestMockFS_ErrorInjection_Once(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS()
 			tt.inject(mfs)
 
@@ -1782,6 +1812,7 @@ func TestMockFS_Options(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			mfs := mockfs.NewMockFS(tt.opts...)
 			tt.verify(t, mfs)
 		})
@@ -1900,6 +1931,8 @@ func TestMockFS_Remove_Rename_Concurrent(t *testing.T) {
 }
 
 func Test_toBytes(t *testing.T) {
+	t.Parallel()
+
 	const fname = "testfile"
 
 	// This panic message is expected from mockfs when toBytes returns an error.
@@ -1933,6 +1966,7 @@ func Test_toBytes(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			var got []byte
 			var err error
 			var recoveredPanic any
@@ -1988,6 +2022,8 @@ func Test_toBytes(t *testing.T) {
 }
 
 func Test_toBytes_MutationSafety(t *testing.T) {
+	t.Parallel()
+
 	const fname = "mutable"
 
 	// Create source slice

@@ -25,6 +25,8 @@ func assertFileInfoTime(t *testing.T, got time.Time, want time.Time) {
 // --- Tests ---
 
 func TestNewFileInfo(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string // description of this test case
 		// Named input parameters for target function.
@@ -71,6 +73,7 @@ func TestNewFileInfo(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			fileName := path.Base(tt.path)
 			got := mockfs.NewFileInfo(tt.path, tt.size, tt.mode, tt.modTime)
 			if got.Name() != fileName {
@@ -147,12 +150,9 @@ func TestNewFileInfo_Panic(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fileName := tt.in
-			fileSize := tt.size
-			fileMode := tt.mode
 			t.Parallel()
 			requirePanic(t, func() {
-				_ = mockfs.NewFileInfo(fileName, fileSize, fileMode, time.Now())
+				_ = mockfs.NewFileInfo(tt.in, tt.size, tt.mode, time.Now())
 			}, "NewFileInfo()")
 		})
 	}

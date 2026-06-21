@@ -107,12 +107,14 @@ func TestErrorRule_Matchers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			inj := mockfs.NewErrorInjector()
 			rule := mockfs.NewErrorRule(tt.errToApply, tt.mode, 0, tt.matchers...)
 			inj.Add(tt.op, rule)
 
 			for _, p := range tt.paths {
 				t.Run(p.path, func(t *testing.T) {
+					t.Parallel()
 					assertErrorWant(t, inj.CheckAndApply(tt.op, p.path), p.shouldError, tt.errToApply, fmt.Sprintf("path %q", p.path))
 				})
 			}
@@ -227,6 +229,7 @@ func TestErrorRule_Modes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			inj := mockfs.NewErrorInjector()
 			inj.AddExact(tt.op, tt.path, tt.errToApply, tt.mode, tt.n)
 
@@ -246,6 +249,7 @@ func TestErrorRule_Panics(t *testing.T) {
 	t.Parallel()
 
 	t.Run("invalid mode", func(t *testing.T) {
+		t.Parallel()
 		rule := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorMode(999), 0, mockfs.NewWildcardMatcher())
 		inj := mockfs.NewErrorInjector()
 		inj.Add(mockfs.OpRead, rule)
@@ -253,6 +257,7 @@ func TestErrorRule_Panics(t *testing.T) {
 	})
 
 	t.Run("negative after", func(t *testing.T) {
+		t.Parallel()
 		requirePanic(t, func() { mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAfterSuccesses, -1) }, "negative after")
 	})
 }
@@ -300,6 +305,7 @@ func TestErrorRule_CloneForSub(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			inj := mockfs.NewErrorInjector()
 			inj.AddExact(mockfs.OpOpen, tt.originalPath, mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 
@@ -314,6 +320,7 @@ func TestErrorRule_CloneForSub(t *testing.T) {
 	}
 
 	t.Run("preserves properties", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpWrite, "prefix/file.txt", mockfs.ErrDiskFull, mockfs.ErrorModeAfterSuccesses, 5)
 
@@ -354,6 +361,7 @@ func TestOperation_IsValid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := tt.op.IsValid(); got != tt.want {
 				t.Errorf("isValid()=%v, want %v", got, tt.want)
 			}
@@ -365,6 +373,7 @@ func TestOperation_String(t *testing.T) {
 	t.Parallel()
 
 	t.Run("output", func(t *testing.T) {
+		t.Parallel()
 		tests := []struct {
 			name string
 			op   mockfs.Operation
@@ -390,6 +399,7 @@ func TestOperation_String(t *testing.T) {
 	})
 
 	t.Run("missing string values", func(t *testing.T) {
+		t.Parallel()
 		missing := []string{}
 		for op := mockfs.OpUnknown; op < mockfs.NumOperations; op++ {
 			if op.String() == "Invalid" {
@@ -403,6 +413,7 @@ func TestOperation_String(t *testing.T) {
 	})
 
 	t.Run("string to operation", func(t *testing.T) {
+		t.Parallel()
 		tests := []struct {
 			s    string
 			want mockfs.Operation
@@ -431,6 +442,7 @@ func TestOperation_String(t *testing.T) {
 // --- ErrorInjector ---
 
 func TestNewErrorInjector(t *testing.T) {
+	t.Parallel()
 	inj := mockfs.NewErrorInjector()
 	if inj == nil {
 		t.Fatal("NewErrorInjector() returned nil")
@@ -445,6 +457,7 @@ func TestErrorInjector_Add(t *testing.T) {
 	t.Parallel()
 
 	t.Run("add", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		rule := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
 
@@ -457,6 +470,7 @@ func TestErrorInjector_Add(t *testing.T) {
 	})
 
 	t.Run("add exact", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 		assertError(t, inj.CheckAndApply(mockfs.OpRead, "test.txt"), mockfs.ErrPermission, "test.txt")
@@ -464,6 +478,7 @@ func TestErrorInjector_Add(t *testing.T) {
 	})
 
 	t.Run("add all", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddAll(mockfs.OpWrite, mockfs.ErrDiskFull, mockfs.ErrorModeAlways, 0)
 
@@ -477,6 +492,7 @@ func TestErrorInjector_AddRegexp(t *testing.T) {
 	t.Parallel()
 
 	t.Run("single operation", func(t *testing.T) {
+		t.Parallel()
 		tests := []struct {
 			name    string
 			pattern string
@@ -522,6 +538,7 @@ func TestErrorInjector_AddGlob(t *testing.T) {
 	t.Parallel()
 
 	t.Run("single operation", func(t *testing.T) {
+		t.Parallel()
 		tests := []struct {
 			name    string
 			pattern string
@@ -564,6 +581,7 @@ func TestErrorInjector_AddGlob(t *testing.T) {
 }
 
 func TestErrorInjector_Clear(t *testing.T) {
+	t.Parallel()
 	inj := mockfs.NewErrorInjector()
 	inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 	inj.AddExact(mockfs.OpRead, "other.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
@@ -586,6 +604,7 @@ func TestErrorInjector_Priority(t *testing.T) {
 	t.Parallel()
 
 	t.Run("add all then exact", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddAll(mockfs.OpOpen, mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0)
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
@@ -594,6 +613,7 @@ func TestErrorInjector_Priority(t *testing.T) {
 	})
 
 	t.Run("exact then add all", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 		inj.AddAll(mockfs.OpOpen, mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0)
@@ -602,6 +622,7 @@ func TestErrorInjector_Priority(t *testing.T) {
 	})
 
 	t.Run("insertion order", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeOnce, 0)
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
@@ -610,6 +631,7 @@ func TestErrorInjector_Priority(t *testing.T) {
 	})
 
 	t.Run("op unknown fallback", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		rule := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
 		inj.Add(mockfs.OpUnknown, rule)
@@ -618,6 +640,7 @@ func TestErrorInjector_Priority(t *testing.T) {
 	})
 
 	t.Run("op specific precedence", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 		rule := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
@@ -631,11 +654,13 @@ func TestErrorInjector_CheckAndApply(t *testing.T) {
 	t.Parallel()
 
 	t.Run("no rules", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		assertNoError(t, inj.CheckAndApply(mockfs.OpOpen, "test.txt"), "no rules")
 	})
 
 	t.Run("multiple rules", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpOpen, "first.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 		inj.AddExact(mockfs.OpOpen, "second.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
@@ -644,6 +669,7 @@ func TestErrorInjector_CheckAndApply(t *testing.T) {
 	})
 
 	t.Run("different operations", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 		inj.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
@@ -666,6 +692,7 @@ func TestErrorInjector_CheckAndApply(t *testing.T) {
 	})
 
 	t.Run("op-specific takes precedence", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 		rule := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
@@ -674,6 +701,7 @@ func TestErrorInjector_CheckAndApply(t *testing.T) {
 	})
 
 	t.Run("order of rules", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeOnce, 0)
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
@@ -687,6 +715,7 @@ func TestErrorInjector_GetAll(t *testing.T) {
 	t.Parallel()
 
 	t.Run("get all rules", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 		inj.AddExact(mockfs.OpRead, "other.txt", mockfs.ErrPermission, mockfs.ErrorModeOnce, 0)
@@ -717,6 +746,7 @@ func TestErrorInjector_GetAll(t *testing.T) {
 	})
 
 	t.Run("independent copy", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 
@@ -758,6 +788,7 @@ func TestErrorInjector_EdgeCases(t *testing.T) {
 	t.Parallel()
 
 	t.Run("empty path", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpOpen, "", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 		assertError(t, inj.CheckAndApply(mockfs.OpOpen, ""), mockfs.ErrNotExist, "empty path")
@@ -765,6 +796,7 @@ func TestErrorInjector_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("special characters", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		specialPath := "file with spaces & special!@#$.txt"
 		inj.AddExact(mockfs.OpOpen, specialPath, mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
@@ -772,6 +804,7 @@ func TestErrorInjector_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("very long path", func(t *testing.T) {
+		t.Parallel()
 		longPath := ""
 		for range 100 {
 			longPath += "very/long/path/segment/"
@@ -788,6 +821,7 @@ func TestErrorInjector_EdgeCases(t *testing.T) {
 // work correctly with valid values (>= 0). This indirectly confirms they call
 // mustAfter, which is tested separately for panic behavior.
 func TestErrorInjector_AfterParameter(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		fn   func(mockfs.ErrorInjector)
@@ -844,6 +878,7 @@ func TestErrorInjector_AfterParameter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			inj := mockfs.NewErrorInjector()
 			// Should not panic with valid after values
 			tt.fn(inj)
@@ -852,6 +887,7 @@ func TestErrorInjector_AfterParameter(t *testing.T) {
 }
 
 func TestErrorInjector_Add_Concurrent(t *testing.T) {
+	t.Parallel()
 	inj := mockfs.NewErrorInjector()
 	var wg sync.WaitGroup
 
@@ -874,6 +910,7 @@ func TestErrorInjector_Add_Concurrent(t *testing.T) {
 }
 
 func TestErrorInjector_CheckAndApply_Concurrent(t *testing.T) {
+	t.Parallel()
 	inj := mockfs.NewErrorInjector()
 	inj.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
 
@@ -905,6 +942,7 @@ func TestErrorInjector_CheckAndApply_Concurrent(t *testing.T) {
 }
 
 func TestErrorInjector_MixedOperations_Concurrent(t *testing.T) {
+	t.Parallel()
 	inj := mockfs.NewErrorInjector()
 	var wg sync.WaitGroup
 
@@ -940,6 +978,7 @@ func TestErrorInjector_MixedOperations_Concurrent(t *testing.T) {
 }
 
 func TestErrorInjector_ErrorModeOnce_Concurrent(t *testing.T) {
+	t.Parallel()
 	inj := mockfs.NewErrorInjector()
 	inj.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrCorrupted, mockfs.ErrorModeOnce, 0)
 
@@ -971,6 +1010,7 @@ func TestErrorInjector_ErrorModeOnce_Concurrent(t *testing.T) {
 }
 
 func TestCustomErrors(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		err  error
@@ -1005,6 +1045,7 @@ func TestCustomErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if tt.err.Error() != tt.want {
 				t.Errorf("error message = %q, want %q", tt.err.Error(), tt.want)
 			}
@@ -1014,6 +1055,7 @@ func TestCustomErrors(t *testing.T) {
 
 // TestStandardFSErrors verifies standard library error usage.
 func TestStandardFSErrors(t *testing.T) {
+	t.Parallel()
 	// verify we're using standard fs errors
 	if mockfs.ErrInvalid != fs.ErrInvalid {
 		t.Error("ErrInvalid should be fs.ErrInvalid")
@@ -1034,7 +1076,9 @@ func TestStandardFSErrors(t *testing.T) {
 
 // TestErrorInjector_RealWorldScenarios verifies real-world patterns.
 func TestErrorInjector_RealWorldScenarios(t *testing.T) {
+	t.Parallel()
 	t.Run("intermittent network", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		// simulate network error after 3 successful reads
 		inj.AddExact(mockfs.OpRead, "remote/data.txt", mockfs.ErrTimeout, mockfs.ErrorModeAfterSuccesses, 3)
@@ -1046,12 +1090,14 @@ func TestErrorInjector_RealWorldScenarios(t *testing.T) {
 	})
 
 	t.Run("disk full", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpWrite, "logs/app.log", mockfs.ErrDiskFull, mockfs.ErrorModeAlways, 0)
 		assertError(t, inj.CheckAndApply(mockfs.OpWrite, "logs/app.log"), mockfs.ErrDiskFull)
 	})
 
 	t.Run("permission denied on specific directory", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		assertNoError(t, inj.AddRegexp(mockfs.OpOpen, "^/protected/", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0), "protect directory")
 		assertError(t, inj.CheckAndApply(mockfs.OpOpen, "/protected/secret.txt"), mockfs.ErrPermission, "open protected file")
@@ -1059,6 +1105,7 @@ func TestErrorInjector_RealWorldScenarios(t *testing.T) {
 	})
 
 	t.Run("transient corruption", func(t *testing.T) {
+		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpRead, "data.db", mockfs.ErrCorrupted, mockfs.ErrorModeOnce, 0)
 		assertError(t, inj.CheckAndApply(mockfs.OpRead, "data.db"), mockfs.ErrCorrupted, "first read should be corrupted")

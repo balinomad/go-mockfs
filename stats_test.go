@@ -57,6 +57,7 @@ func TestNewStatsRecorder(t *testing.T) {
 	t.Parallel()
 
 	t.Run("nil initial", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		if s == nil {
 			t.Fatal("returned nil")
@@ -71,6 +72,7 @@ func TestNewStatsRecorder(t *testing.T) {
 	})
 
 	t.Run("from existing", func(t *testing.T) {
+		t.Parallel()
 		initial := mockfs.NewStatsRecorder(nil)
 		initial.Record(mockfs.OpRead, 100, nil)
 		initial.Record(mockfs.OpWrite, 200, errors.New("fail"))
@@ -105,6 +107,7 @@ func TestStatsRecorder_Panics(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			s := mockfs.NewStatsRecorder(nil)
 			assertPanic(t, func() { tt.fn(s) }, tt.name)
 		})
@@ -248,6 +251,7 @@ func TestStatsRecorder_Delta(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			delta := tt.left.Delta(tt.right)
 
 			if tt.expectNegative {
@@ -335,6 +339,7 @@ func TestStatsRecorder_Equal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := tt.a.Equal(tt.b); got != tt.want {
 				t.Errorf("Equal() = %v, want %v", got, tt.want)
 			}
@@ -446,6 +451,7 @@ func TestStats_Delta(t *testing.T) {
 	}
 
 	t.Run("negative delta after reset", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		s.Record(mockfs.OpRead, 100, nil)
 		before := s.Snapshot()
@@ -463,6 +469,7 @@ func TestStats_Delta(t *testing.T) {
 	})
 
 	t.Run("delta between empty snapshots", func(t *testing.T) {
+		t.Parallel()
 		s1 := mockfs.NewStatsRecorder(nil)
 		s2 := mockfs.NewStatsRecorder(nil)
 		delta := s2.Snapshot().Delta(s1.Snapshot())
@@ -537,6 +544,7 @@ func TestStats_Equal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := tt.a().Snapshot().Equal(tt.b()); got != tt.want {
 				t.Errorf("Equal() = %v, want %v", got, tt.want)
 			}
@@ -571,6 +579,7 @@ func TestStats_Empty(t *testing.T) {
 	t.Parallel()
 
 	t.Run("recorder empty", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		if !s.Empty() {
 			t.Error("new recorder should be empty")
@@ -583,6 +592,7 @@ func TestStats_Empty(t *testing.T) {
 	})
 
 	t.Run("snapshot empty", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		snap := s.Snapshot()
 		if !snap.Empty() {
@@ -602,6 +612,7 @@ func TestStats_SnapshotMethods(t *testing.T) {
 	t.Parallel()
 
 	t.Run("count success", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		s.Set(mockfs.OpRead, 10, 3)
 		snap := s.Snapshot()
@@ -609,6 +620,7 @@ func TestStats_SnapshotMethods(t *testing.T) {
 	})
 
 	t.Run("has failures", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		snap1 := s.Snapshot()
 		if snap1.HasFailures() {
@@ -623,6 +635,7 @@ func TestStats_SnapshotMethods(t *testing.T) {
 	})
 
 	t.Run("failed operations", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		s.Set(mockfs.OpOpen, 5, 2)
 		s.Set(mockfs.OpRead, 10, 1)
@@ -635,6 +648,7 @@ func TestStats_SnapshotMethods(t *testing.T) {
 	})
 
 	t.Run("delta", func(t *testing.T) {
+		t.Parallel()
 		s1 := mockfs.NewStatsRecorder(nil)
 		s1.Record(mockfs.OpRead, 100, nil)
 		snap1 := s1.Snapshot()
@@ -650,6 +664,7 @@ func TestStats_SnapshotMethods(t *testing.T) {
 	})
 
 	t.Run("equal", func(t *testing.T) {
+		t.Parallel()
 		s1 := mockfs.NewStatsRecorder(nil)
 		s1.Record(mockfs.OpRead, 100, nil)
 		snap1 := s1.Snapshot()
@@ -670,6 +685,7 @@ func TestStats_SnapshotMethods(t *testing.T) {
 	})
 
 	t.Run("panics", func(t *testing.T) {
+		t.Parallel()
 		snap := mockfs.NewStatsRecorder(nil).Snapshot()
 		assertPanic(t, func() { snap.Count(mockfs.Operation(-1)) }, "Count invalid op")
 		assertPanic(t, func() { snap.CountSuccess(mockfs.NumOperations) }, "CountSuccess invalid op")
@@ -682,6 +698,7 @@ func TestStatsAssertion(t *testing.T) {
 	t.Parallel()
 
 	t.Run("all assertions pass", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		s.Record(mockfs.OpRead, 100, nil)
 		s.Record(mockfs.OpWrite, 50, nil)
@@ -696,6 +713,7 @@ func TestStatsAssertion(t *testing.T) {
 	})
 
 	t.Run("count mismatch fails", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		s.Record(mockfs.OpRead, 0, nil)
 
@@ -708,6 +726,7 @@ func TestStatsAssertion(t *testing.T) {
 	})
 
 	t.Run("failure detection", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		s.Record(mockfs.OpRead, 0, errors.New("fail"))
 
@@ -720,6 +739,7 @@ func TestStatsAssertion(t *testing.T) {
 	})
 
 	t.Run("chain multiple assertions", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		s.Record(mockfs.OpRead, 100, nil)
 		s.Record(mockfs.OpRead, 50, errors.New("fail"))
@@ -736,6 +756,7 @@ func TestStatsAssertion(t *testing.T) {
 	})
 
 	t.Run("multiple failures", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		s.Record(mockfs.OpRead, 0, nil)
 
@@ -751,6 +772,7 @@ func TestStatsAssertion(t *testing.T) {
 	})
 
 	t.Run("success assertion", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		s.Set(mockfs.OpRead, 10, 3)
 
@@ -764,6 +786,7 @@ func TestStatsAssertion(t *testing.T) {
 	})
 
 	t.Run("failure assertion", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		s.Set(mockfs.OpWrite, 10, 4)
 
@@ -777,6 +800,7 @@ func TestStatsAssertion(t *testing.T) {
 	})
 
 	t.Run("bytes written assertion", func(t *testing.T) {
+		t.Parallel()
 		s := mockfs.NewStatsRecorder(nil)
 		s.Record(mockfs.OpWrite, 100, nil)
 
@@ -792,6 +816,7 @@ func TestStatsAssertion(t *testing.T) {
 
 // TestStats_Concurrent tests concurrent access to stats.
 func TestStats_Concurrent(t *testing.T) {
+	t.Parallel()
 	s := mockfs.NewStatsRecorder(nil)
 	var wg sync.WaitGroup
 
@@ -833,6 +858,7 @@ func TestStats_Concurrent(t *testing.T) {
 	wg.Wait()
 }
 func TestStatsRecorder_Set_Record_Concurrent(t *testing.T) {
+	t.Parallel()
 	s := mockfs.NewStatsRecorder(nil)
 	var wg sync.WaitGroup
 

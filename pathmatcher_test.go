@@ -10,6 +10,8 @@ import (
 )
 
 func TestExactMatcher_Matches(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		stored   string
@@ -98,6 +100,7 @@ func TestExactMatcher_Matches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			m := mockfs.NewExactMatcher(tt.stored)
 			if got := m.Matches(tt.input); got != tt.expected {
 				t.Errorf("ExactMatcher.Matches() = %v, want %v", got, tt.expected)
@@ -107,6 +110,8 @@ func TestExactMatcher_Matches(t *testing.T) {
 }
 
 func TestExactMatcher_CloneForSub(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		stored     string // full parent path stored in the original matcher
@@ -181,6 +186,7 @@ func TestExactMatcher_CloneForSub(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			orig := mockfs.NewExactMatcher(tt.stored)
 			cloned := orig.CloneForSub(tt.prefix)
 			if got := cloned.Matches(tt.inputInSub); got != tt.expected {
@@ -192,6 +198,8 @@ func TestExactMatcher_CloneForSub(t *testing.T) {
 
 // TestExactMatcher_Concurrent tests concurrent access to ExactMatcher.
 func TestExactMatcher_Concurrent(t *testing.T) {
+	t.Parallel()
+
 	m := mockfs.NewExactMatcher("test.txt")
 
 	done := make(chan bool)
@@ -211,6 +219,8 @@ func TestExactMatcher_Concurrent(t *testing.T) {
 
 // TestExactMatcher_LongPaths tests ExactMatcher with very long paths.
 func TestExactMatcher_LongPaths(t *testing.T) {
+	t.Parallel()
+
 	longPath := strings.Repeat("very/long/path/segment/", 100) + "file.txt"
 
 	m := mockfs.NewExactMatcher(longPath)
@@ -223,6 +233,8 @@ func TestExactMatcher_LongPaths(t *testing.T) {
 }
 
 func TestNewRegexpMatcher(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		pattern string
@@ -262,6 +274,7 @@ func TestNewRegexpMatcher(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := mockfs.NewRegexpMatcher(tt.pattern)
 			assertErrorWant(t, err, tt.wantErr, nil, "NewRegexpMatcher()")
 		})
@@ -269,6 +282,8 @@ func TestNewRegexpMatcher(t *testing.T) {
 }
 
 func TestRegexpMatcher_Matches(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		pattern  string
@@ -369,6 +384,7 @@ func TestRegexpMatcher_Matches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			m, err := mockfs.NewRegexpMatcher(tt.pattern)
 			requireNoError(t, err, "NewRegexpMatcher()")
 			if got := m.Matches(tt.input); got != tt.expected {
@@ -379,6 +395,8 @@ func TestRegexpMatcher_Matches(t *testing.T) {
 }
 
 func TestRegexpMatcher_CloneForSub(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		pattern     string
@@ -480,6 +498,7 @@ func TestRegexpMatcher_CloneForSub(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			m, err := mockfs.NewRegexpMatcher(tt.pattern)
 			requireNoError(t, err, "NewRegexpMatcher()")
 			cloned := m.CloneForSub(tt.prefix)
@@ -507,6 +526,8 @@ func TestRegexpMatcher_CloneForSub(t *testing.T) {
 // regexpParentMatcher, returns the same matcher. This is because the dot prefix is treated
 // as a no-op and the returned matcher should preserve the original behaviour.
 func TestRegexpParentMatcher_CloneForSub_DotPrefix(t *testing.T) {
+	t.Parallel()
+
 	m, err := mockfs.NewRegexpMatcher(".*")
 	requireNoError(t, err, "compile regex")
 	pm := m.CloneForSub("dir")   // now we have a regexpParentMatcher
@@ -518,6 +539,8 @@ func TestRegexpParentMatcher_CloneForSub_DotPrefix(t *testing.T) {
 
 // TestRegexpMatcher_Concurrent tests concurrent access to RegexpMatcher.
 func TestRegexpMatcher_Concurrent(t *testing.T) {
+	t.Parallel()
+
 	m, err := mockfs.NewRegexpMatcher("\\.txt$")
 	if err != nil {
 		t.Fatalf("NewRegexpMatcher() error: %v", err)
@@ -540,6 +563,8 @@ func TestRegexpMatcher_Concurrent(t *testing.T) {
 
 // TestRegexpMatcher_RealWorldPatterns tests regexp matcher with real-world patterns.
 func TestRegexpMatcher_RealWorldPatterns(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		pattern  string
@@ -574,6 +599,7 @@ func TestRegexpMatcher_RealWorldPatterns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			m, err := mockfs.NewRegexpMatcher(tt.pattern)
 			requireNoError(t, err, "NewRegexpMatcher()")
 
@@ -594,6 +620,8 @@ func TestRegexpMatcher_RealWorldPatterns(t *testing.T) {
 
 // TestRegexpMatcher_SafeCompilation test regex compilation errors don't panic.
 func TestRegexpMatcher_SafeCompilation(t *testing.T) {
+	t.Parallel()
+
 	invalidPatterns := []string{
 		"[",
 		"(",
@@ -605,6 +633,7 @@ func TestRegexpMatcher_SafeCompilation(t *testing.T) {
 
 	for _, pattern := range invalidPatterns {
 		t.Run(pattern, func(t *testing.T) {
+			t.Parallel()
 			m, err := mockfs.NewRegexpMatcher(pattern)
 			assertAnyError(t, err, fmt.Sprintf("invalid regex pattern %q", pattern))
 			if m != nil {
@@ -616,6 +645,8 @@ func TestRegexpMatcher_SafeCompilation(t *testing.T) {
 
 // TestGlobMatcher_Matches tests glob pattern matching.
 func TestGlobMatcher_Matches(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		pattern  string
@@ -645,6 +676,7 @@ func TestGlobMatcher_Matches(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			m, err := mockfs.NewGlobMatcher(tt.pattern)
 			assertErrorWant(t, err, tt.wantErr, nil, "NewGlobMatcher()")
 			if tt.wantErr {
@@ -661,6 +693,8 @@ func TestGlobMatcher_Matches(t *testing.T) {
 
 // TestGlobMatcher_CloneForSub tests glob matcher cloning for sub-filesystems.
 func TestGlobMatcher_CloneForSub(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		pattern     string
@@ -733,6 +767,7 @@ func TestGlobMatcher_CloneForSub(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			m, err := mockfs.NewGlobMatcher(tt.pattern)
 			requireNoError(t, err, "NewGlobMatcher()")
 
@@ -753,6 +788,8 @@ func TestGlobMatcher_CloneForSub(t *testing.T) {
 
 // TestGlobMatcher_NestedClone tests nested CloneForSub calls.
 func TestGlobMatcher_NestedClone(t *testing.T) {
+	t.Parallel()
+
 	// path.Match doesn't support multi-component patterns with /,
 	// so we test with exact path patterns
 	m, err := mockfs.NewGlobMatcher("dir/subdir/file.txt")
@@ -773,6 +810,8 @@ func TestGlobMatcher_NestedClone(t *testing.T) {
 
 // TestGlobMatcher_Concurrent tests concurrent access to glob matcher.
 func TestGlobMatcher_Concurrent(t *testing.T) {
+	t.Parallel()
+
 	m, err := mockfs.NewGlobMatcher("*.txt")
 	requireNoError(t, err, "NewGlobMatcher()")
 
@@ -792,6 +831,8 @@ func TestGlobMatcher_Concurrent(t *testing.T) {
 
 // TestPathMatcher_PathValidation tests edge cases in path validation.
 func TestPathMatcher_PathValidation(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		path  string
@@ -814,6 +855,7 @@ func TestPathMatcher_PathValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			matchers := []struct {
 				name    string
 				matcher mockfs.PathMatcher
@@ -834,6 +876,8 @@ func TestPathMatcher_PathValidation(t *testing.T) {
 
 // TestExactMatcher_EmptyPath tests empty path edge cases.
 func TestExactMatcher_EmptyPath(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		stored   string
@@ -847,6 +891,7 @@ func TestExactMatcher_EmptyPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			m := mockfs.NewExactMatcher(tt.stored)
 			got := m.Matches(tt.input)
 			if got != tt.expected {
@@ -858,6 +903,8 @@ func TestExactMatcher_EmptyPath(t *testing.T) {
 
 // TestRegexpMatcher_EmptyPattern tests empty pattern behavior.
 func TestRegexpMatcher_EmptyPattern(t *testing.T) {
+	t.Parallel()
+
 	m, err := mockfs.NewRegexpMatcher("")
 	requireNoError(t, err, "NewRegexpMatcher()")
 
@@ -871,6 +918,8 @@ func TestRegexpMatcher_EmptyPattern(t *testing.T) {
 
 // TestGlobParentMatcher_EdgeCases tests globParentMatcher edge cases.
 func TestGlobParentMatcher_EdgeCases(t *testing.T) {
+	t.Parallel()
+
 	m, err := mockfs.NewGlobMatcher("dir/*.txt")
 	requireNoError(t, err, "NewGlobMatcher()")
 
@@ -890,6 +939,7 @@ func TestGlobParentMatcher_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := pm.Matches(tt.path)
 			if got != tt.expected {
 				t.Errorf("Matches(%q) = %v, want %v", tt.path, got, tt.expected)
@@ -899,6 +949,8 @@ func TestGlobParentMatcher_EdgeCases(t *testing.T) {
 }
 
 func TestWildcardMatcher_Matches(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		input string
@@ -916,6 +968,7 @@ func TestWildcardMatcher_Matches(t *testing.T) {
 	m := mockfs.NewWildcardMatcher()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := m.Matches(tt.input); !got {
 				t.Errorf("WildcardMatcher.Matches() = false, want true")
 			}
@@ -924,6 +977,8 @@ func TestWildcardMatcher_Matches(t *testing.T) {
 }
 
 func TestWildcardMatcher_CloneForSub(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		prefix   string
@@ -937,6 +992,7 @@ func TestWildcardMatcher_CloneForSub(t *testing.T) {
 	m := mockfs.NewWildcardMatcher()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cloned := m.CloneForSub(tt.prefix)
 			if got := cloned.Matches(tt.testPath); !got {
 				t.Errorf("CloneForSub().Matches() = false, want true")
@@ -951,6 +1007,8 @@ func TestWildcardMatcher_CloneForSub(t *testing.T) {
 
 // TestWildcardMatcher_EdgeCases tests wildcard matcher with unusual inputs.
 func TestWildcardMatcher_EdgeCases(t *testing.T) {
+	t.Parallel()
+
 	m := mockfs.NewWildcardMatcher()
 
 	tests := []string{
@@ -966,6 +1024,7 @@ func TestWildcardMatcher_EdgeCases(t *testing.T) {
 
 	for _, path := range tests {
 		t.Run(fmt.Sprintf("path=%q", path), func(t *testing.T) {
+			t.Parallel()
 			if !m.Matches(path) {
 				t.Errorf("WildcardMatcher should match %q", path)
 			}
@@ -975,8 +1034,11 @@ func TestWildcardMatcher_EdgeCases(t *testing.T) {
 
 // TestPathMatcher_CloneIndependence tests that matchers work correctly after cloning.
 func TestPathMatcher_CloneIndependence(t *testing.T) {
+	t.Parallel()
+
 	// test ExactMatcher: original stores parent path, cloned should match relative path
 	t.Run("exact matcher", func(t *testing.T) {
+		t.Parallel()
 		original := mockfs.NewExactMatcher("dir/file.txt")
 		cloned := original.CloneForSub("dir")
 
@@ -996,6 +1058,7 @@ func TestPathMatcher_CloneIndependence(t *testing.T) {
 
 	// test RegexpMatcher: ensure original and clone behave consistently
 	t.Run("regexp matcher", func(t *testing.T) {
+		t.Parallel()
 		original, err := mockfs.NewRegexpMatcher("\\.txt$")
 		requireNoError(t, err, "NewRegexpMatcher()")
 		cloned := original.CloneForSub("dir")
@@ -1011,6 +1074,7 @@ func TestPathMatcher_CloneIndependence(t *testing.T) {
 
 	// test WildcardMatcher
 	t.Run("wildcard matcher", func(t *testing.T) {
+		t.Parallel()
 		original := mockfs.NewWildcardMatcher()
 		cloned := original.CloneForSub("dir")
 
@@ -1023,6 +1087,8 @@ func TestPathMatcher_CloneIndependence(t *testing.T) {
 	})
 }
 func TestNoneMatcher_CloneForSub(t *testing.T) {
+	t.Parallel()
+
 	// Get a noneMatcher by cloning an ExactMatcher outside the prefix
 	em := mockfs.NewExactMatcher("foo")
 	nm := em.CloneForSub("bar") // foo is outside bar, returns noneMatcher
@@ -1042,6 +1108,8 @@ func TestNoneMatcher_CloneForSub(t *testing.T) {
 }
 
 func TestGlobParentMatcher_CloneForSub_EmptyPrefix(t *testing.T) {
+	t.Parallel()
+
 	m, err := mockfs.NewGlobMatcher("dir/*.txt")
 	requireNoError(t, err, "NewGlobMatcher()")
 	pm := m.CloneForSub("dir")
