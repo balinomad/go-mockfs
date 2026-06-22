@@ -54,7 +54,7 @@ func assertPanic(tb testing.TB, fn func(), name ...string) {
 }
 
 // assertError asserts that got matches want. Handles fs.PathError wrapping.
-func assertError(tb testing.TB, got error, want error, name ...string) {
+func assertError(tb testing.TB, got, want error, name ...string) {
 	tb.Helper()
 
 	if got == nil {

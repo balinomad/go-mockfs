@@ -202,18 +202,24 @@ linters:
   exclusions:
     rules:
       # Test files: relax rules that follow idiomatic Go test patterns and
-      # would generate false positives in test scaffolding.
+      # would generate false positives in test scaffolding
       - path: "_test\\.go$"
         linters:
           - wrapcheck # test helpers return intentionally bare errors
           - exhaustive # table-driven test maps are not enum switches
           - sloglint # test log calls may omit a real context
 
-      # the panic ban is relaxed in test files only.
+      # the panic ban is relaxed in test files only
       - path: "_test\\.go$"
         linters:
           - forbidigo
+          - errcheck
         text: "panic is prohibited"
+
+      # the error check is relaxed in test files only
+      - path: "_test\\.go$"
+        linters:
+          - errcheck
 
 output:
   formats:

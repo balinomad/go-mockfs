@@ -1,6 +1,7 @@
 package mockfs
 
 import (
+	"errors"
 	"path"
 	"regexp"
 	"strings"
@@ -31,13 +32,13 @@ type ExactMatcher struct {
 }
 
 // NewExactMatcher creates a matcher for a single path.
-func NewExactMatcher(path string) *ExactMatcher {
-	return &ExactMatcher{path: path}
+func NewExactMatcher(filepath string) *ExactMatcher {
+	return &ExactMatcher{path: filepath}
 }
 
 // Matches returns true if the path exactly matches the stored path.
-func (m *ExactMatcher) Matches(path string) bool {
-	return path == m.path
+func (m *ExactMatcher) Matches(filepath string) bool {
+	return filepath == m.path
 }
 
 // CloneForSub returns a matcher adjusted for a sub-namespace (used by SubFS).
@@ -57,7 +58,7 @@ func (m *ExactMatcher) CloneForSub(prefix string) PathMatcher {
 	}
 
 	// Match inside the subtree
-	if rel := strings.TrimPrefix(m.path, prefix+"/"); rel != m.path {
+	if rel, ok := strings.CutPrefix(m.path, prefix+"/"); ok {
 		return &ExactMatcher{path: rel}
 	}
 
@@ -80,8 +81,8 @@ func NewRegexpMatcher(pattern string) (*RegexpMatcher, error) {
 }
 
 // Matches returns true if the path matches the regular expression.
-func (m *RegexpMatcher) Matches(path string) bool {
-	return m.re.MatchString(path)
+func (m *RegexpMatcher) Matches(filepath string) bool {
+	return m.re.MatchString(filepath)
 }
 
 // CloneForSub returns a matcher adjusted for a sub-namespace (used by SubFS).
@@ -102,14 +103,14 @@ type regexpParentMatcher struct {
 }
 
 // Matches returns true if the path matches the regexp.
-func (r *regexpParentMatcher) Matches(path string) bool {
+func (r *regexpParentMatcher) Matches(filepath string) bool {
 	// If the candidate path represents the directory root inside the sub-FS,
 	// treat it as the prefix itself (equivalent to ".")
-	if path == "." || path == "" {
+	if filepath == "." || filepath == "" {
 		return r.re.MatchString(r.prefix)
 	}
 	// Compose parent path and test original regexp.
-	parentPath := r.prefix + "/" + path
+	parentPath := r.prefix + "/" + filepath
 	return r.re.MatchString(parentPath)
 }
 
@@ -137,7 +138,7 @@ type GlobMatcher struct {
 // Returns path.ErrBadPattern if the pattern is malformed.
 func NewGlobMatcher(pattern string) (*GlobMatcher, error) {
 	// Validate the pattern
-	if _, err := path.Match(pattern, ""); err == path.ErrBadPattern {
+	if _, err := path.Match(pattern, ""); errors.Is(err, path.ErrBadPattern) {
 		return nil, path.ErrBadPattern
 	}
 	return &GlobMatcher{pattern: pattern}, nil
@@ -210,7 +211,7 @@ func NewWildcardMatcher() *WildcardMatcher {
 }
 
 // Matches returns true for all paths.
-func (m *WildcardMatcher) Matches(path string) bool {
+func (m *WildcardMatcher) Matches(filepath string) bool {
 	return true
 }
 

@@ -18,7 +18,7 @@ import (
 
 // --- Helpers ---
 
-// stringer implements fmt.Stringertype stringer string
+// stringer implements fmt.Stringertype stringer string.
 type stringer string
 
 func (s stringer) String() string { return string(s) }
@@ -30,7 +30,7 @@ func (p *panicStringer) String() string {
 	panic("should not be called")
 }
 
-// binaryMarshaler implements encoding.BinaryMarshaler
+// binaryMarshaler implements encoding.BinaryMarshaler.
 type binaryMarshaler struct {
 	Data []byte
 }
@@ -67,7 +67,7 @@ func TestNewMockFS(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		opts  []mockfs.MockFSOption
+		opts  []mockfs.FsOption
 		check func(t *testing.T, m *mockfs.MockFS)
 	}{
 		{
@@ -80,7 +80,7 @@ func TestNewMockFS(t *testing.T) {
 		},
 		{
 			name: "with initial files",
-			opts: []mockfs.MockFSOption{
+			opts: []mockfs.FsOption{
 				mockfs.File("file.txt", "original"),
 				mockfs.File("nil.txt", nil), // Should not be ignored
 			},
@@ -91,21 +91,21 @@ func TestNewMockFS(t *testing.T) {
 					t.Errorf("non-nil filecontent = %q, want %q", content, "original")
 				}
 				content = mustReadFile(t, m, "nil.txt")
-				if string(content) != "" {
+				if len(content) != 0 {
 					t.Errorf("nil file content = %q, want empty", content)
 				}
 			},
 		},
 		{
 			name: "with latency",
-			opts: []mockfs.MockFSOption{
+			opts: []mockfs.FsOption{
 				mockfs.File("file.txt", "data"),
 				mockfs.WithLatency(10 * time.Millisecond),
 			},
 			check: func(t *testing.T, m *mockfs.MockFS) {
 				t.Helper()
 				start := time.Now()
-				m.Stat("file.txt") //nolint:errcheck
+				m.Stat("file.txt")
 				if time.Since(start) < 5*time.Millisecond {
 					t.Error("expected latency to be applied")
 				}
@@ -113,7 +113,7 @@ func TestNewMockFS(t *testing.T) {
 		},
 		{
 			name: "with custom injector",
-			opts: []mockfs.MockFSOption{
+			opts: []mockfs.FsOption{
 				mockfs.File("file.txt", "data"),
 				mockfs.WithErrorInjector(customInjector),
 			},
@@ -185,7 +185,7 @@ func TestNewMockFS_OptionPanic(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		option    mockfs.MockFSOption
+		option    mockfs.FsOption
 		panicText string
 	}{
 		{
@@ -245,7 +245,7 @@ func TestNewMockFS_AutoCreateRoot(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		opts  []mockfs.MockFSOption
+		opts  []mockfs.FsOption
 		check func(*testing.T, *mockfs.MockFS)
 	}{
 		{
@@ -261,7 +261,7 @@ func TestNewMockFS_AutoCreateRoot(t *testing.T) {
 		},
 		{
 			name: "files without root",
-			opts: []mockfs.MockFSOption{
+			opts: []mockfs.FsOption{
 				mockfs.File("file.txt", "test"),
 				mockfs.Dir("dir", mockfs.File("nested.txt", "nested")),
 			},
@@ -278,7 +278,7 @@ func TestNewMockFS_AutoCreateRoot(t *testing.T) {
 		},
 		{
 			name: "nil entries",
-			opts: []mockfs.MockFSOption{mockfs.File("file.txt", nil)},
+			opts: []mockfs.FsOption{mockfs.File("file.txt", nil)},
 			check: func(t *testing.T, m *mockfs.MockFS) {
 				t.Helper()
 				info, err := m.Stat(".")
@@ -290,7 +290,7 @@ func TestNewMockFS_AutoCreateRoot(t *testing.T) {
 		},
 		{
 			name: "operations on root",
-			opts: []mockfs.MockFSOption{mockfs.File("file.txt", "test")},
+			opts: []mockfs.FsOption{mockfs.File("file.txt", "test")},
 			check: func(t *testing.T, m *mockfs.MockFS) {
 				t.Helper()
 				dir, err := m.Open(".")
@@ -1269,7 +1269,7 @@ func TestMockFS_WriteFile(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		opts    []mockfs.MockFSOption
+		opts    []mockfs.FsOption
 		setup   func(*mockfs.MockFS)
 		path    string
 		data    []byte
@@ -1279,7 +1279,7 @@ func TestMockFS_WriteFile(t *testing.T) {
 	}{
 		{
 			name: "create new file with createIfMissing",
-			opts: []mockfs.MockFSOption{mockfs.WithCreateIfMissing(true)},
+			opts: []mockfs.FsOption{mockfs.WithCreateIfMissing(true)},
 			path: "new.txt",
 			data: []byte("content"),
 			perm: 0o644,
@@ -1294,7 +1294,7 @@ func TestMockFS_WriteFile(t *testing.T) {
 		},
 		{
 			name: "overwrite existing file",
-			opts: []mockfs.MockFSOption{mockfs.WithOverwrite()},
+			opts: []mockfs.FsOption{mockfs.WithOverwrite()},
 			setup: func(m *mockfs.MockFS) {
 				_ = m.AddFile("file.txt", "old", 0o644)
 			},
@@ -1311,7 +1311,7 @@ func TestMockFS_WriteFile(t *testing.T) {
 		},
 		{
 			name: "append to existing file",
-			opts: []mockfs.MockFSOption{mockfs.WithAppend()},
+			opts: []mockfs.FsOption{mockfs.WithAppend()},
 			setup: func(m *mockfs.MockFS) {
 				_ = m.AddFile("file.txt", "old", 0o644)
 			},
@@ -1328,7 +1328,7 @@ func TestMockFS_WriteFile(t *testing.T) {
 		},
 		{
 			name:    "fail in read-only mode",
-			opts:    []mockfs.MockFSOption{mockfs.WithReadOnly()},
+			opts:    []mockfs.FsOption{mockfs.WithReadOnly()},
 			path:    "file.txt",
 			data:    []byte("data"),
 			perm:    0o644,
@@ -1336,7 +1336,7 @@ func TestMockFS_WriteFile(t *testing.T) {
 		},
 		{
 			name:    "invalid path",
-			opts:    []mockfs.MockFSOption{mockfs.WithCreateIfMissing(true)},
+			opts:    []mockfs.FsOption{mockfs.WithCreateIfMissing(true)},
 			path:    "../invalid",
 			data:    []byte("data"),
 			perm:    0o644,
@@ -1651,7 +1651,7 @@ func TestMockFS_ErrorInjection_Once(t *testing.T) {
 			assertError(t, err, mockfs.ErrPermission, "first call")
 
 			err = tt.op(mfs)
-			if err == fs.ErrPermission {
+			if errors.Is(err, fs.ErrPermission) {
 				t.Error("once error injection triggered twice")
 			}
 		})
@@ -1672,7 +1672,7 @@ func TestMockFS_ErrorInjection_Next(t *testing.T) {
 	// First 3 reads fail
 	for i := range 3 {
 		_, err := f.Read(buf)
-		if err != io.EOF {
+		if !errors.Is(err, io.EOF) {
 			t.Errorf("read %d: expected EOF, got %v", i+1, err)
 		}
 	}
@@ -1690,13 +1690,13 @@ func TestMockFS_Stats(t *testing.T) {
 	mfs := mockfs.NewMockFS(mockfs.File("a", ""), mockfs.File("b", ""))
 
 	// Perform some operations
-	mfs.Stat("a") //nolint:errcheck
-	mfs.Stat("a") //nolint:errcheck
+	mfs.Stat("a")
+	mfs.Stat("a")
 	file, _ := mfs.Open("b")
 	if file != nil {
 		_ = file.Close()
 	}
-	mfs.Remove("a") //nolint:errcheck
+	mfs.Remove("a")
 
 	stats := mfs.Stats()
 
@@ -1722,12 +1722,12 @@ func TestMockFS_Options(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		opts   []mockfs.MockFSOption
+		opts   []mockfs.FsOption
 		verify func(*testing.T, *mockfs.MockFS)
 	}{
 		{
 			name: "with read only",
-			opts: []mockfs.MockFSOption{mockfs.WithReadOnly()},
+			opts: []mockfs.FsOption{mockfs.WithReadOnly()},
 			verify: func(t *testing.T, m *mockfs.MockFS) {
 				t.Helper()
 				err := m.WriteFile("test.txt", []byte("data"), 0o644)
@@ -1736,7 +1736,7 @@ func TestMockFS_Options(t *testing.T) {
 		},
 		{
 			name: "with overwrite",
-			opts: []mockfs.MockFSOption{
+			opts: []mockfs.FsOption{
 				mockfs.File("file.txt", "old"),
 				mockfs.WithOverwrite(),
 			},
@@ -1752,7 +1752,7 @@ func TestMockFS_Options(t *testing.T) {
 		},
 		{
 			name: "with append",
-			opts: []mockfs.MockFSOption{
+			opts: []mockfs.FsOption{
 				mockfs.File("file.txt", "old"),
 				mockfs.WithAppend(),
 			},
@@ -1768,13 +1768,13 @@ func TestMockFS_Options(t *testing.T) {
 		},
 		{
 			name: "with latency simulator",
-			opts: []mockfs.MockFSOption{
+			opts: []mockfs.FsOption{
 				mockfs.WithLatencySimulator(mockfs.NewLatencySimulator(10 * time.Millisecond)),
 			},
 			verify: func(t *testing.T, m *mockfs.MockFS) {
 				t.Helper()
 				start := time.Now()
-				m.Stat(".") //nolint:errcheck
+				m.Stat(".")
 				if time.Since(start) < 5*time.Millisecond {
 					t.Error("expected latency not applied")
 				}
@@ -1782,7 +1782,7 @@ func TestMockFS_Options(t *testing.T) {
 		},
 		{
 			name: "with per operation latency",
-			opts: []mockfs.MockFSOption{
+			opts: []mockfs.FsOption{
 				mockfs.WithPerOperationLatency(map[mockfs.Operation]time.Duration{
 					mockfs.OpStat: 10 * time.Millisecond,
 				}),
@@ -1790,7 +1790,7 @@ func TestMockFS_Options(t *testing.T) {
 			verify: func(t *testing.T, m *mockfs.MockFS) {
 				t.Helper()
 				start := time.Now()
-				m.Stat(".") //nolint:errcheck
+				m.Stat(".")
 				if time.Since(start) < 5*time.Millisecond {
 					t.Error("expected per-op latency not applied")
 				}
@@ -1801,7 +1801,7 @@ func TestMockFS_Options(t *testing.T) {
 			opts: nil,
 			verify: func(t *testing.T, m *mockfs.MockFS) {
 				t.Helper()
-				m.Stat(".") //nolint:errcheck
+				m.Stat(".")
 				m.ResetStats()
 				if m.Stats().Count(mockfs.OpStat) != 0 {
 					t.Error("ResetStats did not clear stats")
@@ -1830,8 +1830,8 @@ func TestMockFS_Read_Write_Concurrent(t *testing.T) {
 
 	// Pre-create files to avoid ErrNotExist
 	for i := range numGoroutines {
-		path := fmt.Sprintf("file-%d.txt", i)
-		if err := mfs.AddFile(path, "", 0o644); err != nil {
+		filepath := fmt.Sprintf("file-%d.txt", i)
+		if err := mfs.AddFile(filepath, "", 0o644); err != nil {
 			t.Fatalf("setup failed: %v", err)
 		}
 	}
@@ -1841,29 +1841,29 @@ func TestMockFS_Read_Write_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			path := fmt.Sprintf("file-%d.txt", id)
-			content := []byte(fmt.Sprintf("content-%d", id))
+			filepath := fmt.Sprintf("file-%d.txt", id)
+			content := fmt.Appendf(nil, "content-%d", id)
 
 			// Write a file
-			err := mfs.WriteFile(path, content, 0o644)
+			err := mfs.WriteFile(filepath, content, 0o644)
 			if err != nil {
 				t.Errorf("concurrent WriteFile failed: %v", err)
 				return
 			}
 
 			// Stat the file
-			_, err = mfs.Stat(path)
+			_, err = mfs.Stat(filepath)
 			if err != nil {
 				t.Errorf("concurrent Stat failed: %v", err)
 				return
 			}
 
 			// Read it back
-			readContent, err := mfs.ReadFile(path)
+			readContent, err := mfs.ReadFile(filepath)
 			if err != nil {
 				t.Errorf("concurrent ReadFile failed: %v", err)
 			} else if !bytes.Equal(content, readContent) {
-				t.Errorf("content mismatch for %s", path)
+				t.Errorf("content mismatch for %s", filepath)
 			}
 		}(i)
 	}
@@ -1896,7 +1896,7 @@ func TestMockFS_Remove_Rename_Concurrent(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < numGoroutines*2; i++ {
+		for i := range numGoroutines * 2 {
 			oldName := "dir"
 			newName := "other_dir"
 			if i%2 == 1 {

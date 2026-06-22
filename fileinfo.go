@@ -31,6 +31,8 @@ var (
 //	    mockfs.NewFileInfo("file2.txt", 200, 0o644, time.Now()),
 //	}
 //	handler := mockfs.NewDirHandler(entries)
+//
+//nolint:forbidigo // Panic is intentional here to mark incorrect use.
 func NewFileInfo(name string, size int64, mode FileMode, modTime time.Time) *FileInfo {
 	if name == "" {
 		panic("name cannot be empty")

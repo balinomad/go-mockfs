@@ -14,7 +14,7 @@ import (
 // --- Helpers ---
 
 // assertOpCount verifies operation count and failures.
-func assertOpCount(t *testing.T, s mockfs.Stats, op mockfs.Operation, wantTotal int, wantFailures int) {
+func assertOpCount(t *testing.T, s mockfs.Stats, op mockfs.Operation, wantTotal, wantFailures int) {
 	t.Helper()
 
 	if got := s.Count(op); got != wantTotal {
@@ -28,7 +28,7 @@ func assertOpCount(t *testing.T, s mockfs.Stats, op mockfs.Operation, wantTotal 
 	}
 }
 
-func assertBytes(t *testing.T, s mockfs.Stats, wantRead int, wantWritten int) {
+func assertBytes(t *testing.T, s mockfs.Stats, wantRead, wantWritten int) {
 	t.Helper()
 
 	if got := s.BytesRead(); got != wantRead {
@@ -415,14 +415,10 @@ func TestStats_FailedOperations(t *testing.T) {
 		t.Fatalf("FailedOperations len = %d, want 2", len(failed))
 	}
 
-	hasOp := func(ops []mockfs.Operation, op mockfs.Operation) bool {
-		return slices.Contains(ops, op)
-	}
-
-	if !hasOp(failed, mockfs.OpOpen) || !hasOp(failed, mockfs.OpWrite) {
+	if !slices.Contains(failed, mockfs.OpOpen) || !slices.Contains(failed, mockfs.OpWrite) {
 		t.Error("missing expected failed operations")
 	}
-	if hasOp(failed, mockfs.OpRead) {
+	if slices.Contains(failed, mockfs.OpRead) {
 		t.Error("OpRead in failures but has none")
 	}
 }
@@ -825,7 +821,7 @@ func TestStats_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 100; j++ {
+			for j := range 100 {
 				op := mockfs.Operation((j % (int(mockfs.NumOperations) - 2)) + 1)
 				var err error
 				if j%10 == 0 {
@@ -847,7 +843,7 @@ func TestStats_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 100; j++ {
+			for range 100 {
 				_ = s.Snapshot()
 				_ = s.Count(mockfs.OpRead)
 				_ = s.HasFailures()
@@ -915,7 +911,7 @@ func TestStatsRecorder_ByteCounters(t *testing.T) {
 func BenchmarkStatsRecorder_Record(b *testing.B) {
 	s := mockfs.NewStatsRecorder(nil)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		s.Record(mockfs.OpRead, 100, nil)
 	}
 }
@@ -925,7 +921,7 @@ func BenchmarkStatsRecorder_Snapshot(b *testing.B) {
 	s.Record(mockfs.OpRead, 100, nil)
 	s.Record(mockfs.OpWrite, 200, nil)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = s.Snapshot()
 	}
 }
@@ -935,7 +931,7 @@ func BenchmarkStats_Count(b *testing.B) {
 	s.Record(mockfs.OpRead, 100, nil)
 	snap := s.Snapshot()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = snap.Count(mockfs.OpRead)
 	}
 }
@@ -950,7 +946,7 @@ func BenchmarkStats_Delta(b *testing.B) {
 	snap2 := s2.Snapshot()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = snap2.Delta(snap1)
 	}
 }

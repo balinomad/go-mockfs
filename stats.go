@@ -182,6 +182,7 @@ func NewStatsRecorder(initial Stats) StatsRecorder {
 // Panics if the operation is invalid: this is a programmer error, not a runtime condition.
 func (r *statsRecorder) Record(op Operation, bytes int, err error) {
 	if !op.IsValid() {
+		//nolint:forbidigo // Panic is intentional here to mark incorrect use
 		panic(fmt.Sprintf("mockfs: StatsRecorder.Record called with invalid operation: %d", op))
 	}
 
@@ -200,6 +201,7 @@ func (r *statsRecorder) Record(op Operation, bytes int, err error) {
 			r.bytesRead += uint64(bytes)
 		case OpWrite:
 			r.bytesWritten += uint64(bytes)
+		default:
 		}
 	}
 }
@@ -208,7 +210,9 @@ func (r *statsRecorder) Record(op Operation, bytes int, err error) {
 //
 // Panics if the operation is invalid, failures is negative, or failures > total.
 // This is a programmer error, not a runtime condition.
-func (r *statsRecorder) Set(op Operation, total int, failures int) {
+//
+//nolint:forbidigo // Panic is intentional here to mark incorrect use.
+func (r *statsRecorder) Set(op Operation, total, failures int) {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: StatsRecorder.Set called with invalid operation: %d", op))
 	}
@@ -229,7 +233,9 @@ func (r *statsRecorder) Set(op Operation, total int, failures int) {
 // SetBytes sets the byte counters directly.
 //
 // Panics if read or written are negative: this is a programmer error, not a runtime condition.
-func (r *statsRecorder) SetBytes(read int, written int) {
+//
+//nolint:forbidigo // Panic is intentional here to mark incorrect use.
+func (r *statsRecorder) SetBytes(read, written int) {
 	if read < 0 {
 		panic(fmt.Sprintf("mockfs: StatsRecorder.SetBytes: read (%d) cannot be negative", read))
 	}
@@ -277,6 +283,8 @@ func (r *statsRecorder) Snapshot() Stats {
 // Count reports the total number of times the given operation was called.
 //
 // Panics if the operation is invalid: this is a programmer error, not a runtime condition.
+//
+//nolint:forbidigo // Panic is intentional here to mark incorrect use.
 func (r *statsRecorder) Count(op Operation) int {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: Stats.Count called with invalid operation: %d", op))
@@ -291,6 +299,8 @@ func (r *statsRecorder) Count(op Operation) int {
 // CountSuccess reports the number of times the given operation succeeded.
 //
 // Panics if the operation is invalid: this is a programmer error, not a runtime condition.
+//
+//nolint:forbidigo // Panic is intentional here to mark incorrect use.
 func (r *statsRecorder) CountSuccess(op Operation) int {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: Stats.CountSuccess called with invalid operation: %d", op))
@@ -305,6 +315,8 @@ func (r *statsRecorder) CountSuccess(op Operation) int {
 // CountFailure reports the number of times the given operation failed.
 //
 // Panics if the operation is invalid: this is a programmer error, not a runtime condition.
+//
+//nolint:forbidigo // Panic is intentional here to mark incorrect use.
 func (r *statsRecorder) CountFailure(op Operation) int {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: Stats.CountFailure called with invalid operation: %d", op))
@@ -417,6 +429,8 @@ var _ Stats = (*statsSnapshot)(nil)
 // Count reports the total number of times the given operation was called.
 //
 // Panics if the operation is invalid: this is a programmer error, not a runtime condition.
+//
+//nolint:forbidigo // Panic is intentional here to mark incorrect use.
 func (s statsSnapshot) Count(op Operation) int {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: Stats.Count called with invalid operation: %d", op))
@@ -428,6 +442,8 @@ func (s statsSnapshot) Count(op Operation) int {
 // CountSuccess reports the number of times the given operation succeeded.
 //
 // Panics if the operation is invalid: this is a programmer error, not a runtime condition.
+//
+//nolint:forbidigo // Panic is intentional here to mark incorrect use.
 func (s statsSnapshot) CountSuccess(op Operation) int {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: Stats.CountSuccess called with invalid operation: %d", op))
@@ -439,6 +455,8 @@ func (s statsSnapshot) CountSuccess(op Operation) int {
 // CountFailure reports the number of times the given operation failed.
 //
 // Panics if the operation is invalid: this is a programmer error, not a runtime condition.
+//
+//nolint:forbidigo // Panic is intentional here to mark incorrect use.
 func (s statsSnapshot) CountFailure(op Operation) int {
 	if !op.IsValid() {
 		panic(fmt.Sprintf("mockfs: Stats.CountFailure called with invalid operation: %d", op))

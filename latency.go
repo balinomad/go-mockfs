@@ -60,6 +60,7 @@ type latencySimulator struct {
 // Panics if duration is negative: this is a programmer error, not a runtime condition.
 func NewLatencySimulator(duration time.Duration) LatencySimulator {
 	if duration < 0 {
+		//nolint:forbidigo // Panic is intentional here to mark incorrect use
 		panic(fmt.Sprintf("mockfs: negative duration not allowed: %v", duration))
 	}
 
@@ -78,6 +79,7 @@ func NewLatencySimulatorPerOp(durations map[Operation]time.Duration) LatencySimu
 	ls := &latencySimulator{}
 	for op, dur := range durations {
 		if dur < 0 {
+			//nolint:forbidigo // Panic is intentional here to mark incorrect use
 			panic(fmt.Sprintf("mockfs: negative duration not allowed for %v: %v", op, dur))
 		}
 		ls.durations[op] = dur

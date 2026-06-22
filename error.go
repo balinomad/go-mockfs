@@ -131,6 +131,7 @@ func (r *ErrorRule) shouldReturnError() bool {
 		hits := r.hits.Add(1)
 		return hits <= r.AfterN
 	default:
+		//nolint:forbidigo // Panic is intentional here to mark incorrect use
 		panic(fmt.Sprintf("mockfs: invalid ErrorMode: %d", r.Mode))
 	}
 }
@@ -218,7 +219,7 @@ func (op Operation) String() string {
 // StringToOperation converts a string to an Operation.
 // It returns an invalid operation if the string does not match a valid operation.
 func StringToOperation(s string) Operation {
-	for op := Operation(0); op < NumOperations; op++ {
+	for op := range NumOperations {
 		if strings.EqualFold(operationNames[op], s) {
 			return op
 		}
@@ -482,6 +483,7 @@ func mustAfter(after int, mode ErrorMode) uint64 {
 	switch mode {
 	case ErrorModeAfterSuccesses, ErrorModeNext:
 		if after < 0 {
+			//nolint:forbidigo // Panic is intentional here to mark incorrect use
 			panic(fmt.Sprintf(
 				"mockfs: invalid after value %d for mode %v — must be >= 0",
 				after, mode,

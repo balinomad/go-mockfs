@@ -581,11 +581,11 @@ func TestLatencySimulator_MultipleOptOrder(t *testing.T) {
 	assertNoDuration(t, start, "ls2 second call")
 }
 
-// Benchmark tests
+// Benchmark tests.
 func BenchmarkSimulate_NoLatency(b *testing.B) {
 	ls := mockfs.NewNoopLatencySimulator()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ls.Simulate(mockfs.OpRead)
 	}
 }
@@ -594,7 +594,7 @@ func BenchmarkSimulate_WithLatency(b *testing.B) {
 	// Use a small duration to avoid making the benchmark too slow
 	ls := mockfs.NewLatencySimulator(time.Microsecond)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ls.Simulate(mockfs.OpRead)
 	}
 }
@@ -602,7 +602,7 @@ func BenchmarkSimulate_WithLatency(b *testing.B) {
 func BenchmarkSimulate_Once(b *testing.B) {
 	ls := mockfs.NewLatencySimulator(time.Microsecond)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ls.Simulate(mockfs.OpRead, mockfs.Once())
 	}
 }
@@ -610,7 +610,7 @@ func BenchmarkSimulate_Once(b *testing.B) {
 func BenchmarkSimulate_OnceAsync(b *testing.B) {
 	ls := mockfs.NewLatencySimulator(time.Microsecond)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ls.Simulate(mockfs.OpRead, mockfs.OnceAsync())
 	}
 }

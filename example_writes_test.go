@@ -1,4 +1,3 @@
-//nolint:errcheck
 package mockfs_test
 
 import (

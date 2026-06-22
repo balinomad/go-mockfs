@@ -61,32 +61,32 @@ type fileOptions struct {
 	stats          StatsRecorder
 }
 
-// MockFileOption is a function type for configuring a new MockFile.
-type MockFileOption func(*fileOptions)
+// FileOption is a function type for configuring a new MockFile.
+type FileOption func(*fileOptions)
 
 // WithFileAppend sets the file to append data on write.
-func WithFileAppend() MockFileOption {
+func WithFileAppend() FileOption {
 	return func(o *fileOptions) {
 		o.writeMode = writeModeAppend
 	}
 }
 
 // WithFileOverwrite sets the file to overwrite content on write (default).
-func WithFileOverwrite() MockFileOption {
+func WithFileOverwrite() FileOption {
 	return func(o *fileOptions) {
 		o.writeMode = writeModeOverwrite
 	}
 }
 
 // WithFileReadOnly sets the file to reject all writes.
-func WithFileReadOnly() MockFileOption {
+func WithFileReadOnly() FileOption {
 	return func(o *fileOptions) {
 		o.writeMode = writeModeReadOnly
 	}
 }
 
 // WithFileErrorInjector sets the error injector for the file.
-func WithFileErrorInjector(injector ErrorInjector) MockFileOption {
+func WithFileErrorInjector(injector ErrorInjector) FileOption {
 	return func(o *fileOptions) {
 		if injector != nil {
 			o.injector = injector
@@ -95,14 +95,14 @@ func WithFileErrorInjector(injector ErrorInjector) MockFileOption {
 }
 
 // WithFileLatency sets a uniform simulated latency for all operations.
-func WithFileLatency(duration time.Duration) MockFileOption {
+func WithFileLatency(duration time.Duration) FileOption {
 	return func(o *fileOptions) {
 		o.latency = NewLatencySimulator(duration)
 	}
 }
 
 // WithFileLatencySimulator sets a custom latency simulator.
-func WithFileLatencySimulator(sim LatencySimulator) MockFileOption {
+func WithFileLatencySimulator(sim LatencySimulator) FileOption {
 	return func(o *fileOptions) {
 		if sim != nil {
 			o.latency = sim
@@ -111,7 +111,7 @@ func WithFileLatencySimulator(sim LatencySimulator) MockFileOption {
 }
 
 // WithFilePerOperationLatency sets different latencies for different operations.
-func WithFilePerOperationLatency(durations map[Operation]time.Duration) MockFileOption {
+func WithFilePerOperationLatency(durations map[Operation]time.Duration) FileOption {
 	return func(o *fileOptions) {
 		o.latency = NewLatencySimulatorPerOp(durations)
 	}
@@ -120,7 +120,7 @@ func WithFilePerOperationLatency(durations map[Operation]time.Duration) MockFile
 // WithFileReadDirHandler sets the handler for ReadDir operations.
 // The purpose of this handler is to simulate directory contents.
 // If nil, an empty directory will be created.
-func WithFileReadDirHandler(handler func(int) ([]fs.DirEntry, error)) MockFileOption {
+func WithFileReadDirHandler(handler func(int) ([]fs.DirEntry, error)) FileOption {
 	return func(o *fileOptions) {
 		o.readDirHandler = handler
 	}
@@ -128,7 +128,7 @@ func WithFileReadDirHandler(handler func(int) ([]fs.DirEntry, error)) MockFileOp
 
 // WithFileStats sets the stats recorder for the file handle.
 // If nil, a new one is created.
-func WithFileStats(stats StatsRecorder) MockFileOption {
+func WithFileStats(stats StatsRecorder) FileOption {
 	return func(o *fileOptions) {
 		if stats != nil {
 			o.stats = stats
@@ -159,6 +159,7 @@ func newMockFile(
 	stats StatsRecorder,
 ) *MockFile {
 	if mapFile == nil {
+		//nolint:forbidigo // Panic is intentional here to mark incorrect use
 		panic("mockfs: mapFile cannot be nil")
 	}
 
@@ -190,8 +191,9 @@ func newMockFile(
 // By default, the file is writable in overwrite mode.
 //
 // Panics if mapFile is nil: this is a programmer error, not a runtime condition.
-func NewMockFile(mapFile *fstest.MapFile, name string, opts ...MockFileOption) *MockFile {
+func NewMockFile(mapFile *fstest.MapFile, name string, opts ...FileOption) *MockFile {
 	if mapFile == nil {
+		//nolint:forbidigo // Panic is intentional here to mark incorrect use.
 		panic("mockfs: mapFile cannot be nil")
 	}
 
@@ -220,7 +222,7 @@ func NewMockFile(mapFile *fstest.MapFile, name string, opts ...MockFileOption) *
 // NewMockFileFromBytes creates a writable file from raw data and options.
 // The data is copied, so subsequent modifications to the input slice
 // will not affect the file's content.
-func NewMockFileFromBytes(name string, data []byte, opts ...MockFileOption) *MockFile {
+func NewMockFileFromBytes(name string, data []byte, opts ...FileOption) *MockFile {
 	mapFile := &fstest.MapFile{
 		Data:    bytes.Clone(data),
 		Mode:    0o644,
@@ -231,7 +233,7 @@ func NewMockFileFromBytes(name string, data []byte, opts ...MockFileOption) *Moc
 }
 
 // NewMockFileFromString creates a writable file from string content and options.
-func NewMockFileFromString(name string, content string, opts ...MockFileOption) *MockFile {
+func NewMockFileFromString(name, content string, opts ...FileOption) *MockFile {
 	mapFile := &fstest.MapFile{
 		Data:    []byte(content),
 		Mode:    0o644,
@@ -247,7 +249,7 @@ func NewMockFileFromString(name string, content string, opts ...MockFileOption) 
 func NewMockDir(
 	name string,
 	readDirHandler func(int) ([]fs.DirEntry, error),
-	opts ...MockFileOption,
+	opts ...FileOption,
 ) *MockFile {
 	mapFile := &fstest.MapFile{
 		Mode:    fs.ModeDir | 0o755,
@@ -256,7 +258,7 @@ func NewMockDir(
 
 	// Prepend mandatory options for a directory
 	allOptions := append(
-		[]MockFileOption{
+		[]FileOption{
 			WithFileReadOnly(), // Directories are read-only for Write()
 			WithFileReadDirHandler(readDirHandler),
 		},
@@ -267,10 +269,9 @@ func NewMockDir(
 }
 
 // Read implements io.Reader for MockFile.
-func (f *MockFile) Read(b []byte) (int, error) {
-	var n int
-	var err error
-
+//
+//nolint:nonamedreturns // Deferred function is using the named returns.
+func (f *MockFile) Read(b []byte) (n int, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -278,21 +279,19 @@ func (f *MockFile) Read(b []byte) (int, error) {
 	defer func() { f.stats.Record(OpRead, n, err) }()
 
 	if f.closed {
-		err = fs.ErrClosed
-		return 0, err
+		return 0, fs.ErrClosed
 	}
 
 	// Simulate latency before checking for errors (models real I/O timing)
 	f.latency.Simulate(OpRead)
 
-	if err = f.injector.CheckAndApply(OpRead, f.name); err != nil {
+	if err := f.injector.CheckAndApply(OpRead, f.name); err != nil {
 		return 0, err
 	}
 
 	// Read from current position
 	if f.position >= int64(len(f.mapFile.Data)) {
-		err = io.EOF
-		return 0, err
+		return 0, io.EOF
 	}
 
 	n = copy(b, f.mapFile.Data[f.position:])
@@ -303,10 +302,9 @@ func (f *MockFile) Read(b []byte) (int, error) {
 
 // ReadAt implements io.ReaderAt for MockFile.
 // ReadAt does not affect nor is affected by the underlying seek offset.
-func (f *MockFile) ReadAt(b []byte, off int64) (int, error) {
-	var n int
-	var err error
-
+//
+//nolint:nonamedreturns // Deferred function is using the named returns.
+func (f *MockFile) ReadAt(b []byte, off int64) (n int, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -321,34 +319,31 @@ func (f *MockFile) ReadAt(b []byte, off int64) (int, error) {
 	// Simulate latency before checking for errors (models real I/O timing)
 	f.latency.Simulate(OpRead)
 
-	if err = f.injector.CheckAndApply(OpRead, f.name); err != nil {
+	if err := f.injector.CheckAndApply(OpRead, f.name); err != nil {
 		return 0, err
 	}
 
 	if off < 0 {
-		err = &fs.PathError{Op: OpRead.String(), Path: f.name, Err: ErrNegativeOffset}
-		return 0, err
+		return 0, &fs.PathError{Op: OpRead.String(), Path: f.name, Err: ErrNegativeOffset}
 	}
 
 	// Read from current position
 	if off >= int64(len(f.mapFile.Data)) {
-		err = io.EOF
-		return 0, err
+		return 0, io.EOF
 	}
 
 	n = copy(b, f.mapFile.Data[off:])
 	if n < len(b) {
-		err = io.EOF
+		return n, io.EOF
 	}
 
-	return n, err
+	return n, nil
 }
 
 // Write implements io.Writer for MockFile.
-func (f *MockFile) Write(b []byte) (int, error) {
-	var n int
-	var err error
-
+//
+//nolint:nonamedreturns // Deferred function is using the named returns.
+func (f *MockFile) Write(b []byte) (n int, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -363,15 +358,14 @@ func (f *MockFile) Write(b []byte) (int, error) {
 	// Simulate latency before checking for errors (models real I/O timing)
 	f.latency.Simulate(OpWrite)
 
-	if err = f.injector.CheckAndApply(OpWrite, f.name); err != nil {
+	if err := f.injector.CheckAndApply(OpWrite, f.name); err != nil {
 		return 0, err
 	}
 
 	// Check write mode
 	switch f.writeMode {
 	case writeModeReadOnly:
-		err = &fs.PathError{Op: OpWrite.String(), Path: f.name, Err: fs.ErrPermission}
-		return 0, err
+		return 0, &fs.PathError{Op: OpWrite.String(), Path: f.name, Err: fs.ErrPermission}
 
 	case writeModeAppend:
 		f.mapFile.Data = append(f.mapFile.Data, b...)
@@ -388,16 +382,16 @@ func (f *MockFile) Write(b []byte) (int, error) {
 		return n, nil
 
 	default:
+		//nolint:forbidigo // Panic is intentional here to mark incorrect use
 		panic("mockfs: invalid writeMode")
 	}
 }
 
 // WriteAt implements io.WriterAt for MockFile.
 // WriteAt does not affect nor is affected by the underlying seek offset.
-func (f *MockFile) WriteAt(b []byte, off int64) (int, error) {
-	var n int
-	var err error
-
+//
+//nolint:nonamedreturns // Deferred function is using the named returns.
+func (f *MockFile) WriteAt(b []byte, off int64) (n int, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -405,8 +399,7 @@ func (f *MockFile) WriteAt(b []byte, off int64) (int, error) {
 	defer func() { f.stats.Record(OpWrite, n, err) }()
 
 	if f.closed {
-		err = fs.ErrClosed
-		return 0, err
+		return 0, fs.ErrClosed
 	}
 
 	// Simulate latency before checking for errors (models real I/O timing).
@@ -416,17 +409,15 @@ func (f *MockFile) WriteAt(b []byte, off int64) (int, error) {
 
 	// Check write mode
 	if f.writeMode == writeModeReadOnly {
-		err = &fs.PathError{Op: OpWrite.String(), Path: f.name, Err: ErrPermission}
-		return 0, err
+		return 0, &fs.PathError{Op: OpWrite.String(), Path: f.name, Err: ErrPermission}
 	}
 
-	if err = f.injector.CheckAndApply(OpWrite, f.name); err != nil {
+	if err := f.injector.CheckAndApply(OpWrite, f.name); err != nil {
 		return 0, err
 	}
 
 	if off < 0 {
-		err = &fs.PathError{Op: OpWrite.String(), Path: f.name, Err: ErrNegativeOffset}
-		return 0, err
+		return 0, &fs.PathError{Op: OpWrite.String(), Path: f.name, Err: ErrNegativeOffset}
 	}
 
 	// Extend file if necessary
@@ -445,25 +436,23 @@ func (f *MockFile) WriteAt(b []byte, off int64) (int, error) {
 
 // Seek implements io.Seeker for MockFile.
 // It sets the offset for the next Read or Write operation.
-func (f *MockFile) Seek(offset int64, whence int) (int64, error) {
-	var n int64
-	var err error
-
+//
+//nolint:nonamedreturns // Deferred function is using the named returns.
+func (f *MockFile) Seek(offset int64, whence int) (n int64, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	// Record the result of this operation on exit
-	defer func() { f.stats.Record(OpSeek, int(n), err) }()
+	defer func() { f.stats.Record(OpSeek, 0, err) }()
 
 	if f.closed {
-		err = fs.ErrClosed
-		return 0, err
+		return 0, fs.ErrClosed
 	}
 
 	// Simulate latency before checking for errors (models real I/O timing)
 	f.latency.Simulate(OpSeek)
 
-	if err = f.injector.CheckAndApply(OpSeek, f.name); err != nil {
+	if err := f.injector.CheckAndApply(OpSeek, f.name); err != nil {
 		return 0, err
 	}
 
@@ -475,13 +464,11 @@ func (f *MockFile) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekEnd:
 		n = int64(len(f.mapFile.Data)) + offset
 	default:
-		err = &fs.PathError{Op: OpSeek.String(), Path: f.name, Err: fs.ErrInvalid}
-		return 0, err
+		return 0, &fs.PathError{Op: OpSeek.String(), Path: f.name, Err: fs.ErrInvalid}
 	}
 
 	if n < 0 {
-		err = &fs.PathError{Op: OpSeek.String(), Path: f.name, Err: fs.ErrInvalid}
-		return 0, err
+		return 0, &fs.PathError{Op: OpSeek.String(), Path: f.name, Err: fs.ErrInvalid}
 	}
 
 	f.position = n
@@ -493,9 +480,9 @@ func (f *MockFile) Seek(offset int64, whence int) (int64, error) {
 // a slice of up to n DirEntry values in directory order.
 // Subsequent calls on the same file will yield further DirEntry values.
 // It implements fs.ReadDirFile for MockFile.
-func (f *MockFile) ReadDir(n int) ([]fs.DirEntry, error) {
-	var err error
-
+//
+//nolint:nonamedreturns // Deferred function is using the named returns.
+func (f *MockFile) ReadDir(n int) (entries []fs.DirEntry, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -503,13 +490,11 @@ func (f *MockFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	defer func() { f.stats.Record(OpReadDir, 0, err) }()
 
 	if f.closed {
-		err = fs.ErrClosed
-		return nil, err
+		return nil, fs.ErrClosed
 	}
 
 	if !f.mapFile.Mode.IsDir() {
-		err = &fs.PathError{Op: OpReadDir.String(), Path: f.name, Err: fs.ErrInvalid}
-		return nil, err
+		return nil, &fs.PathError{Op: OpReadDir.String(), Path: f.name, Err: fs.ErrInvalid}
 	}
 
 	// Simulate latency and check for injected errors before consulting the
@@ -517,7 +502,7 @@ func (f *MockFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	// respect the same latency and error-injection rules as handler-backed ones.
 	f.latency.Simulate(OpReadDir)
 
-	if err = f.injector.CheckAndApply(OpReadDir, f.name); err != nil {
+	if err := f.injector.CheckAndApply(OpReadDir, f.name); err != nil {
 		return nil, err
 	}
 
@@ -533,9 +518,9 @@ func (f *MockFile) ReadDir(n int) ([]fs.DirEntry, error) {
 }
 
 // Stat implements fs.File.Stat.
-func (f *MockFile) Stat() (fs.FileInfo, error) {
-	var err error
-
+//
+//nolint:nonamedreturns // Deferred function is using the named returns.
+func (f *MockFile) Stat() (fi fs.FileInfo, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -543,14 +528,13 @@ func (f *MockFile) Stat() (fs.FileInfo, error) {
 	defer func() { f.stats.Record(OpStat, 0, err) }()
 
 	if f.closed {
-		err = fs.ErrClosed
-		return nil, err
+		return nil, fs.ErrClosed
 	}
 
 	// Simulate latency before checking for errors
 	f.latency.Simulate(OpStat)
 
-	if err = f.injector.CheckAndApply(OpStat, f.name); err != nil {
+	if err := f.injector.CheckAndApply(OpStat, f.name); err != nil {
 		return nil, err
 	}
 
@@ -576,9 +560,9 @@ func (f *MockFile) Stat() (fs.FileInfo, error) {
 //
 // Close returns fs.ErrClosed if called multiple times, allowing tests to detect
 // double-close bugs.
-func (f *MockFile) Close() error {
-	var err error
-
+//
+//nolint:nonamedreturns // Deferred function is using the named returns.
+func (f *MockFile) Close() (err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -586,15 +570,14 @@ func (f *MockFile) Close() error {
 	defer func() { f.stats.Record(OpClose, 0, err) }()
 
 	if f.closed {
-		err = fs.ErrClosed
-		return err
+		return fs.ErrClosed
 	}
 
 	// Simulate latency before checking for errors (models real I/O timing)
 	f.latency.Simulate(OpClose)
 
 	// Check for injected error
-	if err = f.injector.CheckAndApply(OpClose, f.name); err != nil {
+	if err := f.injector.CheckAndApply(OpClose, f.name); err != nil {
 		// Still mark as closed to prevent resource leaks
 		f.closed = true
 		f.latency.Reset()

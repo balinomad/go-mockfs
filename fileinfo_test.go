@@ -12,7 +12,7 @@ import (
 // --- Helpers ---
 
 // assertFileInfoTime verifies ModTime() matches expected value.
-func assertFileInfoTime(t *testing.T, got time.Time, want time.Time) {
+func assertFileInfoTime(t *testing.T, got, want time.Time) {
 	t.Helper()
 	if !want.IsZero() && !got.Equal(want) {
 		t.Errorf("ModTime() = %v, want %v", got, want)
@@ -143,7 +143,7 @@ func TestNewFileInfo_Panic(t *testing.T) {
 		{
 			name: "dir with size",
 			in:   "dir",
-			mode: fs.ModeDir | 0744,
+			mode: fs.ModeDir | 0o744,
 			size: 3,
 		},
 	}

@@ -1,7 +1,7 @@
-//nolint:errcheck
 package mockfs_test
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -119,13 +119,13 @@ func ExampleNewDirHandler() {
 
 	// Use handler to read directory in chunks
 	batch1, err := handler(1) // Read first entry
-	fmt.Printf("First batch: %d entries, EOF: %v\n", len(batch1), err == io.EOF)
+	fmt.Printf("First batch: %d entries, EOF: %v\n", len(batch1), errors.Is(err, io.EOF))
 
 	batch2, err := handler(1) // Read second entry
-	fmt.Printf("Second batch: %d entries, EOF: %v\n", len(batch2), err == io.EOF)
+	fmt.Printf("Second batch: %d entries, EOF: %v\n", len(batch2), errors.Is(err, io.EOF))
 
 	batch3, err := handler(1) // No more entries
-	fmt.Printf("Third batch: %d entries, EOF: %v\n", len(batch3), err == io.EOF)
+	fmt.Printf("Third batch: %d entries, EOF: %v\n", len(batch3), errors.Is(err, io.EOF))
 	// Output:
 	// First batch: 1 entries, EOF: false
 	// Second batch: 1 entries, EOF: true
