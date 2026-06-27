@@ -275,8 +275,8 @@ func (r *statsRecorder) Snapshot() Stats {
 		bytesWritten: clampToInt(r.bytesWritten),
 	}
 	for i := range int(NumOperations) {
-		snap.ops[i].total = int(r.ops[i].total)
-		snap.ops[i].failure = int(r.ops[i].failure)
+		snap.ops[i].total = clampToInt(r.ops[i].total)
+		snap.ops[i].failure = clampToInt(r.ops[i].failure)
 	}
 
 	return snap
@@ -306,7 +306,7 @@ func (r *statsRecorder) Count(op Operation) int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	return int(r.ops[op].total)
+	return clampToInt(r.ops[op].total)
 }
 
 // CountSuccess reports the number of times the given operation succeeded.
@@ -322,7 +322,7 @@ func (r *statsRecorder) CountSuccess(op Operation) int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	return int(r.ops[op].total - r.ops[op].failure)
+	return clampToInt(r.ops[op].total - r.ops[op].failure)
 }
 
 // CountFailure reports the number of times the given operation failed.
@@ -338,7 +338,7 @@ func (r *statsRecorder) CountFailure(op Operation) int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	return int(r.ops[op].failure)
+	return clampToInt(r.ops[op].failure)
 }
 
 // Operations reports the total number of operations across all types.
@@ -348,7 +348,7 @@ func (r *statsRecorder) Operations() int {
 
 	sum := 0
 	for i := range int(NumOperations) {
-		sum += int(r.ops[i].total)
+		sum += clampToInt(r.ops[i].total)
 	}
 
 	return sum
@@ -359,7 +359,7 @@ func (r *statsRecorder) BytesRead() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	return int(r.bytesRead)
+	return clampToInt(r.bytesRead)
 }
 
 // BytesWritten reports the total number of bytes written.
@@ -367,7 +367,7 @@ func (r *statsRecorder) BytesWritten() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	return int(r.bytesWritten)
+	return clampToInt(r.bytesWritten)
 }
 
 // HasFailures reports whether any operation has failed.

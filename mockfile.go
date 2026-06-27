@@ -2,6 +2,7 @@ package mockfs
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/fs"
 	"path"
@@ -416,7 +417,7 @@ func (f *MockFile) WriteAt(b []byte, off int64) (n int, err error) {
 	}
 
 	if err := f.injector.CheckAndApply(OpWrite, f.name); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("mockfs:  %w", err)
 	}
 
 	if off < 0 {
@@ -456,7 +457,7 @@ func (f *MockFile) Seek(offset int64, whence int) (n int64, err error) {
 	f.latency.Simulate(OpSeek)
 
 	if err := f.injector.CheckAndApply(OpSeek, f.name); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("mockfs:  %w", err)
 	}
 
 	switch whence {
@@ -506,7 +507,7 @@ func (f *MockFile) ReadDir(n int) (entries []fs.DirEntry, err error) {
 	f.latency.Simulate(OpReadDir)
 
 	if err := f.injector.CheckAndApply(OpReadDir, f.name); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mockfs:  %w", err)
 	}
 
 	if f.readDirHandler == nil {
@@ -538,7 +539,7 @@ func (f *MockFile) Stat() (fi fs.FileInfo, err error) {
 	f.latency.Simulate(OpStat)
 
 	if err := f.injector.CheckAndApply(OpStat, f.name); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mockfs:  %w", err)
 	}
 
 	// Build FileInfo from MapFile content
@@ -584,7 +585,7 @@ func (f *MockFile) Close() (err error) {
 		// Still mark as closed to prevent resource leaks
 		f.closed = true
 		f.latency.Reset()
-		return err
+		return fmt.Errorf("mockfs:  %w", err)
 	}
 
 	// Mark as closed

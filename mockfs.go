@@ -312,7 +312,7 @@ func (m *MockFS) Stat(name string) (fi fs.FileInfo, err error) {
 	}
 
 	if err := m.injector.CheckAndApply(OpStat, cleanName); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mockfs:  %w", err)
 	}
 
 	m.latency.Simulate(OpStat)
@@ -350,7 +350,7 @@ func (m *MockFS) Open(name string) (f fs.File, err error) {
 	}
 
 	if err := m.injector.CheckAndApply(OpOpen, cleanName); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mockfs:  %w", err)
 	}
 
 	m.latency.Simulate(OpOpen)
@@ -430,9 +430,8 @@ func (m *MockFS) ReadFile(name string) (data []byte, err error) {
 		}
 	}()
 
-	//nolint:wrapcheck // io.ReadAll surfaces the underlying MockFile.Read error verbatim; wrapping would break exact-error-text Example tests and errors.Is matching.
 	data, err = io.ReadAll(file)
-	return data, err
+	return data, fmt.Errorf("mockfs:  %w", err)
 }
 
 // ReadDir implements the fs.ReadDirFS interface.
@@ -449,7 +448,7 @@ func (m *MockFS) ReadDir(name string) (de []fs.DirEntry, err error) {
 	}
 
 	if err := m.injector.CheckAndApply(OpReadDir, cleanName); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mockfs:  %w", err)
 	}
 
 	m.latency.Simulate(OpReadDir)
@@ -781,7 +780,7 @@ func (m *MockFS) Mkdir(dirPath string, perm FileMode) (err error) {
 		return &fs.PathError{Op: OpMkdir.String(), Path: dirPath, Err: ErrInvalid}
 	}
 	if err := m.injector.CheckAndApply(OpMkdir, cleanPath); err != nil {
-		return err
+		return fmt.Errorf("mockfs:  %w", err)
 	}
 	m.latency.Simulate(OpMkdir)
 
@@ -805,7 +804,7 @@ func (m *MockFS) MkdirAll(dirPath string, perm FileMode) (err error) {
 		return err
 	}
 	if err := m.injector.CheckAndApply(OpMkdirAll, cleanPath); err != nil {
-		return err
+		return fmt.Errorf("mockfs:  %w", err)
 	}
 	m.latency.Simulate(OpMkdirAll)
 
@@ -830,7 +829,7 @@ func (m *MockFS) Remove(filePath string) (err error) {
 	}
 
 	if err := m.injector.CheckAndApply(OpRemove, cleanPath); err != nil {
-		return err
+		return fmt.Errorf("mockfs:  %w", err)
 	}
 
 	m.latency.Simulate(OpRemove)
@@ -870,7 +869,7 @@ func (m *MockFS) RemoveAll(filePath string) (err error) {
 	}
 
 	if err := m.injector.CheckAndApply(OpRemoveAll, cleanPath); err != nil {
-		return err
+		return fmt.Errorf("mockfs:  %w", err)
 	}
 
 	m.latency.Simulate(OpRemoveAll)
@@ -908,7 +907,7 @@ func (m *MockFS) Rename(oldpath, newpath string) (err error) {
 	}
 
 	if err := m.injector.CheckAndApply(OpRename, cleanOld); err != nil {
-		return err
+		return fmt.Errorf("mockfs:  %w", err)
 	}
 
 	m.latency.Simulate(OpRename)
@@ -967,7 +966,7 @@ func (m *MockFS) WriteFile(filePath string, data []byte, perm FileMode) (err err
 	}
 
 	if err := m.injector.CheckAndApply(OpWrite, cleanPath); err != nil {
-		return err
+		return fmt.Errorf("mockfs:  %w", err)
 	}
 
 	m.latency.Simulate(OpWrite)
