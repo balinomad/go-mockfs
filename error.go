@@ -143,6 +143,7 @@ func (r *ErrorRule) CloneForSub(prefix string) *ErrorRule {
 		newMatchers = append(newMatchers, m.CloneForSub(prefix))
 	}
 
+	//nolint:gosec // AfterN was derived from a validated non-negative int via mustAfter; converting back to int cannot overflow on the same platform.
 	return NewErrorRule(r.Err, r.Mode, int(r.AfterN), newMatchers...)
 }
 

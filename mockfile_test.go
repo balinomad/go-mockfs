@@ -1546,6 +1546,7 @@ func TestMockFile_ConcurrentWrites(t *testing.T) {
 		wg.Add(1)
 		go func(val int) {
 			defer wg.Done()
+			//nolint:gosec // val is bounded 0-9 by the enclosing range loop; always fits in byte.
 			data := []byte{byte(val)}
 			_, err := file.Write(data)
 			if err != nil {

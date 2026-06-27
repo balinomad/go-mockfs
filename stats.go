@@ -2,6 +2,7 @@ package mockfs
 
 import (
 	"fmt"
+	"math"
 	"sync"
 )
 
@@ -226,6 +227,7 @@ func (r *statsRecorder) Set(op Operation, total, failures int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	//nolint:gosec // total is proven non-negative here: failures>=0 (checked above) and failures<=total together imply total>=0.
 	r.ops[op].total = uint64(total)
 	r.ops[op].failure = uint64(failures)
 }
@@ -269,8 +271,8 @@ func (r *statsRecorder) Snapshot() Stats {
 	defer r.mu.RUnlock()
 
 	snap := statsSnapshot{
-		bytesRead:    int(r.bytesRead),
-		bytesWritten: int(r.bytesWritten),
+		bytesRead:    clampToInt(r.bytesRead),
+		bytesWritten: clampToInt(r.bytesWritten),
 	}
 	for i := range int(NumOperations) {
 		snap.ops[i].total = int(r.ops[i].total)
@@ -278,6 +280,17 @@ func (r *statsRecorder) Snapshot() Stats {
 	}
 
 	return snap
+}
+
+// clampToInt converts v to int, saturating at math.MaxInt instead
+// of silently wrapping to a negative value. Guards the byte counters, which
+// are uint64 and could exceed int's range on 32-bit platforms after enough
+// cumulative reads/writes.
+func clampToInt(v uint64) int {
+	if v > uint64(math.MaxInt) {
+		return math.MaxInt
+	}
+	return int(v)
 }
 
 // Count reports the total number of times the given operation was called.

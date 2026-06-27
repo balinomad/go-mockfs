@@ -3,6 +3,7 @@ package mockfs
 import (
 	"bytes"
 	"encoding"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -393,13 +394,19 @@ func (m *MockFS) OpenMockFile(name string) (*MockFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	return f.(*MockFile), nil
+	mf, ok := f.(*MockFile)
+	if !ok {
+		return nil, fmt.Errorf("mockfs: OpenMockFile: Open returned unexpected type %T for %q", f, name)
+	}
+	return mf, nil
 }
 
 // ReadFile implements the fs.ReadFileFS interface.
 // It opens the file, reads it, and closes it.
 // Note: OpOpen is recorded by Open(), OpRead and OpClose by MockFile.
-func (m *MockFS) ReadFile(name string) ([]byte, error) {
+//
+//nolint:nonamedreturns // Deferred function is using the named returns.
+func (m *MockFS) ReadFile(name string) (data []byte, err error) {
 	cleanName, err := m.validateAndCleanPath(name, OpRead)
 	if err != nil {
 		return nil, err
@@ -411,9 +418,21 @@ func (m *MockFS) ReadFile(name string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = file.Close() }()
+	defer func() {
+		closeErr := file.Close()
+		if closeErr == nil {
+			return
+		}
+		if err != nil {
+			err = errors.Join(err, closeErr)
+		} else {
+			err = closeErr
+		}
+	}()
 
-	return io.ReadAll(file)
+	//nolint:wrapcheck // io.ReadAll surfaces the underlying MockFile.Read error verbatim; wrapping would break exact-error-text Example tests and errors.Is matching.
+	data, err = io.ReadAll(file)
+	return data, err
 }
 
 // ReadDir implements the fs.ReadDirFS interface.
@@ -716,7 +735,9 @@ func (m *MockFS) FailRenameOnce(filepath string, err error) {
 func (m *MockFS) MarkNonExistent(paths ...string) {
 	for _, p := range paths {
 		cleanPath := path.Clean(p)
+		//nolint:errcheck // RemoveEntry only errors on an invalid fs path; MarkNonExistent has no error return to surface it through.
 		_ = m.RemoveEntry(cleanPath) // Remove from map first
+		//nolint:errcheck // AddGlobForAllOps only errors on a malformed glob pattern; MarkNonExistent has no error return to surface it through.
 		_ = m.injector.AddGlobForAllOps(cleanPath, ErrNotExist, ErrorModeAlways, 0)
 	}
 }

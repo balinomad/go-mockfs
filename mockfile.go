@@ -286,6 +286,7 @@ func (f *MockFile) Read(b []byte) (n int, err error) {
 	f.latency.Simulate(OpRead)
 
 	if err := f.injector.CheckAndApply(OpRead, f.name); err != nil {
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests.
 		return 0, err
 	}
 
@@ -320,6 +321,7 @@ func (f *MockFile) ReadAt(b []byte, off int64) (n int, err error) {
 	f.latency.Simulate(OpRead)
 
 	if err := f.injector.CheckAndApply(OpRead, f.name); err != nil {
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests.
 		return 0, err
 	}
 
@@ -359,6 +361,7 @@ func (f *MockFile) Write(b []byte) (n int, err error) {
 	f.latency.Simulate(OpWrite)
 
 	if err := f.injector.CheckAndApply(OpWrite, f.name); err != nil {
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests.
 		return 0, err
 	}
 

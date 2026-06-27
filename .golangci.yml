@@ -75,6 +75,7 @@ linters:
     - reassign # package-level variables must not be reassigned after init
     - unconvert # remove redundant type conversions
     - recvcheck # receiver type (value vs pointer) must be consistent per type
+    - cyclop # keep cyclomatic complexity under control
 
   settings:
     gosec:
@@ -198,6 +199,13 @@ linters:
     exhaustive:
       # A default case is accepted as exhaustive coverage.
       default-signifies-exhaustive: true
+
+    govet:
+      enable:
+        - shadow
+
+    cyclop:
+      max-complexity: 15
 
   exclusions:
     rules:

@@ -2,6 +2,7 @@ package mockfs
 
 import (
 	"errors"
+	"fmt"
 	"path"
 	"regexp"
 	"strings"
@@ -75,7 +76,7 @@ type RegexpMatcher struct {
 func NewRegexpMatcher(pattern string) (*RegexpMatcher, error) {
 	r, err := regexp.Compile(pattern)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mockfs: compile regexp pattern %q: %w", pattern, err)
 	}
 	return &RegexpMatcher{re: r}, nil
 }
@@ -146,7 +147,7 @@ func NewGlobMatcher(pattern string) (*GlobMatcher, error) {
 
 // Matches returns true if the path matches the glob pattern.
 func (m *GlobMatcher) Matches(candidatePath string) bool {
-	// Error is ignored because it was already validated in NewGlobMatcher.
+	//nolint:errcheck // pattern was already validated in NewGlobMatcher; path.Match cannot error here.
 	matched, _ := path.Match(m.pattern, candidatePath)
 	return matched
 }
@@ -181,7 +182,7 @@ func (g *globParentMatcher) Matches(subPath string) bool {
 		parentPath = g.prefix + "/" + subPath
 	}
 
-	// Error is ignored because it was already validated in NewGlobMatcher.
+	//nolint:errcheck // pattern was already validated in NewGlobMatcher; path.Match cannot error here.
 	matched, _ := path.Match(g.pattern, parentPath)
 	return matched
 }
