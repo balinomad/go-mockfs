@@ -27,7 +27,9 @@ func TestRetryLogic(t *testing.T) {
     mfs := mockfs.NewMockFS(mockfs.File("data.txt", "content"))
 
     // First two reads fail, third succeeds
-    mfs.FailReadAfter("data.txt", mockfs.ErrUnexpectedEOF, 2)
+    if err := mfs.FailReadAfter("data.txt", mockfs.ErrUnexpectedEOF, 2); err != nil {
+        t.Fatal(err)
+    }
 
     // Function under test should retry
     result, err := YourRetryFunction(mfs, "data.txt")
@@ -55,8 +57,11 @@ func TestExponentialBackoff(t *testing.T) {
 
     // Fail first 3 attempts
     injector := mfs.ErrorInjector()
-    rule := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeNext, 3,
+    rule, err := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeNext, 3,
         mockfs.NewExactMatcher("api-response.json"))
+    if err != nil {
+        t.Fatal(err)
+    }
     injector.Add(mockfs.OpOpen, rule)
 
     start := time.Now()
@@ -269,7 +274,9 @@ func TestService(t *testing.T) {
     svc := &Service{fs: MockFileSystem{mfs}}
 
     // Test with full error injection and statistics
-    mfs.FailWrite("output.txt", mockfs.ErrDiskFull)
+    if err := mfs.FailWrite("output.txt", mockfs.ErrDiskFull); err != nil {
+        t.Fatal(err)
+    }
     err := svc.ProcessData()
     if !errors.Is(err, mockfs.ErrDiskFull) {
         t.Errorf("expected disk full error, got %v", err)
@@ -311,7 +318,9 @@ func TestRepositoryErrorHandling(t *testing.T) {
     }
 
     // Test save failure
-    mfs.FailWrite("data/test.dat", mockfs.ErrDiskFull)
+    if err := mfs.FailWrite("data/test.dat", mockfs.ErrDiskFull); err != nil {
+        t.Fatal(err)
+    }
     err := repo.Save("test", []byte("content"))
     if !errors.Is(err, mockfs.ErrDiskFull) {
         t.Errorf("expected disk full, got %v", err)
@@ -319,7 +328,9 @@ func TestRepositoryErrorHandling(t *testing.T) {
 
     // Test load failure
     mfs.ClearErrors()
-    mfs.FailRead("data/test.dat", mockfs.ErrCorrupted)
+    if err := mfs.FailRead("data/test.dat", mockfs.ErrCorrupted); err != nil {
+        t.Fatal(err)
+    }
     _, err = repo.Load("test")
     if !errors.Is(err, mockfs.ErrCorrupted) {
         t.Errorf("expected corrupted data, got %v", err)
@@ -379,7 +390,7 @@ m1 := mockfs.NewExactMatcher("file1.txt")
 m2 := mockfs.NewExactMatcher("file2.txt")
 m3, _ := mockfs.NewRegexpMatcher(`\.tmp$`)
 
-rule := mockfs.NewErrorRule(
+rule, _ := mockfs.NewErrorRule(
     mockfs.ErrPermission,
     mockfs.ErrorModeAlways,
     0,
@@ -404,7 +415,9 @@ func TestConfigLoader(t *testing.T) {
     )
 
     // Configure error for production config
-    mfs.FailRead("app/config/prod.json", mockfs.ErrPermission)
+    if err := mfs.FailRead("app/config/prod.json", mockfs.ErrPermission); err != nil {
+        t.Fatal(err)
+    }
 
     // Create sub-filesystem for config directory
     configFS, err := mfs.Sub("app/config")
@@ -451,7 +464,7 @@ func TestNestedSubFS(t *testing.T) {
     )
 
     // Configure error for deeply nested path
-    mfs.ErrorInjector().AddExact(
+    _ = mfs.ErrorInjector().AddExact(
         mockfs.OpRead,
         "app/config/prod/db.json",
         mockfs.ErrPermission,
@@ -558,7 +571,7 @@ func ProcessData(path string) error {
 
 ```go
 // Good: test specific error conditions
-mfs.FailRead("data.txt", mockfs.ErrCorrupted)
+_ = mfs.FailRead("data.txt", mockfs.ErrCorrupted)
 if !errors.Is(err, mockfs.ErrCorrupted) {
     t.Error("expected corrupted data error")
 }
@@ -671,7 +684,7 @@ func TestMultipleScenarios(t *testing.T) {
         {
             name: "permission denied",
             setupError: func(m *mockfs.MockFS) {
-                m.FailOpen("file.txt", mockfs.ErrPermission)
+                _ = m.FailOpen("file.txt", mockfs.ErrPermission)
             },
             wantErr: mockfs.ErrPermission,
         },

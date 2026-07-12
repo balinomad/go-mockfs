@@ -70,30 +70,30 @@
 // Inject errors to simulate I/O failures. Use convenience methods for common cases:
 //
 //	// Always fail specific operations
-//	mfs.FailOpen("bad.txt", mockfs.ErrPermission)
-//	mfs.FailRead("data.txt", io.EOF)
+//	_ = mfs.FailOpen("bad.txt", mockfs.ErrPermission)
+//	_ = mfs.FailRead("data.txt", io.EOF)
 //
 //	// Fail once then succeed
-//	mfs.FailOpenOnce("flaky.db", mockfs.ErrTimeout)
+//	_ = mfs.FailOpenOnce("flaky.db", mockfs.ErrTimeout)
 //
 //	// Fail after N successes
-//	mfs.FailReadAfter("stream.bin", io.EOF, 5)
+//	_ = mfs.FailReadAfter("stream.bin", io.EOF, 5)
 //
 // For advanced scenarios, use the ErrorInjector interface directly:
 //
 //	injector := mfs.ErrorInjector()
 //
 //	// Glob patterns (uses path.Match semantics)
-//	injector.AddGlob(mockfs.OpRead, "*.log", io.EOF, mockfs.ErrorModeAlways, 0)
+//	_ = injector.AddGlob(mockfs.OpRead, "*.log", io.EOF, mockfs.ErrorModeAlways, 0)
 //
 //	// Regular expressions
-//	injector.AddRegexp(mockfs.OpRead, `\.tmp$`, mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
+//	_ = injector.AddRegexp(mockfs.OpRead, `\.tmp$`, mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
 //
 //	// All paths for an operation
-//	injector.AddAll(mockfs.OpWrite, mockfs.ErrDiskFull, mockfs.ErrorModeAlways, 0)
+//	_ = injector.AddAll(mockfs.OpWrite, mockfs.ErrDiskFull, mockfs.ErrorModeAlways, 0)
 //
 //	// All operations for a path
-//	injector.AddExactForAllOps("critical.dat", mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
+//	_ = injector.AddExactForAllOps("critical.dat", mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
 //
 // Error modes control when errors are returned:
 //   - ErrorModeAlways: Error returned on every matching operation
@@ -183,7 +183,7 @@
 //	)
 //
 //	// Configure error in parent
-//	mfs.ErrorInjector().AddGlob(mockfs.OpRead, "app/config/*.json", io.EOF, mockfs.ErrorModeAlways, 0)
+//	_ = mfs.ErrorInjector().AddGlob(mockfs.OpRead, "app/config/*.json", io.EOF, mockfs.ErrorModeAlways, 0)
 //
 //	// Create sub-filesystem
 //	subFS, _ := mfs.Sub("app/config")
@@ -255,10 +255,6 @@
 //   - [NewMockFile]: mapFile is nil.
 //   - [NewLatencySimulator]: duration is negative.
 //   - [NewLatencySimulatorPerOp]: any duration in the map is negative.
-//   - [NewErrorRule]: after is negative when mode is [ErrorModeAfterSuccesses]
-//     or [ErrorModeNext] — the only two modes that read the after value.
-//     For [ErrorModeAlways] and [ErrorModeOnce], after is ignored and any
-//     value is accepted.
 //   - [NewFileInfo]: name is empty, is not a valid fs path, or size is
 //     non-zero for a directory entry.
 //   - [StatsRecorder.Record]: operation constant is out of range.
