@@ -109,7 +109,8 @@ func TestErrorRule_Matchers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			inj := mockfs.NewErrorInjector()
-			rule := mockfs.NewErrorRule(tt.errToApply, tt.mode, 0, tt.matchers...)
+			rule, err := mockfs.NewErrorRule(tt.errToApply, tt.mode, 0, tt.matchers...)
+			requireNoError(t, err, "NewErrorRule()")
 			inj.Add(tt.op, rule)
 
 			for _, p := range tt.paths {
@@ -250,7 +251,8 @@ func TestErrorRule_Panics(t *testing.T) {
 
 	t.Run("invalid mode", func(t *testing.T) {
 		t.Parallel()
-		rule := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorMode(999), 0, mockfs.NewWildcardMatcher())
+		rule, err := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorMode(999), 0, mockfs.NewWildcardMatcher())
+		requireNoError(t, err, "NewErrorRule()") // mode=999 does not use the after value; validation is unaffected
 		inj := mockfs.NewErrorInjector()
 		inj.Add(mockfs.OpRead, rule)
 		requirePanic(t, func() { inj.CheckAndApply(mockfs.OpRead, "test.txt") }, "invalid ErrorMode")
@@ -258,7 +260,11 @@ func TestErrorRule_Panics(t *testing.T) {
 
 	t.Run("negative after", func(t *testing.T) {
 		t.Parallel()
-		requirePanic(t, func() { mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAfterSuccesses, -1) }, "negative after")
+		rule, err := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAfterSuccesses, -1)
+		assertAnyError(t, err, "negative after")
+		if rule != nil {
+			t.Error("expected nil rule when after is negative")
+		}
 	})
 }
 
@@ -459,7 +465,8 @@ func TestErrorInjector_Add(t *testing.T) {
 	t.Run("add", func(t *testing.T) {
 		t.Parallel()
 		inj := mockfs.NewErrorInjector()
-		rule := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
+		rule, err := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
+		requireNoError(t, err, "NewErrorRule()")
 
 		inj.Add(mockfs.OpOpen, rule)
 
@@ -637,7 +644,8 @@ func TestErrorInjector_Priority(t *testing.T) {
 	t.Run("op unknown fallback", func(t *testing.T) {
 		t.Parallel()
 		inj := mockfs.NewErrorInjector()
-		rule := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
+		rule, err := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
+		requireNoError(t, err, "NewErrorRule()")
 		inj.Add(mockfs.OpUnknown, rule)
 		assertError(t, inj.CheckAndApply(mockfs.OpOpen, "test.txt"), mockfs.ErrTimeout, "OpUnknown rule with OpOpen")
 		assertError(t, inj.CheckAndApply(mockfs.OpRead, "test.txt"), mockfs.ErrTimeout, "OpUnknown rule with OpRead")
@@ -647,7 +655,8 @@ func TestErrorInjector_Priority(t *testing.T) {
 		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
-		rule := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
+		rule, err := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
+		requireNoError(t, err, "NewErrorRule()")
 		inj.Add(mockfs.OpUnknown, rule)
 		assertError(t, inj.CheckAndApply(mockfs.OpOpen, "test.txt"), mockfs.ErrNotExist, "op-specific rule precedes OpUnknown rule")
 	})
@@ -699,7 +708,8 @@ func TestErrorInjector_CheckAndApply(t *testing.T) {
 		t.Parallel()
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpOpen, "test.txt", mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0)
-		rule := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
+		rule, err := mockfs.NewErrorRule(mockfs.ErrTimeout, mockfs.ErrorModeAlways, 0, mockfs.NewExactMatcher("test.txt"))
+		requireNoError(t, err, "NewErrorRule()")
 		inj.Add(mockfs.OpUnknown, rule)
 		assertError(t, inj.CheckAndApply(mockfs.OpOpen, "test.txt"), mockfs.ErrNotExist, "test.txt op-specific rule")
 	})
@@ -1155,7 +1165,8 @@ func BenchmarkErrorInjector_CheckAndApply_MultipleRules(b *testing.B) {
 
 func BenchmarkErrorInjector_CheckAndApply_WithWildcard(b *testing.B) {
 	inj := mockfs.NewErrorInjector()
-	rule := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0, mockfs.NewWildcardMatcher())
+	rule, err := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAlways, 0, mockfs.NewWildcardMatcher())
+	requireNoError(b, err, "NewErrorRule()")
 	inj.Add(mockfs.OpOpen, rule)
 	b.ResetTimer()
 	for range b.N {

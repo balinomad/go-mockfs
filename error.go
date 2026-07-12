@@ -74,7 +74,7 @@ var (
 type ErrorRule struct {
 	Err      error         // Err is the error to return.
 	Mode     ErrorMode     // Mode specifies how the error is applied.
-	AfterN   uint64        // AfterN is used only for ErrorModeAfterSuccesses.
+	AfterN   uint64        // AfterN is used only for ErrorModeAfterSuccesses and ErrorModeNext.
 	matchers []PathMatcher // Matchers for paths.
 	usedOnce atomic.Bool   // Used only for ErrorModeOnce.
 	hits     atomic.Uint64 // Number of hits observed.
@@ -84,18 +84,43 @@ type ErrorRule struct {
 //
 // Parameters:
 //   - err - the error to return.
-//   - mode - one of ErrorModeAlways, ErrorModeOnce, or ErrorModeAfterSuccesses.
-//   - after - used only for ErrorModeAfterSuccesses and specifies the number of successful calls
-//     before the error is returned.
-//   - matchers - an optional list of path matchers. If not provided, the rule applies to all paths.
-//
-// Panics if after is negative: this is a programmer error, not a runtime condition.
-func NewErrorRule(err error, mode ErrorMode, after int, matchers ...PathMatcher) *ErrorRule {
+//   - mode - one of ErrorModeAlways, ErrorModeOnce, ErrorModeAfterSuccesses, or ErrorModeNext.
+//   - after - used only for ErrorModeAfterSuccesses and ErrorModeNext; specifies the number of
+//     calls before the error behaviour activates. Returns an error if after is negative for
+//     these modes. Ignored for ErrorModeAlways and ErrorModeOnce.
+//   - matchers - an optional list of path matchers. If not provided, the rule applies to no paths.
+func NewErrorRule(err error, mode ErrorMode, after int, matchers ...PathMatcher) (*ErrorRule, error) {
+	afterN, validationErr := validateAfter(after, mode)
+	if validationErr != nil {
+		return nil, validationErr
+	}
+
+	return newValidatedErrorRule(err, mode, afterN, matchers...), nil
+}
+
+// newValidatedErrorRule constructs an ErrorRule directly from an already-validated afterN.
+// Callers must ensure afterN was produced by validateAfter for the given mode.
+func newValidatedErrorRule(err error, mode ErrorMode, afterN uint64, matchers ...PathMatcher) *ErrorRule {
 	return &ErrorRule{
 		Err:      err,
 		Mode:     mode,
-		AfterN:   mustAfter(after, mode),
+		AfterN:   afterN,
 		matchers: matchers,
+	}
+}
+
+// validateAfter checks that after is valid for the given mode and converts it to uint64.
+// Returns an error if after is negative and the mode reads the after value.
+// For ErrorModeAlways and ErrorModeOnce, after is ignored and normalised to 0.
+func validateAfter(after int, mode ErrorMode) (uint64, error) {
+	switch mode {
+	case ErrorModeAfterSuccesses, ErrorModeNext:
+		if after < 0 {
+			return 0, fmt.Errorf("mockfs: invalid after value %d for mode %v — must be >= 0", after, mode)
+		}
+		return uint64(after), nil
+	default:
+		return 0, nil
 	}
 }
 
@@ -117,7 +142,7 @@ func (r *ErrorRule) matches(path string) bool {
 }
 
 // shouldReturnError returns true if the error should be returned.
-// For ErrorModeAfterSuccesses, it increments the hit counter.
+// For ErrorModeAfterSuccesses and ErrorModeNext, it increments the hit counter.
 func (r *ErrorRule) shouldReturnError() bool {
 	switch r.Mode {
 	case ErrorModeAlways:
@@ -143,8 +168,8 @@ func (r *ErrorRule) CloneForSub(prefix string) *ErrorRule {
 		newMatchers = append(newMatchers, m.CloneForSub(prefix))
 	}
 
-	//nolint:gosec // AfterN was derived from a validated non-negative int via mustAfter; converting back to int cannot overflow on the same platform.
-	return NewErrorRule(r.Err, r.Mode, int(r.AfterN), newMatchers...)
+	// AfterN was validated when the original rule was created; no re-validation needed.
+	return newValidatedErrorRule(r.Err, r.Mode, r.AfterN, newMatchers...)
 }
 
 // Operation defines the type of filesystem operation for error injection context.
@@ -236,42 +261,49 @@ type ErrorInjector interface {
 	Add(op Operation, rule *ErrorRule)
 
 	// AddExact adds an error rule for a specific, exact path.
-	AddExact(op Operation, path string, err error, mode ErrorMode, after int)
+	// Returns an error if after is negative and mode is ErrorModeAfterSuccesses or ErrorModeNext.
+	AddExact(op Operation, path string, err error, mode ErrorMode, after int) error
 
 	// AddGlob adds an error rule for paths matching a glob pattern (e.g., "dir/*.txt").
 	// This uses [path.Match] semantics.
-	// Returns path.ErrBadPattern if the pattern is malformed.
+	// Returns an error if the pattern is malformed or if after is negative for
+	// ErrorModeAfterSuccesses or ErrorModeNext.
 	AddGlob(op Operation, pattern string, err error, mode ErrorMode, after int) error
 
 	// AddRegexp adds an error rule for paths matching a regular expression.
 	// This uses [regexp.Compile] semantics.
-	// Returns an error if the regular expression fails to compile.
+	// Returns an error if the regular expression fails to compile or if after is negative for
+	// ErrorModeAfterSuccesses or ErrorModeNext.
 	AddRegexp(op Operation, pattern string, err error, mode ErrorMode, after int) error
 
 	// AddAll adds an error rule that matches all paths for the given operation.
-	// This is a helper for NewErrorRule(..., NewWildcardMatcher()).
-	AddAll(op Operation, err error, mode ErrorMode, after int)
+	// Returns an error if after is negative and mode is ErrorModeAfterSuccesses or ErrorModeNext.
+	AddAll(op Operation, err error, mode ErrorMode, after int) error
 
 	// AddExactForAllOps adds an error rule for a specific, exact path that applies
 	// to all filesystem operations (Stat, Open, Remove, Mkdir, etc.).
 	// A new rule is created for each operation to ensure independent state.
-	AddExactForAllOps(path string, err error, mode ErrorMode, after int)
+	// Returns an error if after is negative and mode is ErrorModeAfterSuccesses or ErrorModeNext.
+	AddExactForAllOps(path string, err error, mode ErrorMode, after int) error
 
 	// AddGlobForAllOps adds an error rule for a glob pattern that applies
 	// to all filesystem operations.
 	// A new rule is created for each operation to ensure independent state.
-	// Returns path.ErrBadPattern if the pattern is malformed.
+	// Returns an error if the pattern is malformed or if after is negative for
+	// ErrorModeAfterSuccesses or ErrorModeNext.
 	AddGlobForAllOps(pattern string, err error, mode ErrorMode, after int) error
 
 	// AddRegexpForAllOps adds an error rule for a regular expression that applies
 	// to all filesystem operations.
 	// A new rule is created for each operation to ensure independent state.
-	// Returns an error if the regular expression fails to compile.
+	// Returns an error if the regular expression fails to compile or if after is negative for
+	// ErrorModeAfterSuccesses or ErrorModeNext.
 	AddRegexpForAllOps(pattern string, err error, mode ErrorMode, after int) error
 
 	// AddAllForAllOps adds an error rule that matches all paths AND all operations.
 	// A new rule is created for each operation to ensure independent state.
-	AddAllForAllOps(err error, mode ErrorMode, after int)
+	// Returns an error if after is negative and mode is ErrorModeAfterSuccesses or ErrorModeNext.
+	AddAllForAllOps(err error, mode ErrorMode, after int) error
 
 	// Clear clears all error rules from the injector.
 	Clear()
@@ -312,66 +344,101 @@ func (ei *errorInjector) Add(op Operation, rule *ErrorRule) {
 }
 
 // AddExact adds an error rule for a specific path.
-func (ei *errorInjector) AddExact(op Operation, path string, err error, mode ErrorMode, after int) {
-	ei.Add(op, NewErrorRule(err, mode, after, NewExactMatcher(path)))
+func (ei *errorInjector) AddExact(op Operation, path string, err error, mode ErrorMode, after int) error {
+	rule, validationErr := NewErrorRule(err, mode, after, NewExactMatcher(path))
+	if validationErr != nil {
+		return validationErr
+	}
+
+	ei.Add(op, rule)
+
+	return nil
 }
 
 // AddGlob adds an error rule for paths matching a glob pattern (e.g., "dir/*.txt").
 func (ei *errorInjector) AddGlob(op Operation, pattern string, err error, mode ErrorMode, after int) error {
-	m, errRule := NewGlobMatcher(pattern)
+	m, errGlob := NewGlobMatcher(pattern)
+	if errGlob != nil {
+		return errGlob
+	}
+
+	rule, errRule := NewErrorRule(err, mode, after, m)
 	if errRule != nil {
 		return errRule
 	}
 
-	ei.Add(op, NewErrorRule(err, mode, after, m))
+	ei.Add(op, rule)
 
 	return nil
 }
 
 // AddRegexp adds an error rule for paths matching a regular expression.
 func (ei *errorInjector) AddRegexp(op Operation, pattern string, err error, mode ErrorMode, after int) error {
-	m, errRule := NewRegexpMatcher(pattern)
+	m, errRegexp := NewRegexpMatcher(pattern)
+	if errRegexp != nil {
+		return errRegexp
+	}
+
+	rule, errRule := NewErrorRule(err, mode, after, m)
 	if errRule != nil {
 		return errRule
 	}
 
-	ei.Add(op, NewErrorRule(err, mode, after, m))
+	ei.Add(op, rule)
 
 	return nil
 }
 
 // AddAll adds an error rule that matches all paths for the given operation.
-func (ei *errorInjector) AddAll(op Operation, err error, mode ErrorMode, after int) {
-	ei.Add(op, NewErrorRule(err, mode, after, NewWildcardMatcher()))
+func (ei *errorInjector) AddAll(op Operation, err error, mode ErrorMode, after int) error {
+	rule, validationErr := NewErrorRule(err, mode, after, NewWildcardMatcher())
+	if validationErr != nil {
+		return validationErr
+	}
+
+	ei.Add(op, rule)
+
+	return nil
 }
 
 // AddExactForAllOps adds an error rule for a specific, exact path that applies
 // to all filesystem operations.
-func (ei *errorInjector) AddExactForAllOps(path string, err error, mode ErrorMode, after int) {
+func (ei *errorInjector) AddExactForAllOps(path string, err error, mode ErrorMode, after int) error {
+	afterN, validationErr := validateAfter(after, mode)
+	if validationErr != nil {
+		return validationErr
+	}
+
 	ei.mu.Lock()
 	defer ei.mu.Unlock()
 
 	for op := OpStat; op < NumOperations; op++ {
-		// Create a new rule for each operation to track state (hits, once) independently
-		ei.configs[op] = append(ei.configs[op], NewErrorRule(err, mode, after, NewExactMatcher(path)))
+		// Create a new rule for each operation to track state (hits, once) independently.
+		ei.configs[op] = append(ei.configs[op], newValidatedErrorRule(err, mode, afterN, NewExactMatcher(path)))
 	}
+
+	return nil
 }
 
 // AddGlobForAllOps adds an error rule for a glob pattern that applies
 // to all filesystem operations.
 func (ei *errorInjector) AddGlobForAllOps(pattern string, err error, mode ErrorMode, after int) error {
-	// Validate pattern once
-	m, errRule := NewGlobMatcher(pattern)
-	if errRule != nil {
-		return errRule
+	m, errGlob := NewGlobMatcher(pattern)
+	if errGlob != nil {
+		return errGlob
+	}
+
+	afterN, validationErr := validateAfter(after, mode)
+	if validationErr != nil {
+		return validationErr
 	}
 
 	ei.mu.Lock()
 	defer ei.mu.Unlock()
 
 	for op := OpStat; op < NumOperations; op++ {
-		// Re-use the immutable matcher, but create a new rule for each op
-		ei.configs[op] = append(ei.configs[op], NewErrorRule(err, mode, after, m))
+		// Re-use the immutable matcher, but create a new rule for each op.
+		ei.configs[op] = append(ei.configs[op], newValidatedErrorRule(err, mode, afterN, m))
 	}
 
 	return nil
@@ -380,34 +447,45 @@ func (ei *errorInjector) AddGlobForAllOps(pattern string, err error, mode ErrorM
 // AddRegexpForAllOps adds an error rule for a regular expression that applies
 // to all filesystem operations.
 func (ei *errorInjector) AddRegexpForAllOps(pattern string, err error, mode ErrorMode, after int) error {
-	// Validate pattern once
-	m, errRule := NewRegexpMatcher(pattern)
-	if errRule != nil {
-		return errRule
+	m, errRegexp := NewRegexpMatcher(pattern)
+	if errRegexp != nil {
+		return errRegexp
+	}
+
+	afterN, validationErr := validateAfter(after, mode)
+	if validationErr != nil {
+		return validationErr
 	}
 
 	ei.mu.Lock()
 	defer ei.mu.Unlock()
 
 	for op := OpStat; op < NumOperations; op++ {
-		// Re-use the immutable matcher, but create a new rule for each op
-		ei.configs[op] = append(ei.configs[op], NewErrorRule(err, mode, after, m))
+		// Re-use the immutable matcher, but create a new rule for each op.
+		ei.configs[op] = append(ei.configs[op], newValidatedErrorRule(err, mode, afterN, m))
 	}
 
 	return nil
 }
 
 // AddAllForAllOps adds an error rule that matches all paths AND all operations.
-func (ei *errorInjector) AddAllForAllOps(err error, mode ErrorMode, after int) {
+func (ei *errorInjector) AddAllForAllOps(err error, mode ErrorMode, after int) error {
+	afterN, validationErr := validateAfter(after, mode)
+	if validationErr != nil {
+		return validationErr
+	}
+
 	matcher := NewWildcardMatcher()
 
 	ei.mu.Lock()
 	defer ei.mu.Unlock()
 
 	for op := OpStat; op < NumOperations; op++ {
-		// Re-use the immutable matcher, but create a new rule for each op
-		ei.configs[op] = append(ei.configs[op], NewErrorRule(err, mode, after, matcher))
+		// Re-use the immutable matcher, but create a new rule for each op.
+		ei.configs[op] = append(ei.configs[op], newValidatedErrorRule(err, mode, afterN, matcher))
 	}
+
+	return nil
 }
 
 // Clear clears all error rules.
@@ -475,24 +553,4 @@ func (ei *errorInjector) CheckAndApply(op Operation, path string) error {
 		}
 	}
 	return nil
-}
-
-// mustAfter converts the public int 'after' to uint64 and panics on invalid
-// input, but only for modes that actually use the value.
-// For ErrorModeAlways and ErrorModeOnce, after is ignored and normalised to 0.
-func mustAfter(after int, mode ErrorMode) uint64 {
-	switch mode {
-	case ErrorModeAfterSuccesses, ErrorModeNext:
-		if after < 0 {
-			//nolint:forbidigo // Panic is intentional here to mark incorrect use
-			panic(fmt.Sprintf(
-				"mockfs: invalid after value %d for mode %v — must be >= 0",
-				after, mode,
-			))
-		}
-		return uint64(after)
-	default:
-		// after is not meaningful for this mode; stored as 0.
-		return 0
-	}
 }
