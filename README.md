@@ -8,13 +8,14 @@
 
 # mockfs
 
-*A flexible and feature-rich mock filesystem for Go testing, built on `testing/fstest.MapFS` with comprehensive error injection, latency simulation, and write operation support.*
+_A flexible and feature-rich mock filesystem for Go testing, built on `testing/fstest.MapFS` with comprehensive error injection, latency simulation, and write operation support._
 
 ## Overview
 
 `mockfs` enables robust testing of filesystem-dependent code by providing a complete in-memory filesystem with precise control over behavior, errors, and performance characteristics. It implements Go's standard `fs` interfaces and adds powerful testing capabilities designed for both experienced Go developers and those new to filesystem testing.
 
 Built for testing scenarios that require:
+
 - Simulating I/O failures and edge cases
 - Testing timeout and retry logic
 - Verifying filesystem access patterns
@@ -26,7 +27,7 @@ Built for testing scenarios that require:
 - **Complete `fs` interface implementation** – `fs.FS`, `fs.ReadDirFS`, `fs.ReadFileFS`, `fs.StatFS`, `fs.SubFS`
 - **Writable filesystem** – `Mkdir`, `Remove`, `Rename`, `WriteFile` with configurable modes
 - **Flexible error injection** – Path matching (exact, glob, regex), operation-specific or cross-operation rules
-- **Error modes** – Always fail, fail once, or fail after N successes
+- **Error modes** – Always fail, fail once, fail after N successes, or fail the next N times
 - **Latency simulation** – Global, per-operation, serialized, or async with independent file-handle state
 - **Dual statistics tracking** – Separate counters for filesystem-level vs file-handle operations
 - **Standalone file mocking** – Test `io.Reader`/`io.Writer` functions without a full filesystem
@@ -91,10 +92,14 @@ func TestErrorHandling(t *testing.T) {
     )
 
     // Simulate permission error
-    mfs.FailOpen("secret.txt", mockfs.ErrPermission)
+    if err := mfs.FailOpen("secret.txt", mockfs.ErrPermission); err != nil {
+        t.Fatal(err)
+    }
 
     // Simulate intermittent read errors (fail after 3 successes)
-    mfs.FailReadAfter("flaky.txt", io.EOF, 3)
+    if err := mfs.FailReadAfter("flaky.txt", io.EOF, 3); err != nil {
+        t.Fatal(err)
+    }
 
     // Your code under test
     err := YourFunction(mfs)
@@ -130,47 +135,65 @@ func TestFileReader(t *testing.T) {
 
 - **Filesystem operations** (`(*MockFS).Stats()`): `Open`, `Stat`, `ReadDir`, `Mkdir`, `Remove`, etc.
 - **File-handle operations** (`(*MockFile).Stats()`): `Read`, `Write`, `Close` on individual open files
+
 ```go
 file, _ := mfs.Open("file.txt")
 file.Read(buf)
 
 mfs.Stats().Count(mockfs.OpOpen)  // Filesystem: 1 open
 
-// Assert to concrete pointer to access file-handle stats
-file.(*mockfs.MockFile).Stats().Count(mockfs.OpRead)  // File handle: 1 read
+// Preferred: use OpenMockFile to obtain *MockFile directly.
+mockFile, _ := mfs.OpenMockFile("file.txt")
+mockFile.Stats().Count(mockfs.OpRead)  // File handle: 1 read
+
+// Alternative: type-assert the fs.File returned by Open.
+file.(*mockfs.MockFile).Stats().Count(mockfs.OpRead)
+```
+
+Fluent assertions are available for either `Stats` value:
+
+```go
+mfs.Stats().Expect().
+    Count(mockfs.OpOpen, 1).
+    Success(mockfs.OpRead, 5).
+    NoFailures().
+    Assert(t)
 ```
 
 ### Error Injection
 
 Control errors with fine-grained rules:
+
 ```go
 // Simple: always fail specific operations
-mfs.FailOpen("file.txt", mockfs.ErrPermission)
+_ = mfs.FailOpen("file.txt", mockfs.ErrPermission)
 
 // Pattern matching: fail all .log files
-mfs.ErrorInjector().AddGlob(mockfs.OpRead, "*.log", io.EOF, mockfs.ErrorModeAlways, 0)
+_ = mfs.ErrorInjector().AddGlob(mockfs.OpRead, "*.log", io.EOF, mockfs.ErrorModeAlways, 0)
 
 // Conditional: fail after N successes
-mfs.FailReadAfter("data.bin", io.EOF, 5)
+_ = mfs.FailReadAfter("data.bin", io.EOF, 5)
 ```
 
 ### Write Operations
 
 Full write support with configurable modes:
+
 ```go
 // Enable writes with overwrite mode
 mfs := mockfs.NewMockFS(mockfs.WithOverwrite())
-mfs.WriteFile("output.txt", data, 0o644)
+_ = mfs.WriteFile("output.txt", data, 0o644)
 
 // Append mode
 mfs = mockfs.NewMockFS(mockfs.WithAppend())
-mfs.WriteFile("log.txt", []byte("line1\n"), 0o644)
-mfs.WriteFile("log.txt", []byte("line2\n"), 0o644) // Appends
+_ = mfs.WriteFile("log.txt", []byte("line1\n"), 0o644)
+_ = mfs.WriteFile("log.txt", []byte("line2\n"), 0o644) // Appends
 ```
 
 ### Latency Simulation
 
 Test timeout and performance handling:
+
 ```go
 // Global latency
 mfs := mockfs.NewMockFS(mockfs.WithLatency(100*time.Millisecond))
@@ -189,14 +212,17 @@ mfs = mockfs.NewMockFS(mockfs.WithPerOperationLatency(
 - **[API Reference](https://pkg.go.dev/github.com/balinomad/go-mockfs/v2)** – Complete API documentation on pkg.go.dev
 - **[Usage Guide](USAGE.md)** – Advanced patterns, best practices, and real-world examples
 - **[Migration Guide](MIGRATION-v1-to-v2.md)** – Upgrading from v1 to v2
+- **[Changelog](CHANGELOG.md)** – Release history and breaking changes
 
 ## Examples
 
 See `example_*_test.go` files in the repository for runnable examples:
+
 - [Basic operations](example_basic_test.go)
 - [Error injection](example_errors_test.go)
 - [Write operations](example_writes_test.go)
 - [Latency simulation](example_latency_test.go)
+- [Standalone file testing](example_files_test.go)
 - [Advanced features](example_advanced_test.go)
 
 ## Getting Help
@@ -204,6 +230,7 @@ See `example_*_test.go` files in the repository for runnable examples:
 - Review test files (`*_test.go`) for comprehensive usage examples
 - Check [GoDoc](https://pkg.go.dev/github.com/balinomad/go-mockfs/v2) for detailed API documentation
 - Read the [Usage Guide](USAGE.md) for patterns and best practices
+- See [Contributing](CONTRIBUTING.md) for development setup, CI, and linting
 - File issues at [github.com/balinomad/go-mockfs/issues](https://github.com/balinomad/go-mockfs/issues)
 
 ## License
