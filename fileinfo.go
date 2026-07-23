@@ -1,6 +1,7 @@
 package mockfs
 
 import (
+	"fmt"
 	"io/fs"
 	"path"
 	"time"
@@ -24,24 +25,26 @@ var (
 // NewFileInfo creates a FileInfo for testing directory entries.
 // This is useful when creating mock directories with NewDirHandler.
 //
+// Returns an error wrapping ErrUsage if name is empty, not a valid fs
+// path, or size is non-zero for a directory entry. Use MustNewFileInfo
+// to panic instead.
+//
 // Example:
 //
 //	entries := []fs.DirEntry{
-//	    mockfs.NewFileInfo("file1.txt", 100, 0o644, time.Now()),
-//	    mockfs.NewFileInfo("file2.txt", 200, 0o644, time.Now()),
+//	    mockfs.MustNewFileInfo("file1.txt", 100, 0o644, time.Now()),
+//	    mockfs.MustNewFileInfo("file2.txt", 200, 0o644, time.Now()),
 //	}
 //	handler := mockfs.NewDirHandler(entries)
-//
-//nolint:forbidigo // Panic is intentional here to mark incorrect use.
-func NewFileInfo(name string, size int64, mode FileMode, modTime time.Time) *FileInfo {
+func NewFileInfo(name string, size int64, mode FileMode, modTime time.Time) (*FileInfo, error) {
 	if name == "" {
-		panic("name cannot be empty")
+		return nil, fmt.Errorf("mockfs: %w: name cannot be empty", ErrUsage)
 	}
 	if !fs.ValidPath(name) {
-		panic("name is not a valid path")
+		return nil, fmt.Errorf("mockfs: %w: name is not a valid path: %q", ErrUsage, name)
 	}
 	if mode.IsDir() && size != 0 {
-		panic("size must be zero for directories")
+		return nil, fmt.Errorf("mockfs: %w: size must be zero for directories", ErrUsage)
 	}
 
 	t := modTime
@@ -54,7 +57,17 @@ func NewFileInfo(name string, size int64, mode FileMode, modTime time.Time) *Fil
 		size:    size,
 		mode:    mode,
 		modTime: t,
+	}, nil
+}
+
+// MustNewFileInfo is like NewFileInfo but panics if construction fails.
+func MustNewFileInfo(name string, size int64, mode FileMode, modTime time.Time) *FileInfo {
+	fi, err := NewFileInfo(name, size, mode, modTime)
+	if err != nil {
+		//nolint:forbidigo // Must* panic is intentional; see doc.go Panic Policy.
+		panic(err)
 	}
+	return fi
 }
 
 // Name returns the name of the file (or subdirectory) described by the entry.

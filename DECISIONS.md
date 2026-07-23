@@ -6,9 +6,17 @@ Records design and implementation choices that were evaluated and rejected, so t
 
 `Sub()` clones the parent's latency simulator, giving each sub-filesystem independent `Once()` state. Sharing live latency state with the parent was evaluated and rejected: cloned/independent behavior matches how `Open()` already gives each file handle its own independent state, and is safer for concurrent tests.
 
-## Exported constructors panic on invalid input
+## Constructors return `(T, error)`; `Must*` wrappers replace direct panicking
 
-`NewMockFS`, `NewLatencySimulator`, `NewLatencySimulatorPerOp`, `NewMockFile`, `NewFileInfo`, and `StatsRecorder.Record`/`Set`/`SetBytes` panic on invalid input by design — the same convention as `regexp.MustCompile`/`template.Must`. See `doc.go`'s "Panic Policy" for the full rationale and trigger list.
+`NewMockFS`, `NewMockFile`, `NewLatencySimulator`, `NewLatencySimulatorPerOp`, and `NewFileInfo` panicked unconditionally on invalid input through rc.2. Three alternatives were evaluated for rc.3:
+
+1. **Keep panicking, document it as an intentional `Must`-style exception.** Rejected: contradicts this project's own `go-standards` skill ("No panic in library code"), and unlike `regexp.MustCompile`/`template.Must`, there was no non-panicking sibling to opt out into — the panic wasn't actually optional.
+2. **Full `(T, error)` return, with a `Must*` panicking counterpart for each.** Adopted. Matches the `regexp.Compile`/`MustCompile` shape properly (both forms exist), extends the error-return pattern `NewGlobMatcher`/`NewRegexpMatcher`/`AddExact`/`NewErrorRule` already used for config validation, and is skill-compliant.
+3. **`TestReporter` injection** (`NewMockFS(t TestReporter, opts...)`, calling `t.Fatal` on misuse — matching `gomock`/`testify`). Rejected for the constructor tier: it would force every constructor to require a `*testing.T`-like value in scope, which `mockfs` otherwise doesn't need (package-level fixtures, benchmarks, non-test helper packages). Retained as-is for `Stats.Expect().Assert(t)` specifically, where a reporter is already the operation's whole purpose — not treated as precedent for the constructors.
+
+`StatsRecorder.Record`/`Set`/`SetBytes` are the one deliberate exception, left panicking: every reachable misuse of these three requires implementing a custom filesystem against the exported `StatsRecorder` interface and calling them with invalid data directly — not reachable through `mockfs`'s own constructors or options — and they're called from `defer` at every internal record site, where an `error`-returning signature would break the pattern for a narrow, advanced-only misuse surface.
+
+`ErrorRule.Mode` is exported and unvalidated after construction: `NewErrorRule` now rejects an invalid `ErrorMode` up front, but a caller can still set `rule.Mode = ErrorMode(999)` post-construction and hit the pre-existing panic in `shouldReturnError()` at `CheckAndApply` time. Left open — closing it needs either an unexported field (API change) or a defensive re-check in `shouldReturnError()`; not addressed in rc.3.
 
 ## `ErrorInjector` stays a single 13-method interface
 

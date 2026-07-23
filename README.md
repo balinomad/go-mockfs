@@ -44,6 +44,8 @@ go get github.com/balinomad/go-mockfs/v2@latest
 
 ### Basic Usage
 
+`NewMockFS`, `NewMockFile`, `NewLatencySimulator`, `NewLatencySimulatorPerOp`, and `NewFileInfo` return `(T, error)` for invalid setup (bad path, nil MapFile, negative duration, ...) — check with `errors.Is(err, mockfs.ErrUsage)`. Each has a `Must*` counterpart (`MustNewMockFS`, etc.) that panics instead; the examples below use it, since a setup mistake here is a bug in the test itself, not something to check `err` for.
+
 ```go
 package main_test
 
@@ -56,7 +58,7 @@ import (
 
 func TestBasicFileOperations(t *testing.T) {
     // Create filesystem with initial files
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.File("config.json", `{"setting": "value"}`),
         mockfs.Dir("data",
             mockfs.File("input.txt", "test data"),
@@ -87,7 +89,7 @@ func TestBasicFileOperations(t *testing.T) {
 
 ```go
 func TestErrorHandling(t *testing.T) {
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.File("flaky.txt", "data"),
     )
 
@@ -181,11 +183,11 @@ Full write support with configurable modes:
 
 ```go
 // Enable writes with overwrite mode
-mfs := mockfs.NewMockFS(mockfs.WithOverwrite())
+mfs := mockfs.MustNewMockFS(mockfs.WithOverwrite())
 _ = mfs.WriteFile("output.txt", data, 0o644)
 
 // Append mode
-mfs = mockfs.NewMockFS(mockfs.WithAppend())
+mfs = mockfs.MustNewMockFS(mockfs.WithAppend())
 _ = mfs.WriteFile("log.txt", []byte("line1\n"), 0o644)
 _ = mfs.WriteFile("log.txt", []byte("line2\n"), 0o644) // Appends
 ```
@@ -196,10 +198,10 @@ Test timeout and performance handling:
 
 ```go
 // Global latency
-mfs := mockfs.NewMockFS(mockfs.WithLatency(100*time.Millisecond))
+mfs := mockfs.MustNewMockFS(mockfs.WithLatency(100*time.Millisecond))
 
 // Per-operation latency
-mfs = mockfs.NewMockFS(mockfs.WithPerOperationLatency(
+mfs = mockfs.MustNewMockFS(mockfs.WithPerOperationLatency(
     map[mockfs.Operation]time.Duration{
         mockfs.OpRead:  200 * time.Millisecond,
         mockfs.OpWrite: 500 * time.Millisecond,

@@ -28,34 +28,47 @@ func TestNewMockFile(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		mapFile   *fstest.MapFile
-		wantPanic bool
+		name    string
+		mapFile *fstest.MapFile
+		wantErr bool
 	}{
 		{
-			name:      "valid file",
-			mapFile:   mapFile,
-			wantPanic: false,
+			name:    "valid file",
+			mapFile: mapFile,
+			wantErr: false,
 		},
 		{
-			name:      "nil mapfile panics",
-			mapFile:   nil,
-			wantPanic: true,
+			name:    "nil mapfile errors",
+			mapFile: nil,
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if tt.wantPanic {
-				requirePanic(t, func() { mockfs.NewMockFile(tt.mapFile, "test.txt", mockfs.WithFileOverwrite()) }, "NewMockFile()")
+			file, err := mockfs.NewMockFile(tt.mapFile, "test.txt", mockfs.WithFileOverwrite())
+			if tt.wantErr {
+				assertAnyError(t, err, "NewMockFile()")
+				if !errors.Is(err, mockfs.ErrUsage) {
+					t.Errorf("err = %v, want wrapping ErrUsage", err)
+				}
+				if file != nil {
+					t.Error("expected nil file on error")
+				}
 				return
 			}
-			if file := mockfs.NewMockFile(tt.mapFile, "test.txt", mockfs.WithFileOverwrite()); file == nil {
+			requireNoError(t, err, "NewMockFile()")
+			if file == nil {
 				t.Error("expected non-nil file")
 			}
 		})
 	}
+}
+
+func TestMustNewMockFile_Panic(t *testing.T) {
+	t.Parallel()
+	requirePanic(t, func() { mockfs.MustNewMockFile(nil, "test.txt") }, "MustNewMockFile() nil mapFile")
 }
 
 // TestNewMockFile_Defaults tests that nil arguments to NewMockFile are
@@ -64,7 +77,7 @@ func TestNewMockFile_Defaults(t *testing.T) {
 	t.Parallel()
 
 	mapFile := &fstest.MapFile{Data: []byte("test")}
-	file := mockfs.NewMockFile(mapFile, "test.txt", mockfs.WithFileOverwrite())
+	file := mockfs.MustNewMockFile(mapFile, "test.txt", mockfs.WithFileOverwrite())
 
 	if file.ErrorInjector() == nil {
 		t.Error("expected non-nil default ErrorInjector")
@@ -218,9 +231,9 @@ func TestNewDirHandler(t *testing.T) {
 	t.Run("pagination boundary overflow", func(t *testing.T) {
 		t.Parallel()
 		moreEntries := []fs.DirEntry{
-			mockfs.NewFileInfo("file1.txt", 5, 0o644, time.Now()),
-			mockfs.NewFileInfo("file2.txt", 5, 0o644, time.Now()),
-			mockfs.NewFileInfo("file3.txt", 5, 0o644, time.Now()),
+			mockfs.MustNewFileInfo("file1.txt", 5, 0o644, time.Now()),
+			mockfs.MustNewFileInfo("file2.txt", 5, 0o644, time.Now()),
+			mockfs.MustNewFileInfo("file3.txt", 5, 0o644, time.Now()),
 		}
 		handler := mockfs.NewDirHandler(moreEntries)
 
@@ -622,7 +635,7 @@ func TestMockFile_Write(t *testing.T) {
 			Mode:    0o644,
 			ModTime: time.Now(),
 		}
-		file := mockfs.NewMockFile(mapFile, "test.txt")
+		file := mockfs.MustNewMockFile(mapFile, "test.txt")
 
 		newData := []byte("new")
 		n, err := file.Write(newData)
@@ -642,7 +655,7 @@ func TestMockFile_Write(t *testing.T) {
 			Mode:    0o644,
 			ModTime: time.Now(),
 		}
-		file := mockfs.NewMockFile(mapFile, "test.txt", mockfs.WithFileAppend())
+		file := mockfs.MustNewMockFile(mapFile, "test.txt", mockfs.WithFileAppend())
 
 		writeData := []byte("appended")
 		n, err := file.Write(writeData)
@@ -663,7 +676,7 @@ func TestMockFile_Write(t *testing.T) {
 			Mode:    0o644,
 			ModTime: time.Now(),
 		}
-		file := mockfs.NewMockFile(mapFile, "test.txt", mockfs.WithFileReadOnly())
+		file := mockfs.MustNewMockFile(mapFile, "test.txt", mockfs.WithFileReadOnly())
 
 		_, err := file.Write([]byte("new data"))
 		assertError(t, err, mockfs.ErrPermission)
@@ -685,7 +698,7 @@ func TestMockFile_Write(t *testing.T) {
 		mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0o644, ModTime: time.Now()}
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpWrite, "test.txt", fs.ErrPermission, mockfs.ErrorModeAlways, 0)
-		file := mockfs.NewMockFile(mapFile, "test.txt", mockfs.WithFileErrorInjector(inj))
+		file := mockfs.MustNewMockFile(mapFile, "test.txt", mockfs.WithFileErrorInjector(inj))
 
 		_, err := file.Write([]byte("data"))
 		assertError(t, err, fs.ErrPermission)
@@ -695,7 +708,7 @@ func TestMockFile_Write(t *testing.T) {
 		t.Parallel()
 		initialTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 		mapFile := &fstest.MapFile{Data: []byte("old"), Mode: 0o644, ModTime: initialTime}
-		file := mockfs.NewMockFile(mapFile, "test.txt")
+		file := mockfs.MustNewMockFile(mapFile, "test.txt")
 
 		time.Sleep(10 * time.Millisecond)
 		_, err := file.Write([]byte("new"))
@@ -956,8 +969,8 @@ func TestMockFile_ReadDir(t *testing.T) {
 	t.Run("valid directory", func(t *testing.T) {
 		t.Parallel()
 		entries := []fs.DirEntry{
-			mockfs.NewFileInfo("file1.txt", 0, 0o644, time.Now()),
-			mockfs.NewFileInfo("file2.txt", 0, 0o644, time.Now()),
+			mockfs.MustNewFileInfo("file1.txt", 0, 0o644, time.Now()),
+			mockfs.MustNewFileInfo("file2.txt", 0, 0o644, time.Now()),
 		}
 
 		handler := func(n int) ([]fs.DirEntry, error) {
@@ -1059,10 +1072,10 @@ func TestMockFile_ReadDir(t *testing.T) {
 	t.Run("pagination", func(t *testing.T) {
 		t.Parallel()
 		entries := []fs.DirEntry{
-			mockfs.NewFileInfo("file1", 0, 0o644, time.Now()),
-			mockfs.NewFileInfo("file2", 0, 0o644, time.Now()),
-			mockfs.NewFileInfo("file3", 0, 0o644, time.Now()),
-			mockfs.NewFileInfo("file4", 0, 0o644, time.Now()),
+			mockfs.MustNewFileInfo("file1", 0, 0o644, time.Now()),
+			mockfs.MustNewFileInfo("file2", 0, 0o644, time.Now()),
+			mockfs.MustNewFileInfo("file3", 0, 0o644, time.Now()),
+			mockfs.MustNewFileInfo("file4", 0, 0o644, time.Now()),
 		}
 
 		pos := 0
@@ -1121,7 +1134,7 @@ func TestMockFile_Stat(t *testing.T) {
 			Mode:    0o644,
 			ModTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		}
-		file := mockfs.NewMockFile(mapFile, "testdir/test.txt")
+		file := mockfs.MustNewMockFile(mapFile, "testdir/test.txt")
 
 		info, err := file.Stat()
 		requireNoError(t, err)
@@ -1154,7 +1167,7 @@ func TestMockFile_Stat(t *testing.T) {
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpStat, "test.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 
-		file := mockfs.NewMockFile(mapFile, "test.txt", mockfs.WithFileErrorInjector(inj))
+		file := mockfs.MustNewMockFile(mapFile, "test.txt", mockfs.WithFileErrorInjector(inj))
 
 		_, err := file.Stat()
 		assertError(t, err, mockfs.ErrPermission)
@@ -1220,7 +1233,7 @@ func TestMockFile_Stat(t *testing.T) {
 					Mode:    mode,
 					ModTime: time.Now(),
 				}
-				file := mockfs.NewMockFile(mapFile, "test.txt")
+				file := mockfs.MustNewMockFile(mapFile, "test.txt")
 
 				info, err := file.Stat()
 				requireNoError(t, err)
@@ -1257,7 +1270,7 @@ func TestMockFile_Close(t *testing.T) {
 		mapFile := &fstest.MapFile{Data: []byte("test"), Mode: 0o644, ModTime: time.Now()}
 		inj := mockfs.NewErrorInjector()
 		inj.AddExact(mockfs.OpClose, "test.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
-		file := mockfs.NewMockFile(mapFile, "test.txt", mockfs.WithFileErrorInjector(inj))
+		file := mockfs.MustNewMockFile(mapFile, "test.txt", mockfs.WithFileErrorInjector(inj))
 
 		assertError(t, file.Close(), mockfs.ErrPermission)
 		assertError(t, file.Close(), mockfs.ErrClosed, "second close should return ErrClosed")
@@ -1357,7 +1370,7 @@ func TestMockFile_LatencySimulator_Exists(t *testing.T) {
 //
 //nolint:paralleltest // Latency tests
 func TestMockFile_LatencySimulation(t *testing.T) {
-	latencySim := mockfs.NewLatencySimulator(testDuration)
+	latencySim := mockfs.MustNewLatencySimulator(testDuration)
 	file := mockfs.NewMockFileFromString("test.txt", "test", mockfs.WithFileLatencySimulator(latencySim))
 
 	operations := []struct {
@@ -1409,7 +1422,7 @@ func TestMockFile_LatencySimulation(t *testing.T) {
 func TestMockFile_LatencyReset(t *testing.T) {
 	t.Parallel()
 
-	latencySim := mockfs.NewLatencySimulator(testDuration)
+	latencySim := mockfs.MustNewLatencySimulator(testDuration)
 	file := mockfs.NewMockFileFromString("test.txt", "test", mockfs.WithFileLatencySimulator(latencySim))
 
 	// Read with latency
@@ -1426,7 +1439,7 @@ func TestMockFile_LatencyReset(t *testing.T) {
 func TestMockFile_LatencyOnceMode(t *testing.T) {
 	t.Parallel()
 
-	latencySim := mockfs.NewLatencySimulator(testDuration)
+	latencySim := mockfs.MustNewLatencySimulator(testDuration)
 
 	file := mockfs.NewMockFileFromString("test.txt", "test", mockfs.WithFileLatencySimulator(latencySim))
 
@@ -1447,7 +1460,7 @@ func TestMockFile_LatencyOnceMode(t *testing.T) {
 func TestMockFile_LatencySharedSimulator(t *testing.T) {
 	t.Parallel()
 
-	sharedLatency := mockfs.NewLatencySimulator(testDuration)
+	sharedLatency := mockfs.MustNewLatencySimulator(testDuration)
 
 	file1 := mockfs.NewMockFileFromString("file1.txt", "file1", mockfs.WithFileLatencySimulator(sharedLatency))
 	file2 := mockfs.NewMockFileFromString("file2.txt", "file2", mockfs.WithFileLatencySimulator(sharedLatency))
@@ -1471,7 +1484,7 @@ func TestMockFile_LatencyCloning(t *testing.T) {
 	t.Parallel()
 
 	// Create a MockFS with latency that uses Once mode
-	mfs := mockfs.NewMockFS(
+	mfs := mockfs.MustNewMockFS(
 		mockfs.File("file1.txt", "data1"),
 		mockfs.File("file2.txt", "data2"),
 		mockfs.WithLatency(testDuration),

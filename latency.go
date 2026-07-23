@@ -57,16 +57,26 @@ type latencySimulator struct {
 // NewLatencySimulator returns a LatencySimulator with a global duration for all operations.
 // If duration is 0, no latency is simulated.
 //
-// Panics if duration is negative: this is a programmer error, not a runtime condition.
-func NewLatencySimulator(duration time.Duration) LatencySimulator {
+// Returns an error wrapping ErrUsage if duration is negative. Use
+// MustNewLatencySimulator to panic instead.
+func NewLatencySimulator(duration time.Duration) (LatencySimulator, error) {
 	if duration < 0 {
-		//nolint:forbidigo // Panic is intentional here to mark incorrect use
-		panic(fmt.Sprintf("mockfs: negative duration not allowed: %v", duration))
+		return nil, fmt.Errorf("mockfs: %w: negative duration not allowed: %v", ErrUsage, duration)
 	}
 
 	ls := &latencySimulator{}
 	ls.durations[OpUnknown] = duration
 
+	return ls, nil
+}
+
+// MustNewLatencySimulator is like NewLatencySimulator but panics if construction fails.
+func MustNewLatencySimulator(duration time.Duration) LatencySimulator {
+	ls, err := NewLatencySimulator(duration)
+	if err != nil {
+		//nolint:forbidigo // Must* panic is intentional; see doc.go Panic Policy.
+		panic(err)
+	}
 	return ls
 }
 
@@ -74,17 +84,27 @@ func NewLatencySimulator(duration time.Duration) LatencySimulator {
 // If an operation is missing from the map, it falls back to OpUnknown's duration,
 // then to zero (no sleep) if OpUnknown is also not specified.
 //
-// Panics if any duration is negative: this is a programmer error, not a runtime condition.
-func NewLatencySimulatorPerOp(durations map[Operation]time.Duration) LatencySimulator {
+// Returns an error wrapping ErrUsage if any duration is negative. Use
+// MustNewLatencySimulatorPerOp to panic instead.
+func NewLatencySimulatorPerOp(durations map[Operation]time.Duration) (LatencySimulator, error) {
 	ls := &latencySimulator{}
 	for op, dur := range durations {
 		if dur < 0 {
-			//nolint:forbidigo // Panic is intentional here to mark incorrect use
-			panic(fmt.Sprintf("mockfs: negative duration not allowed for %v: %v", op, dur))
+			return nil, fmt.Errorf("mockfs: %w: negative duration not allowed for %v: %v", ErrUsage, op, dur)
 		}
 		ls.durations[op] = dur
 	}
 
+	return ls, nil
+}
+
+// MustNewLatencySimulatorPerOp is like NewLatencySimulatorPerOp but panics if construction fails.
+func MustNewLatencySimulatorPerOp(durations map[Operation]time.Duration) LatencySimulator {
+	ls, err := NewLatencySimulatorPerOp(durations)
+	if err != nil {
+		//nolint:forbidigo // Must* panic is intentional; see doc.go Panic Policy.
+		panic(err)
+	}
 	return ls
 }
 

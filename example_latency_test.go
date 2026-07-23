@@ -11,7 +11,7 @@ import (
 func ExampleWithLatency() {
 	start := time.Now()
 
-	mfs := mockfs.NewMockFS(mockfs.File("file.txt", []byte("data")), mockfs.WithLatency(50*time.Millisecond))
+	mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", []byte("data")), mockfs.WithLatency(50*time.Millisecond))
 
 	// Each operation adds 50ms delay
 	mfs.Stat("file.txt")
@@ -24,7 +24,7 @@ func ExampleWithLatency() {
 
 // ExampleWithPerOperationLatency demonstrates per-operation latency.
 func ExampleWithPerOperationLatency() {
-	mfs := mockfs.NewMockFS(
+	mfs := mockfs.MustNewMockFS(
 		mockfs.File("file.txt", []byte("data")),
 		mockfs.WithPerOperationLatency(map[mockfs.Operation]time.Duration{
 			mockfs.OpStat: 10 * time.Millisecond,
@@ -56,7 +56,7 @@ func ExampleWithPerOperationLatency() {
 
 // ExampleLatencySimulator_Simulate_once demonstrates once mode.
 func ExampleLatencySimulator_Simulate_once() {
-	sim := mockfs.NewLatencySimulator(50 * time.Millisecond)
+	sim := mockfs.MustNewLatencySimulator(50 * time.Millisecond)
 
 	// First call has latency
 	start := time.Now()
@@ -77,7 +77,7 @@ func ExampleLatencySimulator_Simulate_once() {
 
 // ExampleLatencySimulator_Simulate_async demonstrates async mode.
 func ExampleLatencySimulator_Simulate_async() {
-	sim := mockfs.NewLatencySimulator(30 * time.Millisecond)
+	sim := mockfs.MustNewLatencySimulator(30 * time.Millisecond)
 
 	start := time.Now()
 

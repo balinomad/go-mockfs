@@ -10,7 +10,7 @@ import (
 
 // ExampleMockFS_FailOpen demonstrates basic error injection.
 func ExampleMockFS_FailOpen() {
-	mfs := mockfs.NewMockFS(mockfs.File("secret.txt", []byte("classified")))
+	mfs := mockfs.MustNewMockFS(mockfs.File("secret.txt", []byte("classified")))
 
 	// Inject permission error
 	mfs.FailOpen("secret.txt", mockfs.ErrPermission)
@@ -22,7 +22,7 @@ func ExampleMockFS_FailOpen() {
 
 // ExampleMockFS_FailReadOnce demonstrates one-time error injection.
 func ExampleMockFS_FailReadOnce() {
-	mfs := mockfs.NewMockFS(mockfs.File("flaky.txt", []byte("data")))
+	mfs := mockfs.MustNewMockFS(mockfs.File("flaky.txt", []byte("data")))
 
 	mfs.FailReadOnce("flaky.txt", mockfs.ErrUnexpectedEOF)
 
@@ -45,7 +45,7 @@ func ExampleMockFS_FailReadOnce() {
 
 // ExampleMockFS_FailReadAfter demonstrates error after N successes.
 func ExampleMockFS_FailReadAfter() {
-	mfs := mockfs.NewMockFS(mockfs.File("stream.txt", []byte("123456789")))
+	mfs := mockfs.MustNewMockFS(mockfs.File("stream.txt", []byte("123456789")))
 
 	// Error after 3 successful reads
 	mfs.FailReadAfter("stream.txt", io.EOF, 3)
@@ -71,7 +71,7 @@ func ExampleMockFS_FailReadAfter() {
 
 // ExampleErrorInjector_AddGlob demonstrates glob pattern matching.
 func ExampleErrorInjector_AddGlob() {
-	mfs := mockfs.NewMockFS(
+	mfs := mockfs.MustNewMockFS(
 		mockfs.File("app.log", []byte("log")),
 		mockfs.File("error.log", []byte("err")),
 		mockfs.File("data.txt", []byte("txt")),
@@ -93,7 +93,7 @@ func ExampleErrorInjector_AddGlob() {
 
 // ExampleErrorInjector_AddRegexp demonstrates regex pattern matching.
 func ExampleErrorInjector_AddRegexp() {
-	mfs := mockfs.NewMockFS(
+	mfs := mockfs.MustNewMockFS(
 		mockfs.File("file.tmp", []byte("tmp")),
 		mockfs.File("data.tmp", []byte("tmp")),
 		mockfs.File("file.txt", []byte("txt")),
@@ -114,7 +114,7 @@ func ExampleErrorInjector_AddRegexp() {
 
 // ExampleErrorInjector_AddExactForAllOps demonstrates cross-operation errors.
 func ExampleErrorInjector_AddExactForAllOps() {
-	mfs := mockfs.NewMockFS(mockfs.File("broken.txt", []byte("data")))
+	mfs := mockfs.MustNewMockFS(mockfs.File("broken.txt", []byte("data")))
 
 	// All operations on this file fail
 	mfs.ErrorInjector().AddExactForAllOps("broken.txt", mockfs.ErrCorrupted, mockfs.ErrorModeAlways, 0)
@@ -136,7 +136,7 @@ func ExampleErrorInjector_AddExactForAllOps() {
 
 // ExampleMockFS_MarkNonExistent demonstrates simulating missing files.
 func ExampleMockFS_MarkNonExistent() {
-	mfs := mockfs.NewMockFS(
+	mfs := mockfs.MustNewMockFS(
 		mockfs.File("exists.txt", []byte("data")),
 		mockfs.File("deleted.txt", []byte("data")),
 	)

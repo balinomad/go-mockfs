@@ -98,7 +98,7 @@ func WithFileErrorInjector(injector ErrorInjector) FileOption {
 // WithFileLatency sets a uniform simulated latency for all operations.
 func WithFileLatency(duration time.Duration) FileOption {
 	return func(o *fileOptions) {
-		o.latency = NewLatencySimulator(duration)
+		o.latency = MustNewLatencySimulator(duration)
 	}
 }
 
@@ -114,7 +114,7 @@ func WithFileLatencySimulator(sim LatencySimulator) FileOption {
 // WithFilePerOperationLatency sets different latencies for different operations.
 func WithFilePerOperationLatency(durations map[Operation]time.Duration) FileOption {
 	return func(o *fileOptions) {
-		o.latency = NewLatencySimulatorPerOp(durations)
+		o.latency = MustNewLatencySimulatorPerOp(durations)
 	}
 }
 
@@ -191,11 +191,11 @@ func newMockFile(
 // For typical usage, prefer NewMockFileFromString or NewMockFileFromBytes.
 // By default, the file is writable in overwrite mode.
 //
-// Panics if mapFile is nil: this is a programmer error, not a runtime condition.
-func NewMockFile(mapFile *fstest.MapFile, name string, opts ...FileOption) *MockFile {
+// Returns an error wrapping ErrUsage if mapFile is nil. Use MustNewMockFile
+// to panic instead.
+func NewMockFile(mapFile *fstest.MapFile, name string, opts ...FileOption) (*MockFile, error) {
 	if mapFile == nil {
-		//nolint:forbidigo // Panic is intentional here to mark incorrect use.
-		panic("mockfs: mapFile cannot be nil")
+		return nil, fmt.Errorf("mockfs: %w: mapFile cannot be nil", ErrUsage)
 	}
 
 	// Set defaults
@@ -217,7 +217,17 @@ func NewMockFile(mapFile *fstest.MapFile, name string, opts ...FileOption) *Mock
 		options.latency,
 		options.readDirHandler,
 		options.stats,
-	)
+	), nil
+}
+
+// MustNewMockFile is like NewMockFile but panics if construction fails.
+func MustNewMockFile(mapFile *fstest.MapFile, name string, opts ...FileOption) *MockFile {
+	f, err := NewMockFile(mapFile, name, opts...)
+	if err != nil {
+		//nolint:forbidigo // Must* panic is intentional; see doc.go Panic Policy.
+		panic(err)
+	}
+	return f
 }
 
 // NewMockFileFromBytes creates a writable file from raw data and options.
@@ -230,7 +240,7 @@ func NewMockFileFromBytes(name string, data []byte, opts ...FileOption) *MockFil
 		ModTime: time.Now(),
 	}
 
-	return NewMockFile(mapFile, name, opts...)
+	return MustNewMockFile(mapFile, name, opts...)
 }
 
 // NewMockFileFromString creates a writable file from string content and options.
@@ -241,7 +251,7 @@ func NewMockFileFromString(name, content string, opts ...FileOption) *MockFile {
 		ModTime: time.Now(),
 	}
 
-	return NewMockFile(mapFile, name, opts...)
+	return MustNewMockFile(mapFile, name, opts...)
 }
 
 // NewMockDir constructs a MockFile representing a directory.
@@ -266,7 +276,7 @@ func NewMockDir(
 		opts...,
 	)
 
-	return NewMockFile(mapFile, name, allOptions...)
+	return MustNewMockFile(mapFile, name, allOptions...)
 }
 
 // Read implements io.Reader for MockFile.
@@ -417,7 +427,8 @@ func (f *MockFile) WriteAt(b []byte, off int64) (n int, err error) {
 	}
 
 	if err := f.injector.CheckAndApply(OpWrite, f.name); err != nil {
-		return 0, fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return 0, err
 	}
 
 	if off < 0 {
@@ -457,7 +468,8 @@ func (f *MockFile) Seek(offset int64, whence int) (n int64, err error) {
 	f.latency.Simulate(OpSeek)
 
 	if err := f.injector.CheckAndApply(OpSeek, f.name); err != nil {
-		return 0, fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return 0, err
 	}
 
 	switch whence {
@@ -507,7 +519,8 @@ func (f *MockFile) ReadDir(n int) (entries []fs.DirEntry, err error) {
 	f.latency.Simulate(OpReadDir)
 
 	if err := f.injector.CheckAndApply(OpReadDir, f.name); err != nil {
-		return nil, fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return nil, err
 	}
 
 	if f.readDirHandler == nil {
@@ -539,7 +552,8 @@ func (f *MockFile) Stat() (fi fs.FileInfo, err error) {
 	f.latency.Simulate(OpStat)
 
 	if err := f.injector.CheckAndApply(OpStat, f.name); err != nil {
-		return nil, fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return nil, err
 	}
 
 	// Build FileInfo from MapFile content
@@ -585,7 +599,8 @@ func (f *MockFile) Close() (err error) {
 		// Still mark as closed to prevent resource leaks
 		f.closed = true
 		f.latency.Reset()
-		return fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return err
 	}
 
 	// Mark as closed

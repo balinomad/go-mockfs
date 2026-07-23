@@ -245,23 +245,28 @@ func TestErrorRule_Modes(t *testing.T) {
 	}
 }
 
-// TestErrorRule_Panics verifies panic conditions.
-func TestErrorRule_Panics(t *testing.T) {
+func TestErrorRule_Validation(t *testing.T) {
 	t.Parallel()
 
 	t.Run("invalid mode", func(t *testing.T) {
 		t.Parallel()
 		rule, err := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorMode(999), 0, mockfs.NewWildcardMatcher())
-		requireNoError(t, err, "NewErrorRule()") // mode=999 does not use the after value; validation is unaffected
-		inj := mockfs.NewErrorInjector()
-		inj.Add(mockfs.OpRead, rule)
-		requirePanic(t, func() { inj.CheckAndApply(mockfs.OpRead, "test.txt") }, "invalid ErrorMode")
+		assertAnyError(t, err, "NewErrorRule() invalid mode")
+		if !errors.Is(err, mockfs.ErrUsage) {
+			t.Errorf("err = %v, want wrapping ErrUsage", err)
+		}
+		if rule != nil {
+			t.Error("expected nil rule for invalid mode")
+		}
 	})
 
 	t.Run("negative after", func(t *testing.T) {
 		t.Parallel()
 		rule, err := mockfs.NewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAfterSuccesses, -1)
 		assertAnyError(t, err, "negative after")
+		if !errors.Is(err, mockfs.ErrUsage) {
+			t.Errorf("err = %v, want wrapping ErrUsage", err)
+		}
 		if rule != nil {
 			t.Error("expected nil rule when after is negative")
 		}

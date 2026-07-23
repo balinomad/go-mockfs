@@ -1,6 +1,7 @@
 package mockfs_test
 
 import (
+	"errors"
 	"io/fs"
 	"path"
 	"testing"
@@ -75,7 +76,7 @@ func TestNewFileInfo(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			fileName := path.Base(tt.path)
-			got := mockfs.NewFileInfo(tt.path, tt.size, tt.mode, tt.modTime)
+			got := mockfs.MustNewFileInfo(tt.path, tt.size, tt.mode, tt.modTime)
 			if got.Name() != fileName {
 				t.Errorf("Name() = %v, want %v", got.Name(), fileName)
 			}
@@ -152,8 +153,64 @@ func TestNewFileInfo_Panic(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			requirePanic(t, func() {
-				_ = mockfs.NewFileInfo(tt.in, tt.size, tt.mode, time.Now())
-			}, "NewFileInfo()")
+				_ = mockfs.MustNewFileInfo(tt.in, tt.size, tt.mode, time.Now())
+			}, "MustNewFileInfo()")
+		})
+	}
+}
+
+func TestNewFileInfo_Error(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		in   string
+		mode mockfs.FileMode
+		size int64
+	}{
+		{
+			name: "empty",
+			in:   "",
+			mode: 0,
+			size: 0,
+		},
+		{
+			name: "absolute",
+			in:   "/abs",
+			mode: 0,
+			size: 0,
+		},
+		{
+			name: "parent segment",
+			in:   "a/../b",
+			mode: 0,
+			size: 0,
+		},
+		{
+			name: "trailing slash",
+			in:   "a/",
+			mode: 0,
+			size: 0,
+		},
+		{
+			name: "dir with size",
+			in:   "dir",
+			mode: fs.ModeDir | 0o744,
+			size: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fi, err := mockfs.NewFileInfo(tt.in, tt.size, tt.mode, time.Now())
+			assertAnyError(t, err, "NewFileInfo()")
+			if !errors.Is(err, mockfs.ErrUsage) {
+				t.Errorf("err = %v, want wrapping ErrUsage", err)
+			}
+			if fi != nil {
+				t.Error("expected nil FileInfo on error")
+			}
 		})
 	}
 }

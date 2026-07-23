@@ -24,6 +24,20 @@ const (
 	ErrorModeNext
 )
 
+// IsValid returns true if mode is one of the defined ErrorMode constants.
+func (m ErrorMode) IsValid() bool {
+	return m >= ErrorModeAlways && m <= ErrorModeNext
+}
+
+// ErrUsage indicates that mockfs itself was misconfigured or misused by the
+// caller — an invalid FsOption, a nil MapFile, a negative duration, a
+// malformed FileInfo, or a garbage ErrorMode — as opposed to an error
+// injected via ErrorInjector/FailX, which simulates a filesystem failure
+// and is returned verbatim, unwrapped. Distinguish with:
+//
+//	errors.Is(err, mockfs.ErrUsage)
+var ErrUsage = errors.New("usage error")
+
 // Generic file system errors.
 // Errors returned by file systems can be tested against these errors using [errors.Is].
 var (
@@ -85,11 +99,16 @@ type ErrorRule struct {
 // Parameters:
 //   - err - the error to return.
 //   - mode - one of ErrorModeAlways, ErrorModeOnce, ErrorModeAfterSuccesses, or ErrorModeNext.
+//     Returns an error wrapping ErrUsage if mode is not one of these.
 //   - after - used only for ErrorModeAfterSuccesses and ErrorModeNext; specifies the number of
-//     calls before the error behaviour activates. Returns an error if after is negative for
-//     these modes. Ignored for ErrorModeAlways and ErrorModeOnce.
+//     calls before the error behaviour activates. Returns an error wrapping ErrUsage if after is
+//     negative for these modes. Ignored for ErrorModeAlways and ErrorModeOnce.
 //   - matchers - an optional list of path matchers. If not provided, the rule applies to no paths.
 func NewErrorRule(err error, mode ErrorMode, after int, matchers ...PathMatcher) (*ErrorRule, error) {
+	if !mode.IsValid() {
+		return nil, fmt.Errorf("mockfs: %w: invalid ErrorMode: %d", ErrUsage, mode)
+	}
+
 	afterN, validationErr := validateAfter(after, mode)
 	if validationErr != nil {
 		return nil, validationErr
@@ -116,7 +135,7 @@ func validateAfter(after int, mode ErrorMode) (uint64, error) {
 	switch mode {
 	case ErrorModeAfterSuccesses, ErrorModeNext:
 		if after < 0 {
-			return 0, fmt.Errorf("mockfs: invalid after value %d for mode %v — must be >= 0", after, mode)
+			return 0, fmt.Errorf("mockfs: %w: invalid after value %d for mode %v — must be >= 0", ErrUsage, after, mode)
 		}
 		return uint64(after), nil
 	default:

@@ -9,7 +9,7 @@ import (
 
 // ExampleMockFS_Sub demonstrates SubFS with path adjustment.
 func ExampleMockFS_Sub() {
-	mfs := mockfs.NewMockFS(
+	mfs := mockfs.MustNewMockFS(
 		mockfs.Dir("app",
 			mockfs.Dir("config",
 				mockfs.File("dev.json", "dev"),
@@ -56,13 +56,13 @@ func ExampleNewErrorInjector() {
 	injector.AddExact(mockfs.OpOpen, "locked.txt", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 
 	// Use with multiple filesystems
-	mfs1 := mockfs.NewMockFS(
+	mfs1 := mockfs.MustNewMockFS(
 		mockfs.File("app.log", "log"),
 		mockfs.File("locked.txt", "data"),
 		mockfs.WithErrorInjector(injector),
 	)
 
-	mfs2 := mockfs.NewMockFS(
+	mfs2 := mockfs.MustNewMockFS(
 		mockfs.File("error.log", "err"),
 		mockfs.WithErrorInjector(injector),
 	)
@@ -84,7 +84,7 @@ func ExampleNewErrorInjector() {
 
 // ExampleStats_Delta demonstrates comparing statistics snapshots.
 func ExampleStats_Delta() {
-	mfs := mockfs.NewMockFS(mockfs.File("file.txt", "data"))
+	mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", "data"))
 
 	// Capture initial stats
 	before := mfs.Stats()
@@ -113,7 +113,7 @@ func ExampleStats_Delta() {
 
 // ExampleErrorInjector_AddAll demonstrates wildcard matching.
 func ExampleErrorInjector_AddAll() {
-	mfs := mockfs.NewMockFS(
+	mfs := mockfs.MustNewMockFS(
 		mockfs.File("file1.txt", "data"),
 		mockfs.File("file2.txt", "data"),
 		mockfs.File("file3.txt", "data"),

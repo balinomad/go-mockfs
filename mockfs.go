@@ -213,7 +213,11 @@ func WithAppend() FsOption {
 // WithLatency sets the simulated latency for all operations.
 func WithLatency(duration time.Duration) FsOption {
 	return func(m *MockFS) error {
-		m.latency = NewLatencySimulator(duration)
+		sim, err := NewLatencySimulator(duration)
+		if err != nil {
+			return err
+		}
+		m.latency = sim
 		return nil
 	}
 }
@@ -231,7 +235,11 @@ func WithLatencySimulator(sim LatencySimulator) FsOption {
 // WithPerOperationLatency sets different latencies for different operations.
 func WithPerOperationLatency(durations map[Operation]time.Duration) FsOption {
 	return func(m *MockFS) error {
-		m.latency = NewLatencySimulatorPerOp(durations)
+		sim, err := NewLatencySimulatorPerOp(durations)
+		if err != nil {
+			return err
+		}
+		m.latency = sim
 		return nil
 	}
 }
@@ -264,10 +272,9 @@ var (
 // Nil MapFile entries in the initial map are ignored.
 // If no root directory (".") is provided, one is created automatically.
 //
-// Panics if any option returns an error (e.g. an invalid path passed to
-// File() or Dir()). These represent programmer errors in test setup code.
-func NewMockFS(opts ...FsOption) *MockFS {
-	// Ensure root directory exists
+// Returns an error wrapping ErrUsage if any option fails (e.g. an invalid
+// path passed to File or Dir). Use MustNewMockFS to panic instead.
+func NewMockFS(opts ...FsOption) (*MockFS, error) {
 	files := map[string]*fstest.MapFile{
 		".": {
 			Mode:    ModeDir | defaultDirPerm,
@@ -291,11 +298,20 @@ func NewMockFS(opts ...FsOption) *MockFS {
 			continue
 		}
 		if err := opt(m); err != nil {
-			//nolint:forbidigo // Panic is intentional here to mark incorrect use
-			panic(fmt.Sprintf("mockfs: failed to apply option %v", err))
+			return nil, fmt.Errorf("mockfs: %w: failed to apply option: %w", ErrUsage, err)
 		}
 	}
 
+	return m, nil
+}
+
+// MustNewMockFS is like NewMockFS but panics if construction fails.
+func MustNewMockFS(opts ...FsOption) *MockFS {
+	m, err := NewMockFS(opts...)
+	if err != nil {
+		//nolint:forbidigo // Must* panic is intentional; see doc.go Panic Policy.
+		panic(err)
+	}
 	return m
 }
 
@@ -319,7 +335,8 @@ func (m *MockFS) Stat(name string) (fi fs.FileInfo, err error) {
 	}
 
 	if err := m.injector.CheckAndApply(OpStat, cleanName); err != nil {
-		return nil, fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return nil, err
 	}
 
 	m.latency.Simulate(OpStat)
@@ -357,7 +374,8 @@ func (m *MockFS) Open(name string) (f fs.File, err error) {
 	}
 
 	if err := m.injector.CheckAndApply(OpOpen, cleanName); err != nil {
-		return nil, fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return nil, err
 	}
 
 	m.latency.Simulate(OpOpen)
@@ -437,8 +455,8 @@ func (m *MockFS) ReadFile(name string) (data []byte, err error) {
 		}
 	}()
 
-	data, err = io.ReadAll(file)
-	return data, fmt.Errorf("mockfs:  %w", err)
+	//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+	return io.ReadAll(file)
 }
 
 // ReadDir implements the fs.ReadDirFS interface.
@@ -455,7 +473,8 @@ func (m *MockFS) ReadDir(name string) (de []fs.DirEntry, err error) {
 	}
 
 	if err := m.injector.CheckAndApply(OpReadDir, cleanName); err != nil {
-		return nil, fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return nil, err
 	}
 
 	m.latency.Simulate(OpReadDir)
@@ -489,7 +508,7 @@ func (m *MockFS) Sub(dir string) (fs.FS, error) {
 		return nil, err
 	}
 
-	subFS := NewMockFS()
+	subFS := MustNewMockFS()
 	subFS.latency = m.latency.Clone()
 	subFS.writeMode = m.writeMode
 	subFS.createIfMissing = m.createIfMissing
@@ -608,55 +627,52 @@ func (m *MockFS) ErrorInjector() ErrorInjector {
 	return m.injector
 }
 
-// failExact wraps injector.AddExact with exact-path matching and consistent
-// error wrapping. All FailX/FailXOnce/FailReadAfter methods delegate here.
-func (m *MockFS) failExact(op Operation, filepath string, err error, mode ErrorMode, after int) error {
-	if ruleErr := m.injector.AddExact(op, filepath, err, mode, after); ruleErr != nil {
-		return fmt.Errorf("mockfs:  %w", ruleErr)
-	}
-	return nil
-}
-
 // FailStat configures a path to return the specified error on Stat operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailStat(filepath string, err error) error {
-	return m.failExact(OpStat, filepath, err, ErrorModeAlways, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpStat, filepath, err, ErrorModeAlways, 0)
 }
 
 // FailStatOnce configures a path to return the specified error once on Stat operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailStatOnce(filepath string, err error) error {
-	return m.failExact(OpStat, filepath, err, ErrorModeOnce, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpStat, filepath, err, ErrorModeOnce, 0)
 }
 
 // FailOpen configures a path to return the specified error on Open operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailOpen(filepath string, err error) error {
-	return m.failExact(OpOpen, filepath, err, ErrorModeAlways, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpOpen, filepath, err, ErrorModeAlways, 0)
 }
 
 // FailOpenOnce configures a path to return the specified error once on Open operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailOpenOnce(filepath string, err error) error {
-	return m.failExact(OpOpen, filepath, err, ErrorModeOnce, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpOpen, filepath, err, ErrorModeOnce, 0)
 }
 
 // FailRead configures a path to return the specified error on Read operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailRead(filepath string, err error) error {
-	return m.failExact(OpRead, filepath, err, ErrorModeAlways, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpRead, filepath, err, ErrorModeAlways, 0)
 }
 
 // FailReadOnce configures a path to return the specified error once on Read operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailReadOnce(filepath string, err error) error {
-	return m.failExact(OpRead, filepath, err, ErrorModeOnce, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpRead, filepath, err, ErrorModeOnce, 0)
 }
 
 // FailReadAfter configures a read error after N successful reads.
@@ -664,7 +680,8 @@ func (m *MockFS) FailReadOnce(filepath string, err error) error {
 // If successes=3, the first 3 reads succeed, the 4th read fails.
 // Returns an error if successes is negative.
 func (m *MockFS) FailReadAfter(filepath string, err error, successes int) error {
-	return m.failExact(OpRead, filepath, err, ErrorModeAfterSuccesses, successes)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpRead, filepath, err, ErrorModeAfterSuccesses, successes)
 }
 
 // FailReadNext configures the next N read operations to fail, then succeed.
@@ -683,112 +700,128 @@ func (m *MockFS) FailReadNext(filepath string, err error, count int) error {
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailWrite(filepath string, err error) error {
-	return m.failExact(OpWrite, filepath, err, ErrorModeAlways, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpWrite, filepath, err, ErrorModeAlways, 0)
 }
 
 // FailWriteOnce configures a path to return the specified error once on Write operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailWriteOnce(filepath string, err error) error {
-	return m.failExact(OpWrite, filepath, err, ErrorModeOnce, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpWrite, filepath, err, ErrorModeOnce, 0)
 }
 
 // FailReadDir configures a path to return the specified error on ReadDir operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailReadDir(filepath string, err error) error {
-	return m.failExact(OpReadDir, filepath, err, ErrorModeAlways, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpReadDir, filepath, err, ErrorModeAlways, 0)
 }
 
 // FailReadDirOnce configures a path to return the specified error once on ReadDir operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailReadDirOnce(filepath string, err error) error {
-	return m.failExact(OpReadDir, filepath, err, ErrorModeOnce, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpReadDir, filepath, err, ErrorModeOnce, 0)
 }
 
 // FailClose configures a path to return the specified error on Close operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailClose(filepath string, err error) error {
-	return m.failExact(OpClose, filepath, err, ErrorModeAlways, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpClose, filepath, err, ErrorModeAlways, 0)
 }
 
 // FailCloseOnce configures a path to return the specified error once on Close operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailCloseOnce(filepath string, err error) error {
-	return m.failExact(OpClose, filepath, err, ErrorModeOnce, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpClose, filepath, err, ErrorModeOnce, 0)
 }
 
 // FailMkdir configures a path to return the specified error on Mkdir operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailMkdir(filepath string, err error) error {
-	return m.failExact(OpMkdir, filepath, err, ErrorModeAlways, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpMkdir, filepath, err, ErrorModeAlways, 0)
 }
 
 // FailMkdirOnce configures a path to return the specified error once on Mkdir operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailMkdirOnce(filepath string, err error) error {
-	return m.failExact(OpMkdir, filepath, err, ErrorModeOnce, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpMkdir, filepath, err, ErrorModeOnce, 0)
 }
 
 // FailMkdirAll configures a path to return the specified error on MkdirAll operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailMkdirAll(filepath string, err error) error {
-	return m.failExact(OpMkdirAll, filepath, err, ErrorModeAlways, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpMkdirAll, filepath, err, ErrorModeAlways, 0)
 }
 
 // FailMkdirAllOnce configures a path to return the specified error once on MkdirAll operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailMkdirAllOnce(filepath string, err error) error {
-	return m.failExact(OpMkdirAll, filepath, err, ErrorModeOnce, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpMkdirAll, filepath, err, ErrorModeOnce, 0)
 }
 
 // FailRemove configures a path to return the specified error on Remove operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailRemove(filepath string, err error) error {
-	return m.failExact(OpRemove, filepath, err, ErrorModeAlways, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpRemove, filepath, err, ErrorModeAlways, 0)
 }
 
 // FailRemoveOnce configures a path to return the specified error once on Remove operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailRemoveOnce(filepath string, err error) error {
-	return m.failExact(OpRemove, filepath, err, ErrorModeOnce, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpRemove, filepath, err, ErrorModeOnce, 0)
 }
 
 // FailRemoveAll configures a path to return the specified error on RemoveAll operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailRemoveAll(filepath string, err error) error {
-	return m.failExact(OpRemoveAll, filepath, err, ErrorModeAlways, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpRemoveAll, filepath, err, ErrorModeAlways, 0)
 }
 
 // FailRemoveAllOnce configures a path to return the specified error once on RemoveAll operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailRemoveAllOnce(filepath string, err error) error {
-	return m.failExact(OpRemoveAll, filepath, err, ErrorModeOnce, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpRemoveAll, filepath, err, ErrorModeOnce, 0)
 }
 
 // FailRename configures a path to return the specified error on Rename operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailRename(filepath string, err error) error {
-	return m.failExact(OpRename, filepath, err, ErrorModeAlways, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpRename, filepath, err, ErrorModeAlways, 0)
 }
 
 // FailRenameOnce configures a path to return the specified error once on Rename operations.
 // It returns an error only if the underlying rule configuration is invalid;
 // for this fixed-mode call, that is unreachable.
 func (m *MockFS) FailRenameOnce(filepath string, err error) error {
-	return m.failExact(OpRename, filepath, err, ErrorModeOnce, 0)
+	//nolint:wrapcheck // returned verbatim: AddExact's own error already carries the "mockfs:" prefix
+	return m.injector.AddExact(OpRename, filepath, err, ErrorModeOnce, 0)
 }
 
 // MarkNonExistent configures paths to return ErrNotExist for all operations.
@@ -846,7 +879,8 @@ func (m *MockFS) Mkdir(dirPath string, perm FileMode) (err error) {
 		return &fs.PathError{Op: OpMkdir.String(), Path: dirPath, Err: ErrInvalid}
 	}
 	if err := m.injector.CheckAndApply(OpMkdir, cleanPath); err != nil {
-		return fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return err
 	}
 	m.latency.Simulate(OpMkdir)
 
@@ -870,7 +904,8 @@ func (m *MockFS) MkdirAll(dirPath string, perm FileMode) (err error) {
 		return err
 	}
 	if err := m.injector.CheckAndApply(OpMkdirAll, cleanPath); err != nil {
-		return fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return err
 	}
 	m.latency.Simulate(OpMkdirAll)
 
@@ -895,7 +930,8 @@ func (m *MockFS) Remove(filePath string) (err error) {
 	}
 
 	if err := m.injector.CheckAndApply(OpRemove, cleanPath); err != nil {
-		return fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return err
 	}
 
 	m.latency.Simulate(OpRemove)
@@ -935,7 +971,8 @@ func (m *MockFS) RemoveAll(filePath string) (err error) {
 	}
 
 	if err := m.injector.CheckAndApply(OpRemoveAll, cleanPath); err != nil {
-		return fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return err
 	}
 
 	m.latency.Simulate(OpRemoveAll)
@@ -973,7 +1010,8 @@ func (m *MockFS) Rename(oldpath, newpath string) (err error) {
 	}
 
 	if err := m.injector.CheckAndApply(OpRename, cleanOld); err != nil {
-		return fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return err
 	}
 
 	m.latency.Simulate(OpRename)
@@ -1032,7 +1070,8 @@ func (m *MockFS) WriteFile(filePath string, data []byte, perm FileMode) (err err
 	}
 
 	if err := m.injector.CheckAndApply(OpWrite, cleanPath); err != nil {
-		return fmt.Errorf("mockfs:  %w", err)
+		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
+		return err
 	}
 
 	m.latency.Simulate(OpWrite)

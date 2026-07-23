@@ -20,7 +20,7 @@
 //
 // Create a mock filesystem with initial files:
 //
-//	mfs := mockfs.NewMockFS(
+//	mfs := mockfs.MustNewMockFS(
 //	    mockfs.File("file.txt", "content"),
 //	    mockfs.Dir("dir",
 //	        mockfs.File("file1.txt", "1"),
@@ -45,7 +45,7 @@
 //
 // This separation enables precise verification of I/O patterns:
 //
-//	mfs := mockfs.NewMockFS(mockfs.File("file.txt", "content"))
+//	mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", "content"))
 //	file, _ := mfs.Open("file.txt")   // Tracked in MockFS.Stats()
 //	buf := make([]byte, 100)
 //	file.Read(buf)                    // Tracked in (*MockFile).Stats()
@@ -106,10 +106,10 @@
 // Add artificial delays to test timeout handling:
 //
 //	// Global latency for all operations
-//	mfs := mockfs.NewMockFS(mockfs.WithLatency(100*time.Millisecond))
+//	mfs := mockfs.MustNewMockFS(mockfs.WithLatency(100*time.Millisecond))
 //
 //	// Per-operation latency
-//	mfs = mockfs.NewMockFS(mockfs.WithPerOperationLatency(
+//	mfs = mockfs.MustNewMockFS(mockfs.WithPerOperationLatency(
 //	    map[mockfs.Operation]time.Duration{
 //	        mockfs.OpRead:  200 * time.Millisecond,
 //	        mockfs.OpWrite: 500 * time.Millisecond,
@@ -128,7 +128,7 @@
 //
 // MockFS implements the WritableFS interface for full filesystem mutation:
 //
-//	mfs := mockfs.NewMockFS(mockfs.WithOverwrite())
+//	mfs := mockfs.MustNewMockFS(mockfs.WithOverwrite())
 //	mfs.WriteFile("output.txt", data, 0o644)
 //	mfs.Mkdir("logs", 0o755)
 //	mfs.MkdirAll("app/config/prod", 0o755)
@@ -173,7 +173,7 @@
 // Full fs.SubFS implementation with automatic path adjustment for error rules.
 // Passing "." returns the same MockFS (matching stdlib fs.Sub behaviour):
 //
-//	mfs := mockfs.NewMockFS(
+//	mfs := mockfs.MustNewMockFS(
 //	    mockfs.Dir("app",
 //	        mockfs.Dir("config",
 //	            mockfs.File("dev.json", "{}"),
@@ -234,37 +234,41 @@
 //
 // # Panic Policy
 //
-// Functions in this package panic on programmer errors — mistakes in the test
-// setup code itself, not runtime I/O failures or missing files. In a testing
-// context this distinction matters:
+// This package distinguishes three kinds of failure:
 //
-//   - A test failure (the code under test misbehaving) surfaces through
-//     [testing.T.Error] or [testing.T.Fatal]. It is expected and recoverable.
-//   - A misconfigured mock (nil MapFile, negative latency, invalid path passed
-//     to [File] or [Dir]) is a bug in the test code. Panicking immediately
-//     points at the offending call site with a full stack trace, making it
-//     faster to diagnose than an ignored or masked error return.
+//   - Testing errors — the actual failures under test (missing files,
+//     permission denials, injected faults from [ErrorInjector] or a FailX
+//     method). Returned as a plain error value, unwrapped, exactly as
+//     configured. Check with [errors.Is] against the configured error; this
+//     is the primary mechanism the package exists to exercise.
 //
-// This follows the same convention as the standard library's Must helpers
-// ([regexp.MustCompile], [template.Must]) and is intentional.
+//   - Usage errors — mistakes in the test setup code itself, not the code
+//     under test: an invalid path passed to [File] or [Dir], a nil MapFile,
+//     a negative latency, an invalid [NewFileInfo] argument, or an invalid
+//     ErrorMode or negative "after" passed to [NewErrorRule]. The
+//     constructor returns an error wrapping [ErrUsage]:
+//     errors.Is(err, mockfs.ErrUsage).
 //
-// Functions that panic and their trigger conditions:
+//     [NewMockFS], [NewMockFile], [NewLatencySimulator],
+//     [NewLatencySimulatorPerOp], and [NewFileInfo] each have a Must*
+//     counterpart ([MustNewMockFS], [MustNewMockFile],
+//     [MustNewLatencySimulator], [MustNewLatencySimulatorPerOp],
+//     [MustNewFileInfo]) that panics with that same error instead of
+//     returning it, following the standard library's Must convention
+//     ([regexp.MustCompile], [template.Must]). Prefer Must* for ordinary
+//     test setup — a usage error there is a bug in the test, and a panic
+//     with a full stack trace is faster to diagnose than an error return
+//     the test forgets to check. Use the plain form when the caller
+//     genuinely needs to handle the failure, e.g. building a MockFS from
+//     configuration that isn't a compile-time constant.
 //
-//   - [NewMockFS]: any option returns an error (invalid name or path in
-//     [File] or [Dir]; unsupported argument type passed to [Dir]).
-//   - [NewMockFile]: mapFile is nil.
-//   - [NewLatencySimulator]: duration is negative.
-//   - [NewLatencySimulatorPerOp]: any duration in the map is negative.
-//   - [NewFileInfo]: name is empty, is not a valid fs path, or size is
-//     non-zero for a directory entry.
-//   - [StatsRecorder.Record]: operation constant is out of range.
-//   - [StatsRecorder.Set]: operation is out of range, failures is negative,
+//   - Internal invariants — conditions unreachable through the public API,
+//     indicating a bug in mockfs itself rather than the caller. These
+//     always panic, with no error-returning form:
+//     [StatsRecorder.Record]: operation constant is out of range.
+//     [StatsRecorder.Set]: operation is out of range, failures is negative,
 //     or failures exceeds total.
-//   - [StatsRecorder.SetBytes]: read or written is negative.
-//
-// Every other failure mode — missing files, injected errors, permission
-// denials, I/O faults — is returned as an error value in the standard Go
-// fashion and is the primary mechanism for testing error-handling logic.
+//     [StatsRecorder.SetBytes]: read or written is negative.//
 //
 // # Limitations
 //

@@ -14,10 +14,14 @@ Stabilization release: breaking API corrections and bug fixes from an API/docume
 - `NewErrorRule` now returns `(*ErrorRule, error)` instead of `*ErrorRule`, and no longer panics when `after` is negative for `ErrorModeAfterSuccesses`/`ErrorModeNext` — it returns an error instead.
 - `ErrorInjector.AddExact`, `AddAll`, `AddExactForAllOps`, and `AddAllForAllOps` now return `error` (previously no return value). `AddGlob`, `AddRegexp`, `AddGlobForAllOps`, and `AddRegexpForAllOps` keep their existing `error` return but now also report a negative `after`, in addition to a malformed pattern.
 - All 24 `MockFS.FailX`/`FailXOnce` convenience methods (e.g. `FailStat`, `FailOpen`, `FailReadAfter`, `FailReadNext`) now return `error`. For methods that hardcode `ErrorModeAlways`/`ErrorModeOnce` with `after=0`, the error is unreachable through them; `FailReadAfter` and `FailReadNext` can genuinely fail if `successes`/`count` is negative.
+- `NewMockFS`, `NewMockFile`, `NewLatencySimulator`, `NewLatencySimulatorPerOp`, and `NewFileInfo` now return `(T, error)` instead of panicking on invalid input. `MustNewMockFS`, `MustNewMockFile`, `MustNewLatencySimulator`, `MustNewLatencySimulatorPerOp`, and `MustNewFileInfo` are new panicking counterparts, for callers that want the previous behavior.
+- `NewErrorRule` now also validates `mode`: an invalid `ErrorMode` returns an error instead of panicking on first use inside `CheckAndApply`.
 
 ### Added
 
 - `OpenMockFile(name string) (*MockFile, error)` on `MockFS`, returning the concrete `*MockFile` directly so callers avoid `f.(*mockfs.MockFile)` (`mockfs.go`).
+- `ErrUsage`, a sentinel wrapped by errors returned from invalid `File`/`Dir` options, a nil `MapFile`, a negative latency duration, invalid `NewFileInfo` arguments, and invalid `NewErrorRule` mode/`after` values — `errors.Is(err, mockfs.ErrUsage)` (`error.go`).
+- `ErrorMode.IsValid()` (`error.go`).
 
 ### Fixed
 
@@ -26,6 +30,8 @@ Stabilization release: breaking API corrections and bug fixes from an API/docume
 - `(*MockFile).ReadDir` on a `NewMockDir` with a `nil` handler now applies configured latency and error injection before returning, instead of bypassing both (`mockfile.go`).
 - `doc.go`'s Statistics example used `file.(mockfs.MockFile)` — a non-pointer type assertion that panics at runtime, since `MockFile` methods use pointer receivers. Corrected to `file.(*mockfs.MockFile)`, with `OpenMockFile` now shown as the preferred alternative.
 - `USAGE.md`'s "Testing Retry Logic" example had the same non-pointer assertion bug; corrected to use `OpenMockFile`.
+- Injected/sentinel errors returned from `ErrorInjector.CheckAndApply` were incorrectly re-wrapped with a `mockfs: ` prefix at 16 call sites across `mockfs.go` and `mockfile.go` (`Stat`, `Open`, `ReadDir`, `Mkdir`, `MkdirAll`, `Remove`, `RemoveAll`, `Rename`, `WriteFile`, `ReadFile`, `failExact` in `mockfs.go`; `WriteAt`, `Seek`, `ReadDir`, `Stat`, `Close` in `mockfile.go`), breaking `errors.Is`/exact-message matching for callers and failing the package's own runnable Examples. Errors are now returned verbatim.
+- `MockFS.ReadFile` unconditionally wrapped its result with `fmt.Errorf("mockfs: %w", err)`, producing `%!w(<nil>)` on every successful call.
 
 ### Changed
 
@@ -37,6 +43,8 @@ Stabilization release: breaking API corrections and bug fixes from an API/docume
 - `doc.go`: SubFS section notes that `Sub(".")` returns the receiver; documents `OpenMockFile` as the preferred way to reach a file handle's `Stats()`, `ErrorInjector()`, and `LatencySimulator()`; the Panic Policy section no longer lists `NewErrorRule`, which no longer panics.
 - `fileinfo.go`: added GoDoc comments to `Mode()` and `ModTime()`.
 - `USAGE.md`: added a "Prefer OpenMockFile Over Type Assertions" best practice.
+- `doc.go`: "Panic Policy" section rewritten to describe the testing-error/usage-error/internal-invariant model and the new `Must*` constructors; `Basic Usage`, `Latency Simulation`, `Write Operations`, `SubFS Support`, and the `Statistics` example updated to `MustNewMockFS`.
+- `README.md`, `USAGE.md`, `MIGRATION-v1-to-v2.md`: examples updated for the `NewMockFS`/`NewMockFile`/`NewLatencySimulator`/`NewLatencySimulatorPerOp`/`NewFileInfo` signature change.
 
 ## [2.0.0-rc.2] 2025-12-04
 

@@ -24,7 +24,7 @@ For basic usage and API reference, see:
 
 ```go
 func TestRetryLogic(t *testing.T) {
-    mfs := mockfs.NewMockFS(mockfs.File("data.txt", "content"))
+    mfs := mockfs.MustNewMockFS(mockfs.File("data.txt", "content"))
 
     // First two reads fail, third succeeds
     if err := mfs.FailReadAfter("data.txt", mockfs.ErrUnexpectedEOF, 2); err != nil {
@@ -50,7 +50,7 @@ func TestRetryLogic(t *testing.T) {
 
 ```go
 func TestExponentialBackoff(t *testing.T) {
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.File("api-response.json", "{}"),
         mockfs.WithLatency(50*time.Millisecond),
     )
@@ -87,7 +87,7 @@ func TestExponentialBackoff(t *testing.T) {
 ```go
 func TestTimeoutBehavior(t *testing.T) {
     // Simulate slow I/O
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.File("large.bin", strings.Repeat("data", 10000)),
         mockfs.WithLatency(2*time.Second),
     )
@@ -114,10 +114,10 @@ func TestTimeoutBehavior(t *testing.T) {
 ```go
 func TestAsyncTimeout(t *testing.T) {
     // Use async latency to allow concurrent operations
-    mfs := mockfs.NewMockFS(mockfs.File("file.txt", "data"))
+    mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", "data"))
 
-    sim := mockfs.NewLatencySimulator(500 * time.Millisecond)
-    mfs = mockfs.NewMockFS(
+    sim := mockfs.MustNewLatencySimulator(500 * time.Millisecond)
+    mfs = mockfs.MustNewMockFS(
         mockfs.File("file.txt", "data"),
         mockfs.WithLatencySimulator(sim),
     )
@@ -147,7 +147,7 @@ func TestAsyncTimeout(t *testing.T) {
 
 ```go
 func TestConcurrentReads(t *testing.T) {
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.File("shared.txt", strings.Repeat("data", 1000)),
     )
 
@@ -188,7 +188,7 @@ func TestConcurrentReads(t *testing.T) {
 
 ```go
 func TestConcurrentWriteRace(t *testing.T) {
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.File("counter.txt", "0"),
         mockfs.WithOverwrite(),
     )
@@ -267,7 +267,7 @@ func NewService() *Service {
 
 // Usage in tests
 func TestService(t *testing.T) {
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.WithCreateIfMissing(true),
         mockfs.WithOverwrite(),
     )
@@ -308,7 +308,7 @@ func (r *FileRepository) Load(id string) ([]byte, error) {
 }
 
 func TestRepositoryErrorHandling(t *testing.T) {
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.Dir("data"),
         mockfs.WithCreateIfMissing(true),
     )
@@ -405,7 +405,7 @@ mfs.ErrorInjector().Add(mockfs.OpOpen, rule)
 
 ```go
 func TestConfigLoader(t *testing.T) {
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.Dir("app",
             mockfs.Dir("config",
                 mockfs.File("dev.json", `{"env":"dev"}`),
@@ -453,7 +453,7 @@ func TestConfigLoader(t *testing.T) {
 
 ```go
 func TestNestedSubFS(t *testing.T) {
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.Dir("app",
             mockfs.Dir("config",
                 mockfs.Dir("prod",
@@ -492,7 +492,7 @@ func TestNestedSubFS(t *testing.T) {
 ```go
 func TestPerformanceProfile(t *testing.T) {
     // Simulate realistic I/O latency
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.File("data.bin", make([]byte, 1024*1024)), // 1MB
         mockfs.WithPerOperationLatency(map[mockfs.Operation]time.Duration{
             mockfs.OpOpen:  5 * time.Millisecond,
@@ -525,7 +525,7 @@ func TestPerformanceProfile(t *testing.T) {
 
 ```go
 func BenchmarkDataProcessing(b *testing.B) {
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.File("input.txt", strings.Repeat("test data\n", 1000)),
     )
 
@@ -620,7 +620,7 @@ mockFile := f.(*mockfs.MockFile) // panics if f is not *MockFile
 
 ```go
 func TestEdgeCases(t *testing.T) {
-    mfs := mockfs.NewMockFS(mockfs.File("file.txt", "data"))
+    mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", "data"))
 
     tests := []struct {
         name string
@@ -661,7 +661,7 @@ func TestEdgeCases(t *testing.T) {
 
 ```go
 func TestWithCleanup(t *testing.T) {
-    mfs := mockfs.NewMockFS(mockfs.File("file.txt", "data"))
+    mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", "data"))
     file, err := mfs.Open("file.txt")
     if err != nil {
         t.Fatal(err)
@@ -699,7 +699,7 @@ func TestMultipleScenarios(t *testing.T) {
 
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
-            mfs := mockfs.NewMockFS(mockfs.File("file.txt", "data"))
+            mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", "data"))
             tt.setupError(mfs)
 
             _, err := YourFunction(mfs)

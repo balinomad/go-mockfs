@@ -128,7 +128,7 @@ func TestNewMockFS(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS(tt.opts...)
+			mfs := mockfs.MustNewMockFS(tt.opts...)
 			if mfs == nil {
 				t.Fatal("NewMockFS returned nil")
 			}
@@ -140,7 +140,7 @@ func TestNewMockFS(t *testing.T) {
 func TestNewMockFS_Builder(t *testing.T) {
 	t.Parallel()
 
-	mfs := mockfs.NewMockFS(
+	mfs := mockfs.MustNewMockFS(
 		mockfs.Dir("dir1", mockfs.FileMode(0o777)),
 		mockfs.File("file1.txt", "1"),
 		mockfs.Dir("dir2",
@@ -229,13 +229,79 @@ func TestNewMockFS_OptionPanic(t *testing.T) {
 					t.Fatal("expected panic")
 				}
 
-				panicStr, ok := r.(string)
-				if !ok || !strings.Contains(panicStr, tt.panicText) {
-					t.Errorf("panic = %q, want fragment %q", panicStr, tt.panicText)
+				err, ok := r.(error)
+				if !ok {
+					t.Fatalf("panic value = %T, want error", r)
+				}
+				if !errors.Is(err, mockfs.ErrUsage) {
+					t.Errorf("panic error = %q, want wrapping ErrUsage", err)
+				}
+				if !strings.Contains(err.Error(), tt.panicText) {
+					t.Errorf("panic = %q, want fragment %q", err, tt.panicText)
 				}
 			}()
 
-			_ = mockfs.NewMockFS(tt.option)
+			_ = mockfs.MustNewMockFS(tt.option)
+		})
+	}
+}
+
+// TestNewMockFS_OptionError verifies that NewMockFS returns an error wrapping
+// ErrUsage when provided with an invalid (empty) path via mockfs.File or mockfs.Dir.
+func TestNewMockFS_OptionError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		option  mockfs.FsOption
+		errText string
+	}{
+		{
+			name:    "empty file name",
+			option:  mockfs.File("", "content"),
+			errText: "empty file name",
+		},
+		{
+			name:    "invalid file name",
+			option:  mockfs.File("/", "content"),
+			errText: "invalid name",
+		},
+		{
+			name:    "empty dir name",
+			option:  mockfs.Dir(""),
+			errText: "empty directory name",
+		},
+		{
+			name:    "invalid dir name",
+			option:  mockfs.Dir(".."),
+			errText: "invalid name",
+		},
+		{
+			name:    "invalid dir argument",
+			option:  mockfs.Dir("dir", 0),
+			errText: "invalid argument",
+		},
+		{
+			name:    "dir with invalid child option",
+			option:  mockfs.Dir("validdir", mockfs.File("", "content")),
+			errText: "empty file name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			mfs, err := mockfs.NewMockFS(tt.option)
+			assertAnyError(t, err, "NewMockFS()")
+			if !errors.Is(err, mockfs.ErrUsage) {
+				t.Errorf("err = %v, want wrapping ErrUsage", err)
+			}
+			if !strings.Contains(err.Error(), tt.errText) {
+				t.Errorf("err = %q, want fragment %q", err, tt.errText)
+			}
+			if mfs != nil {
+				t.Error("expected nil MockFS on error")
+			}
 		})
 	}
 }
@@ -309,7 +375,7 @@ func TestNewMockFS_AutoCreateRoot(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS(tt.opts...)
+			mfs := mockfs.MustNewMockFS(tt.opts...)
 			tt.check(t, mfs)
 		})
 	}
@@ -320,7 +386,7 @@ func TestMockFS_Injector(t *testing.T) {
 
 	t.Run("default injector", func(t *testing.T) {
 		t.Parallel()
-		mfs := mockfs.NewMockFS()
+		mfs := mockfs.MustNewMockFS()
 		if mfs.ErrorInjector() == nil {
 			t.Error("default injector is nil")
 		}
@@ -329,7 +395,7 @@ func TestMockFS_Injector(t *testing.T) {
 	t.Run("custom injector", func(t *testing.T) {
 		t.Parallel()
 		customInjector := mockfs.NewErrorInjector()
-		mfs := mockfs.NewMockFS(mockfs.WithErrorInjector(customInjector))
+		mfs := mockfs.MustNewMockFS(mockfs.WithErrorInjector(customInjector))
 		if mfs.ErrorInjector() != customInjector {
 			t.Error("custom injector not used")
 		}
@@ -341,7 +407,7 @@ func TestMockFS_Injector(t *testing.T) {
 func TestMockFS_Stat(t *testing.T) {
 	t.Parallel()
 
-	mfs := mockfs.NewMockFS(
+	mfs := mockfs.MustNewMockFS(
 		mockfs.File("file.txt", "content"),
 		mockfs.Dir("dir"),
 	)
@@ -453,7 +519,7 @@ func TestMockFS_Open(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS()
+			mfs := mockfs.MustNewMockFS()
 			if tt.setup != nil {
 				tt.setup(mfs)
 			}
@@ -473,7 +539,7 @@ func TestMockFS_Open(t *testing.T) {
 
 	t.Run("once error then success", func(t *testing.T) {
 		t.Parallel()
-		mfs := mockfs.NewMockFS()
+		mfs := mockfs.MustNewMockFS()
 		_ = mfs.AddFile("other.txt", "data", 0o644)
 		mfs.FailOpenOnce("other.txt", mockfs.ErrPermission)
 
@@ -532,7 +598,7 @@ func TestMockFS_ReadFile(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS()
+			mfs := mockfs.MustNewMockFS()
 			if tt.setup != nil {
 				tt.setup(mfs)
 			}
@@ -606,7 +672,7 @@ func TestMockFS_ReadDir(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS()
+			mfs := mockfs.MustNewMockFS()
 			if tt.setup != nil {
 				tt.setup(mfs)
 			}
@@ -640,7 +706,7 @@ func TestMockFS_ReadDir(t *testing.T) {
 func TestMockFS_Sub(t *testing.T) {
 	t.Parallel()
 
-	mfsParent := mockfs.NewMockFS(
+	mfsParent := mockfs.MustNewMockFS(
 		mockfs.Dir("app",
 			mockfs.File("config.json", "{}"),
 			mockfs.Dir("src", mockfs.File("main.go", "package main")),
@@ -793,7 +859,7 @@ func TestMockFS_AddFile(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS()
+			mfs := mockfs.MustNewMockFS()
 			assertErrorWant(t, tt.setup(mfs), tt.wantErr, tt.expectedErr, "AddFile()")
 			if !tt.wantErr && tt.check != nil {
 				tt.check(t, mfs)
@@ -818,7 +884,7 @@ func TestMockFS_AddDir(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS()
+			mfs := mockfs.MustNewMockFS()
 			err := mfs.AddDir(tt.path, tt.mode)
 			if tt.wantErr != nil {
 				assertError(t, err, tt.wantErr)
@@ -869,7 +935,7 @@ func TestMockFS_RemoveEntry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS()
+			mfs := mockfs.MustNewMockFS()
 			if tt.setup != nil {
 				tt.setup(mfs)
 			}
@@ -949,7 +1015,7 @@ func TestMockFS_Mkdir(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS(
+			mfs := mockfs.MustNewMockFS(
 				mockfs.Dir("dir",
 					mockfs.File("file.txt", "content"),
 					mockfs.Dir("empty_subdir"),
@@ -1030,7 +1096,7 @@ func TestMockFS_MkdirAll(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS()
+			mfs := mockfs.MustNewMockFS()
 			tt.setup(mfs)
 
 			err := mfs.MkdirAll(tt.path, tt.perm)
@@ -1099,7 +1165,7 @@ func TestMockFS_Remove(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS()
+			mfs := mockfs.MustNewMockFS()
 			tt.setup(mfs)
 
 			err := mfs.Remove(tt.path)
@@ -1155,7 +1221,7 @@ func TestMockFS_RemoveAll(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS()
+			mfs := mockfs.MustNewMockFS()
 			tt.setup(mfs)
 
 			err := mfs.RemoveAll(tt.path)
@@ -1251,7 +1317,7 @@ func TestMockFS_Rename(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS()
+			mfs := mockfs.MustNewMockFS()
 			tt.setup(mfs)
 
 			err := mfs.Rename(tt.oldpath, tt.newpath)
@@ -1347,7 +1413,7 @@ func TestMockFS_WriteFile(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS(tt.opts...)
+			mfs := mockfs.MustNewMockFS(tt.opts...)
 			if tt.setup != nil {
 				tt.setup(mfs)
 			}
@@ -1365,7 +1431,7 @@ func TestMockFS_WriteFile(t *testing.T) {
 func TestMockFS_WriteViaOpenedFile(t *testing.T) {
 	t.Parallel()
 
-	mfs := mockfs.NewMockFS(mockfs.File("file.txt", "old"))
+	mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", "old"))
 	file, err := mfs.Open("file.txt")
 	requireNoError(t, err)
 
@@ -1459,7 +1525,7 @@ func TestMockFS_FailMethods(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS()
+			mfs := mockfs.MustNewMockFS()
 			tt.setup(mfs)
 			err := tt.operation(mfs)
 			assertError(t, err, injectedErr)
@@ -1472,7 +1538,7 @@ func TestMockFS_ErrorInjection(t *testing.T) {
 
 	t.Run("fail after n successes", func(t *testing.T) {
 		t.Parallel()
-		mfs := mockfs.NewMockFS(mockfs.File("file.txt", "...read me..."))
+		mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", "...read me..."))
 		injectedErr := errors.New("read failed")
 		mfs.FailReadAfter("file.txt", injectedErr, 2)
 
@@ -1496,7 +1562,7 @@ func TestMockFS_ErrorInjection(t *testing.T) {
 
 	t.Run("fail read next", func(t *testing.T) {
 		t.Parallel()
-		mfs := mockfs.NewMockFS(mockfs.File("flaky.txt", "datadatadatadata"))
+		mfs := mockfs.MustNewMockFS(mockfs.File("flaky.txt", "datadatadatadata"))
 		mfs.FailReadNext("flaky.txt", io.EOF, 3)
 
 		file, _ := mfs.Open("flaky.txt")
@@ -1513,7 +1579,7 @@ func TestMockFS_ErrorInjection(t *testing.T) {
 
 	t.Run("mark non existent", func(t *testing.T) {
 		t.Parallel()
-		mfs := mockfs.NewMockFS(mockfs.File("file.txt", nil))
+		mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", nil))
 		mfs.MarkNonExistent("file.txt")
 
 		// Path should be gone from the filesystem
@@ -1527,7 +1593,7 @@ func TestMockFS_ErrorInjection(t *testing.T) {
 
 	t.Run("clear errors", func(t *testing.T) {
 		t.Parallel()
-		mfs := mockfs.NewMockFS(mockfs.File("file.txt", ""))
+		mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", ""))
 		mfs.FailStat("file.txt", mockfs.ErrPermission)
 
 		_, err := mfs.Stat("file.txt")
@@ -1644,7 +1710,7 @@ func TestMockFS_ErrorInjection_Once(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS()
+			mfs := mockfs.MustNewMockFS()
 			tt.inject(mfs)
 
 			err := tt.op(mfs)
@@ -1661,7 +1727,7 @@ func TestMockFS_ErrorInjection_Once(t *testing.T) {
 func TestMockFS_ErrorInjection_Next(t *testing.T) {
 	t.Parallel()
 
-	mfs := mockfs.NewMockFS(mockfs.File("flaky.txt", "datadatadatadata"))
+	mfs := mockfs.MustNewMockFS(mockfs.File("flaky.txt", "datadatadatadata"))
 
 	// Next 3 reads fail, then succeed
 	mfs.FailReadNext("flaky.txt", io.EOF, 3)
@@ -1687,7 +1753,7 @@ func TestMockFS_ErrorInjection_Next(t *testing.T) {
 func TestMockFS_Stats(t *testing.T) {
 	t.Parallel()
 
-	mfs := mockfs.NewMockFS(mockfs.File("a", ""), mockfs.File("b", ""))
+	mfs := mockfs.MustNewMockFS(mockfs.File("a", ""), mockfs.File("b", ""))
 
 	// Perform some operations
 	mfs.Stat("a")
@@ -1769,7 +1835,7 @@ func TestMockFS_Options(t *testing.T) {
 		{
 			name: "with latency simulator",
 			opts: []mockfs.FsOption{
-				mockfs.WithLatencySimulator(mockfs.NewLatencySimulator(10 * time.Millisecond)),
+				mockfs.WithLatencySimulator(mockfs.MustNewLatencySimulator(10 * time.Millisecond)),
 			},
 			verify: func(t *testing.T, m *mockfs.MockFS) {
 				t.Helper()
@@ -1813,7 +1879,7 @@ func TestMockFS_Options(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mfs := mockfs.NewMockFS(tt.opts...)
+			mfs := mockfs.MustNewMockFS(tt.opts...)
 			tt.verify(t, mfs)
 		})
 	}
@@ -1824,7 +1890,7 @@ func TestMockFS_Options(t *testing.T) {
 func TestMockFS_Read_Write_Concurrent(t *testing.T) {
 	t.Parallel()
 
-	mfs := mockfs.NewMockFS()
+	mfs := mockfs.MustNewMockFS()
 	var wg sync.WaitGroup
 	numGoroutines := 50
 
@@ -1880,7 +1946,7 @@ func TestMockFS_Read_Write_Concurrent(t *testing.T) {
 func TestMockFS_Remove_Rename_Concurrent(t *testing.T) {
 	t.Parallel()
 
-	mfs := mockfs.NewMockFS()
+	mfs := mockfs.MustNewMockFS()
 	var wg sync.WaitGroup
 	numGoroutines := 20
 
@@ -1936,7 +2002,7 @@ func Test_toBytes(t *testing.T) {
 	const fname = "testfile"
 
 	// This panic message is expected from mockfs when toBytes returns an error.
-	const expectedPanicPrefix = "mockfs: failed to apply option File: invalid content in " + fname
+	const expectedPanicPrefix = "mockfs: usage error: failed to apply option: File: invalid content in " + fname
 
 	// Typed nil pointers for testing panic safety
 	var nilBuffer *bytes.Buffer
@@ -1978,7 +2044,7 @@ func Test_toBytes(t *testing.T) {
 					recoveredPanic = recover()
 				}()
 
-				mfs := mockfs.NewMockFS(mockfs.File(fname, tc.content))
+				mfs := mockfs.MustNewMockFS(mockfs.File(fname, tc.content))
 
 				f, errOpen := mfs.Open(fname)
 				if errOpen != nil {
@@ -1994,9 +2060,15 @@ func Test_toBytes(t *testing.T) {
 				if recoveredPanic == nil {
 					t.Fatalf("expected panic (error) during setup, but none occurred")
 				}
-				panicStr, ok := recoveredPanic.(string)
-				if !ok || !strings.Contains(panicStr, expectedPanicPrefix) {
-					t.Fatalf("recovered unexpected panic:\ngot: %v\nwant prefix: %q", recoveredPanic, expectedPanicPrefix)
+				panicErr, ok := recoveredPanic.(error)
+				if !ok {
+					t.Fatalf("recovered panic value = %T, want error", recoveredPanic)
+				}
+				if !errors.Is(panicErr, mockfs.ErrUsage) {
+					t.Errorf("panic error = %v, want wrapping ErrUsage", panicErr)
+				}
+				if !strings.Contains(panicErr.Error(), expectedPanicPrefix) {
+					t.Fatalf("recovered unexpected panic:\ngot: %v\nwant prefix: %q", panicErr, expectedPanicPrefix)
 				}
 				// Since panic occurred during setup, we stop here
 				return
@@ -2030,7 +2102,7 @@ func Test_toBytes_MutationSafety(t *testing.T) {
 	src := []byte("original")
 
 	// Initialize FS with source
-	mfs := mockfs.NewMockFS(mockfs.File(fname, src))
+	mfs := mockfs.MustNewMockFS(mockfs.File(fname, src))
 
 	// Mutate source immediately after FS creation
 	src[0] = 'X' // "Xriginal"

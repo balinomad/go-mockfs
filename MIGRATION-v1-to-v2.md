@@ -465,7 +465,7 @@ mfs := mockfs.NewMockFS(map[string]*mockfs.MapFile{
 **After (v2)**:
 
 ```go
-mfs := mockfs.NewMockFS(
+mfs := mockfs.MustNewMockFS(
     mockfs.File("file.txt", "content"),
     mockfs.Dir("dir"),
     mockfs.WithLatency(10*time.Millisecond),
@@ -746,13 +746,13 @@ n, err := file.(io.Writer).Write([]byte("data"))
 
 ```go
 // Use WriteFile method (part of WritableFS interface)
-mfs := mockfs.NewMockFS(mockfs.WithCreateIfMissing(true))
+mfs := mockfs.MustNewMockFS(mockfs.WithCreateIfMissing(true))
 err := mfs.WriteFile("new.txt", []byte("content"), 0o644)
 
 // Control write mode
-mfs = mockfs.NewMockFS(mockfs.WithOverwrite()) // default
-mfs = mockfs.NewMockFS(mockfs.WithAppend())
-mfs = mockfs.NewMockFS(mockfs.WithReadOnly())
+mfs = mockfs.MustNewMockFS(mockfs.WithOverwrite()) // default
+mfs = mockfs.MustNewMockFS(mockfs.WithAppend())
+mfs = mockfs.MustNewMockFS(mockfs.WithReadOnly())
 
 // Write via MockFile.Write()
 file, _ := mfs.Open("file.txt")
@@ -779,7 +779,7 @@ mfs.RemovePath("file.txt")
 
 ```go
 // Full WritableFS interface
-mfs := mockfs.NewMockFS()
+mfs := mockfs.MustNewMockFS()
 err := mfs.Mkdir("dir", 0o755)
 err = mfs.MkdirAll("dir/subdir/nested", 0o755)
 err = mfs.Remove("file.txt")
@@ -801,7 +801,7 @@ mfs := mockfs.NewMockFS(mockfs.WithLatency(100*time.Millisecond))
 
 ```go
 // Per-operation latency configuration
-mfs := mockfs.NewMockFS(mockfs.WithPerOperationLatency(map[mockfs.Operation]time.Duration{
+mfs := mockfs.MustNewMockFS(mockfs.WithPerOperationLatency(map[mockfs.Operation]time.Duration{
     mockfs.OpRead:  100 * time.Millisecond,
     mockfs.OpWrite: 200 * time.Millisecond,
     mockfs.OpStat:  10 * time.Millisecond,
@@ -867,7 +867,7 @@ stats := mfs.GetStats()
 ```go
 // File statistics are separate from filesystem statistics.
 // Prefer OpenMockFile over Open + type assertion.
-mfs := mockfs.NewMockFS(mockfs.File("file.txt", "content"))
+mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", "content"))
 mockFile, err := mfs.OpenMockFile("file.txt") // Returns *MockFile directly
 if err != nil {
     t.Fatal(err)
@@ -926,7 +926,7 @@ _v1_ had basic latency simulation with global duration only. _v2_ adds advanced 
 
 ```go
 // Create a simulator
-sim := mockfs.NewLatencySimulator(50 * time.Millisecond)
+sim := mockfs.MustNewLatencySimulator(50 * time.Millisecond)
 
 // Use Once mode - latency only on first call
 sim.Simulate(mockfs.OpRead, mockfs.Once())
@@ -944,10 +944,10 @@ sim.Reset()
 cloned := sim.Clone()
 
 // Use with MockFS
-mfs := mockfs.NewMockFS(mockfs.WithLatencySimulator(sim))
+mfs := mockfs.MustNewMockFS(mockfs.WithLatencySimulator(sim))
 
 // Or create directly with per-operation durations
-mfs = mockfs.NewMockFS(mockfs.WithPerOperationLatency(map[mockfs.Operation]time.Duration{
+mfs = mockfs.MustNewMockFS(mockfs.WithPerOperationLatency(map[mockfs.Operation]time.Duration{
     mockfs.OpRead:  100 * time.Millisecond,
     mockfs.OpWrite: 200 * time.Millisecond,
 }))
@@ -998,7 +998,7 @@ stats.Expect().
 _v1_ required manual map manipulation or write callbacks for filesystem modifications. _v2_ provides a complete `WritableFS` interface with proper hierarchy management.
 
 ```go
-mfs := mockfs.NewMockFS()
+mfs := mockfs.MustNewMockFS()
 
 // Create directory hierarchy (new methods in v2)
 err := mfs.MkdirAll("app/config/prod", 0o755)
@@ -1016,7 +1016,7 @@ err = mfs.RemoveAll("app")
 err = mfs.Rename("old_name", "new_name")
 
 // Write file with create-if-missing option
-mfs = mockfs.NewMockFS(mockfs.WithCreateIfMissing(true))
+mfs = mockfs.MustNewMockFS(mockfs.WithCreateIfMissing(true))
 err = mfs.WriteFile("new.txt", []byte("content"), 0o644)
 ```
 
@@ -1031,8 +1031,8 @@ _ = injector.AddGlob(mockfs.OpRead, "*.log", io.EOF, mockfs.ErrorModeAlways, 0)
 _ = injector.AddExact(mockfs.OpOpen, "config.json", mockfs.ErrPermission, mockfs.ErrorModeAlways, 0)
 
 // Use with multiple filesystems
-mfs1 := mockfs.NewMockFS(mockfs.WithErrorInjector(injector))
-mfs2 := mockfs.NewMockFS(mockfs.WithErrorInjector(injector))
+mfs1 := mockfs.MustNewMockFS(mockfs.WithErrorInjector(injector))
+mfs2 := mockfs.MustNewMockFS(mockfs.WithErrorInjector(injector))
 
 // Use with standalone files
 file := mockfs.NewMockFileFromString("test.log", "data",
@@ -1079,7 +1079,7 @@ err := ProcessReader(file)
 _v2_ provides full `fs.SubFS` implementation with automatic path adjustment for error rules.
 
 ```go
-mfs := mockfs.NewMockFS(
+mfs := mockfs.MustNewMockFS(
     mockfs.Dir("app",
         mockfs.Dir("config",
             mockfs.File("dev.json", "{}"),
@@ -1129,7 +1129,7 @@ func TestReadError(t *testing.T) {
 
 ```go
 func TestReadError(t *testing.T) {
-    mfs := mockfs.NewMockFS(mockfs.File("data.txt", "content"))
+    mfs := mockfs.MustNewMockFS(mockfs.File("data.txt", "content"))
     if err := mfs.FailRead("data.txt", mockfs.ErrUnexpectedEOF); err != nil {
         t.Fatal(err)
     }
@@ -1164,7 +1164,7 @@ func TestTimeout(t *testing.T) {
 
 ```go
 func TestTimeout(t *testing.T) {
-    mfs := mockfs.NewMockFS(mockfs.WithLatency(2*time.Second))
+    mfs := mockfs.MustNewMockFS(mockfs.WithLatency(2*time.Second))
 
     ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
     defer cancel()
@@ -1211,7 +1211,7 @@ func TestOperationCounts(t *testing.T) {
 
 ```go
 func TestOperationCounts(t *testing.T) {
-    mfs := mockfs.NewMockFS(mockfs.File("file.txt", "content"))
+    mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", "content"))
 
     // Function under test. Prefer OpenMockFile over Open + type assertion.
     mockFile, err := mfs.OpenMockFile("file.txt")
@@ -1331,7 +1331,7 @@ func TestIntermittentErrors(t *testing.T) {
 
 ```go
 func TestIntermittentErrors(t *testing.T) {
-    mfs := mockfs.NewMockFS(mockfs.File("flaky.txt", "datadatadatadata"))
+    mfs := mockfs.MustNewMockFS(mockfs.File("flaky.txt", "datadatadatadata"))
 
     // Error after 3 successes
     if err := mfs.FailReadAfter("flaky.txt", io.EOF, 3); err != nil {
@@ -1373,7 +1373,7 @@ _v2_ introduces glob patterns for easier path matching.
 
 ```go
 func TestGlobPatternErrors(t *testing.T) {
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.Dir("logs",
             mockfs.File("app.log", "log"),
             mockfs.File("error.log", "log"),
@@ -1408,7 +1408,7 @@ _v2_ provides full `fs.SubFS` support.
 
 ```go
 func TestSubFilesystem(t *testing.T) {
-    mfs := mockfs.NewMockFS(
+    mfs := mockfs.MustNewMockFS(
         mockfs.Dir("app",
             mockfs.Dir("config",
                 mockfs.File("dev.json", "{}"),
