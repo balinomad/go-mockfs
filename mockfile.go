@@ -63,58 +63,73 @@ type fileOptions struct {
 }
 
 // FileOption is a function type for configuring a new MockFile.
-type FileOption func(*fileOptions)
+type FileOption func(*fileOptions) error
 
 // WithFileAppend sets the file to append data on write.
 func WithFileAppend() FileOption {
-	return func(o *fileOptions) {
+	return func(o *fileOptions) error {
 		o.writeMode = writeModeAppend
+		return nil
 	}
 }
 
 // WithFileOverwrite sets the file to overwrite content on write (default).
 func WithFileOverwrite() FileOption {
-	return func(o *fileOptions) {
+	return func(o *fileOptions) error {
 		o.writeMode = writeModeOverwrite
+		return nil
 	}
 }
 
 // WithFileReadOnly sets the file to reject all writes.
 func WithFileReadOnly() FileOption {
-	return func(o *fileOptions) {
+	return func(o *fileOptions) error {
 		o.writeMode = writeModeReadOnly
+		return nil
 	}
 }
 
 // WithFileErrorInjector sets the error injector for the file.
 func WithFileErrorInjector(injector ErrorInjector) FileOption {
-	return func(o *fileOptions) {
+	return func(o *fileOptions) error {
 		if injector != nil {
 			o.injector = injector
 		}
+		return nil
 	}
 }
 
 // WithFileLatency sets a uniform simulated latency for all operations.
 func WithFileLatency(duration time.Duration) FileOption {
-	return func(o *fileOptions) {
-		o.latency = MustNewLatencySimulator(duration)
+	return func(o *fileOptions) error {
+		ls, err := NewLatencySimulator(duration)
+		if err != nil {
+			return err
+		}
+		o.latency = ls
+		return nil
 	}
 }
 
 // WithFileLatencySimulator sets a custom latency simulator.
 func WithFileLatencySimulator(sim LatencySimulator) FileOption {
-	return func(o *fileOptions) {
+	return func(o *fileOptions) error {
 		if sim != nil {
 			o.latency = sim
 		}
+		return nil
 	}
 }
 
 // WithFilePerOperationLatency sets different latencies for different operations.
 func WithFilePerOperationLatency(durations map[Operation]time.Duration) FileOption {
-	return func(o *fileOptions) {
-		o.latency = MustNewLatencySimulatorPerOp(durations)
+	return func(o *fileOptions) error {
+		ls, err := NewLatencySimulatorPerOp(durations)
+		if err != nil {
+			return err
+		}
+		o.latency = ls
+		return nil
 	}
 }
 
@@ -122,18 +137,20 @@ func WithFilePerOperationLatency(durations map[Operation]time.Duration) FileOpti
 // The purpose of this handler is to simulate directory contents.
 // If nil, an empty directory will be created.
 func WithFileReadDirHandler(handler func(int) ([]fs.DirEntry, error)) FileOption {
-	return func(o *fileOptions) {
+	return func(o *fileOptions) error {
 		o.readDirHandler = handler
+		return nil
 	}
 }
 
 // WithFileStats sets the stats recorder for the file handle.
 // If nil, a new one is created.
 func WithFileStats(stats StatsRecorder) FileOption {
-	return func(o *fileOptions) {
+	return func(o *fileOptions) error {
 		if stats != nil {
 			o.stats = stats
 		}
+		return nil
 	}
 }
 
@@ -206,7 +223,12 @@ func NewMockFile(mapFile *fstest.MapFile, name string, opts ...FileOption) (*Moc
 
 	// Apply options
 	for _, opt := range opts {
-		opt(options)
+		if opt == nil {
+			continue
+		}
+		if err := opt(options); err != nil {
+			return nil, fmt.Errorf("mockfs: %w: failed to apply option: %w", ErrUsage, err)
+		}
 	}
 
 	return newMockFile(
