@@ -1527,15 +1527,13 @@ func TestMockFile_ConcurrentReads(t *testing.T) {
 	errs := make(chan error, 10)
 
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			buf := make([]byte, 10)
 			_, err := file.Read(buf)
 			if err != nil && !errors.Is(err, io.EOF) {
 				errs <- err
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -1586,13 +1584,11 @@ func TestMockFile_ConcurrentCloses(t *testing.T) {
 	closedCount := int32(0)
 
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := file.Close(); err == nil {
 				atomic.AddInt32(&closedCount, 1)
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -1725,25 +1721,21 @@ func TestMockFile_ConcurrentReadWrite(t *testing.T) {
 
 	// Concurrent readers
 	for range 5 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			buf := make([]byte, 12)
 			for range 10 {
 				file.Read(buf)
 			}
-		}()
+		})
 	}
 
 	// Concurrent writers
 	for range 5 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 10 {
 				file.Write([]byte("new"))
 			}
-		}()
+		})
 	}
 
 	go func() {
@@ -1767,15 +1759,13 @@ func TestMockFile_ConcurrentStats(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			buf := make([]byte, 4)
 			for range 100 {
 				file.Read(buf)
 				_ = file.Stats() // Concurrent stats access
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -1795,7 +1785,7 @@ func BenchmarkMockFile_Read(b *testing.B) {
 	buf := make([]byte, 1024)
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		file.Read(buf)
 	}
 }
@@ -1806,7 +1796,7 @@ func BenchmarkMockFile_Write(b *testing.B) {
 	data := []byte("benchmark data")
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		file.Write(data)
 	}
 }
@@ -1816,7 +1806,7 @@ func BenchmarkMockFile_Stat(b *testing.B) {
 	file := mockfs.NewMockFileFromBytes("test.txt", []byte("test"))
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		file.Stat()
 	}
 }
@@ -1828,7 +1818,7 @@ func BenchmarkMockFile_Stats(b *testing.B) {
 	file.Read(buf)
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		_ = file.Stats()
 	}
 }

@@ -817,14 +817,12 @@ func TestGlobMatcher_Concurrent(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 100 {
 				_ = m.Matches("test.txt")
 				_ = m.CloneForSub("dir")
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -1139,28 +1137,28 @@ func BenchmarkMatchers(b *testing.B) {
 
 	b.Run("ExactMatcher", func(b *testing.B) {
 		b.ResetTimer()
-		for range b.N {
+		for b.Loop() {
 			_ = mExact.Matches(path)
 		}
 	})
 
 	b.Run("RegexpMatcher", func(b *testing.B) {
 		b.ResetTimer()
-		for range b.N {
+		for b.Loop() {
 			_ = mRegexp.Matches(path)
 		}
 	})
 
 	b.Run("WildcardMatcher", func(b *testing.B) {
 		b.ResetTimer()
-		for range b.N {
+		for b.Loop() {
 			_ = mWildcard.Matches(path)
 		}
 	})
 
 	b.Run("GlobMatcher", func(b *testing.B) {
 		b.ResetTimer()
-		for range b.N {
+		for b.Loop() {
 			_ = mGlob.Matches(path)
 		}
 	})
@@ -1177,21 +1175,21 @@ func BenchmarkCloneForSub(b *testing.B) {
 
 	b.Run("ExactMatcher", func(b *testing.B) {
 		b.ResetTimer()
-		for range b.N {
+		for b.Loop() {
 			_ = mExact.CloneForSub(prefix)
 		}
 	})
 
 	b.Run("RegexpMatcher", func(b *testing.B) {
 		b.ResetTimer()
-		for range b.N {
+		for b.Loop() {
 			_ = mRegexp.CloneForSub(prefix)
 		}
 	})
 
 	b.Run("WildcardMatcher", func(b *testing.B) {
 		b.ResetTimer()
-		for range b.N {
+		for b.Loop() {
 			_ = mWildcard.CloneForSub(prefix)
 		}
 	})
@@ -1202,7 +1200,7 @@ func BenchmarkCloneForSub(b *testing.B) {
 func BenchmarkRegexpMatcher_Compile(b *testing.B) {
 	pattern := "^dir/.*/.*\\.txt$"
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		mockfs.NewRegexpMatcher(pattern)
 	}
 }

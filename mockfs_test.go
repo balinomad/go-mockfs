@@ -1959,9 +1959,7 @@ func TestMockFS_Remove_Rename_Concurrent(t *testing.T) {
 	errorCount := int32(0)
 
 	// Goroutine 1: Continuously renames a directory
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for i := range numGoroutines * 2 {
 			oldName := "dir"
 			newName := "other_dir"
@@ -1972,7 +1970,7 @@ func TestMockFS_Remove_Rename_Concurrent(t *testing.T) {
 			_ = mfs.Rename(oldName, newName)
 			time.Sleep(1 * time.Microsecond)
 		}
-	}()
+	})
 
 	// Other goroutines: Remove subdirectories
 	for i := range numGoroutines {

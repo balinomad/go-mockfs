@@ -1454,7 +1454,7 @@ func TestSubFilesystem(t *testing.T) {
 - [ ] Run `go mod tidy` to update dependencies
 - [ ] (Optional) If your `go.mod` contains a `replace` directive for local development, update it to include `/v2`
 - [ ] (Optional) If you vendor dependencies, regenerate vendor files: `go mod vendor`
-- [ ] Confirm your toolchain is Go 1.22 or later — this is the minimum version _v2_ supports
+- [ ] Confirm your toolchain is Go 1.25 or later — this is the minimum version _v2_ supports
 
 ### Core API Changes
 

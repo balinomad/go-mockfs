@@ -10,7 +10,7 @@ Work happens on `master`. `v1` and `v2` are not development branches.
 
 ## Requirements
 
-- Go 1.22 or later (see `go.mod`; this is a floor, not a target — the module carries no upper bound).
+- Go 1.25 or later (see `go.mod`; this is a floor, not a target — the module carries no upper bound).
 - No external dependencies. `depguard`, configured in `.golangci.yml`, enforces this in CI: only the Go standard library and this module's own packages may be imported.
 
 ## Building and testing

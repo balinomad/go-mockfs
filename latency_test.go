@@ -214,11 +214,9 @@ func TestLatencySimulator_Simulate_Async(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for range 3 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			ls.Simulate(mockfs.OpRead, mockfs.Async())
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -263,13 +261,11 @@ func TestLatencySimulator_Simulate_OnceAsync(t *testing.T) {
 
 	// Launch 10 concurrent calls with OnceAsync
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			atomic.AddInt32(&callCount, 1)
 			ls.Simulate(mockfs.OpRead, mockfs.OnceAsync())
 			atomic.AddInt32(&completedCount, 1)
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -299,12 +295,10 @@ func TestLatencySimulator_Simulate_OnceSerialized(t *testing.T) {
 
 	// Launch multiple goroutines with Once (serialized)
 	for range 5 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			ls.Simulate(mockfs.OpRead, mockfs.Once())
 			atomic.AddInt32(&completed, 1)
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -416,11 +410,9 @@ func TestLatencySimulator_ConcurrentReset(t *testing.T) {
 
 	// Run multiple operations
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			ls.Simulate(mockfs.OpRead, mockfs.Once())
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -495,11 +487,9 @@ func TestSimOpt_Async(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for range 3 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			ls.Simulate(mockfs.OpRead, mockfs.Async())
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -520,11 +510,9 @@ func TestSimOpt_OnceAsync(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// First call should sleep
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		ls.Simulate(mockfs.OpRead, mockfs.OnceAsync())
-	}()
+	})
 	wg.Wait()
 	assertDuration(t, start, testDuration, "OnceAsync first call should sleep")
 
@@ -562,11 +550,9 @@ func TestSimOpt_MultipleOptions(t *testing.T) {
 
 	// Launch concurrent calls with both options
 	for range 5 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			ls.Simulate(mockfs.OpRead, mockfs.Once(), mockfs.Async())
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -610,7 +596,7 @@ func TestLatencySimulator_MultipleOptOrder(t *testing.T) {
 func BenchmarkSimulate_NoLatency(b *testing.B) {
 	ls := mockfs.NewNoopLatencySimulator()
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		ls.Simulate(mockfs.OpRead)
 	}
 }
@@ -619,7 +605,7 @@ func BenchmarkSimulate_WithLatency(b *testing.B) {
 	// Use a small duration to avoid making the benchmark too slow
 	ls := mockfs.MustNewLatencySimulator(time.Microsecond)
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		ls.Simulate(mockfs.OpRead)
 	}
 }
@@ -627,7 +613,7 @@ func BenchmarkSimulate_WithLatency(b *testing.B) {
 func BenchmarkSimulate_Once(b *testing.B) {
 	ls := mockfs.MustNewLatencySimulator(time.Microsecond)
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		ls.Simulate(mockfs.OpRead, mockfs.Once())
 	}
 }
@@ -635,7 +621,7 @@ func BenchmarkSimulate_Once(b *testing.B) {
 func BenchmarkSimulate_OnceAsync(b *testing.B) {
 	ls := mockfs.MustNewLatencySimulator(time.Microsecond)
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		ls.Simulate(mockfs.OpRead, mockfs.OnceAsync())
 	}
 }

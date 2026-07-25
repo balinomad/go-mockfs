@@ -26,6 +26,21 @@ Splitting `ErrorInjector` into something smaller was evaluated and rejected: it 
 
 `collectDirEntries` scans the entire file map on every `ReadDir` call (O(n) in total file count). A maintained parent-to-children index would make this O(k) in the directory's own children, but requires correctly updating the index across ten mutation paths (`AddFile`, `AddDir`, `Mkdir`, `MkdirAll`, `Remove`, `RemoveAll`, `Rename`, `WriteFile`'s create path, `RemoveEntry`, `copyFilesToSubFS`). An index that drifts from `m.files` would be a worse bug than the scan it replaces. Left as O(n): acceptable for the fixture sizes a test mock is expected to hold.
 
-## Benchmarks do not use `b.Loop()`
+## Go version floor raised to 1.25 (not pinned via `toolchain`)
 
-Go 1.24 introduced `b.Loop()` for benchmarks. Not adopted: the module's Go version floor is `1.22`, and benchmark style should not require a newer Go version than the module itself supports. Revisit if the floor moves to 1.24.
+The floor was `1.22` through rc.3 drafting. Raised to `1.25` after [GO-2025-3750](https://pkg.go.dev/vuln/GO-2025-3750) (CVE-2025-0913) turned up no fix on the 1.22, 1.23, or 1.24 branches — all three were already end-of-life by the time the CVE was published, so no patched release exists or ever will for any of them.
+
+Two ways to get CI onto a patched toolchain were evaluated:
+
+1. **Keep `go 1.22`, add a `toolchain go1.26.5` line.** Rejected: a `toolchain` line pins an exact patch and does not move on its own — it goes stale the same way the bare `go 1.22` line already had, just reset to a later starting point. It also leaves `go.mod` claiming a floor that isn't actually buildable/passable in CI without the override, which misstates what the module requires.
+2. **Raise the `go` directive itself, no `toolchain` line.** Adopted. `go-version-file: "go.mod"` (used by every CI job except the `test` matrix's `stable` leg) then resolves to the latest patch of whatever major is declared, automatically, on every run — self-updating for as long as that major stays supported, not a one-time fix.
+
+`1.25` chosen over `1.26`: older of the two currently-supported majors, excludes the fewest consumers while staying fully inside the patch window.
+
+## Benchmarks use `b.Loop()`
+
+Originally deferred: `b.Loop()` requires Go 1.24, and the module's floor was `1.22`. Superseded — the floor moved to `1.25` (see "Go version floor raised to 1.25" above), clearing the blocker. All benchmarks now use `for b.Loop()` in place of `for b.Loop()`; `b.ResetTimer()` stays where it already was — dropping it isn't part of the `b.Loop()` migration, it's a separate, unneeded cleanup. `BenchmarkSimulate_Parallel` (`latency_test.go`) is unaffected: it uses `b.RunParallel`/`pb.Next()`, which has no `b.Loop()` form.
+
+## `ErrorInjector.GetAll()` stays a map, not `iter.Seq2`
+
+Evaluated converting to `iter.Seq2[Operation, []*ErrorRule]` alongside `Stats.FailedOperations()`'s move to `iter.Seq[Operation]`. Rejected: `GetAll()` already returns a map, already ranges with `for k, v := range` either way, and its one real consumer (`TestErrorInjector_GetAll`) does indexed, repeated lookup by `Operation` — exactly what a map gives for free and an iterator would tax via a mandatory `maps.Collect` first. `FailedOperations` converted because it was exposing a slice for a walk-once pattern; `GetAll` isn't that shape.
