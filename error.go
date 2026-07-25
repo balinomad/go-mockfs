@@ -87,7 +87,7 @@ var (
 // ErrorRule captures the settings for an error to be injected.
 type ErrorRule struct {
 	Err      error         // Err is the error to return.
-	Mode     ErrorMode     // Mode specifies how the error is applied.
+	mode     ErrorMode     // mode specifies how the error is applied. Validated at construction; read via Mode().
 	AfterN   uint64        // AfterN is used only for ErrorModeAfterSuccesses and ErrorModeNext.
 	matchers []PathMatcher // Matchers for paths.
 	usedOnce atomic.Bool   // Used only for ErrorModeOnce.
@@ -122,7 +122,7 @@ func NewErrorRule(err error, mode ErrorMode, after int, matchers ...PathMatcher)
 func newValidatedErrorRule(err error, mode ErrorMode, afterN uint64, matchers ...PathMatcher) *ErrorRule {
 	return &ErrorRule{
 		Err:      err,
-		Mode:     mode,
+		mode:     mode,
 		AfterN:   afterN,
 		matchers: matchers,
 	}
@@ -163,7 +163,7 @@ func (r *ErrorRule) matches(path string) bool {
 // shouldReturnError returns true if the error should be returned.
 // For ErrorModeAfterSuccesses and ErrorModeNext, it increments the hit counter.
 func (r *ErrorRule) shouldReturnError() bool {
-	switch r.Mode {
+	switch r.mode {
 	case ErrorModeAlways:
 		return true
 	case ErrorModeOnce:
@@ -176,7 +176,7 @@ func (r *ErrorRule) shouldReturnError() bool {
 		return hits <= r.AfterN
 	default:
 		//nolint:forbidigo // Panic is intentional here to mark incorrect use
-		panic(fmt.Sprintf("mockfs: invalid ErrorMode: %d", r.Mode))
+		panic(fmt.Sprintf("mockfs: invalid ErrorMode: %d", r.mode))
 	}
 }
 
@@ -188,7 +188,12 @@ func (r *ErrorRule) CloneForSub(prefix string) *ErrorRule {
 	}
 
 	// AfterN was validated when the original rule was created; no re-validation needed.
-	return newValidatedErrorRule(r.Err, r.Mode, r.AfterN, newMatchers...)
+	return newValidatedErrorRule(r.Err, r.mode, r.AfterN, newMatchers...)
+}
+
+// Mode returns the rule's ErrorMode, as validated at construction by NewErrorRule.
+func (r *ErrorRule) Mode() ErrorMode {
+	return r.mode
 }
 
 // Operation defines the type of filesystem operation for error injection context.

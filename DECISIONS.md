@@ -44,3 +44,9 @@ Originally deferred: `b.Loop()` requires Go 1.24, and the module's floor was `1.
 ## `ErrorInjector.GetAll()` stays a map, not `iter.Seq2`
 
 Evaluated converting to `iter.Seq2[Operation, []*ErrorRule]` alongside `Stats.FailedOperations()`'s move to `iter.Seq[Operation]`. Rejected: `GetAll()` already returns a map, already ranges with `for k, v := range` either way, and its one real consumer (`TestErrorInjector_GetAll`) does indexed, repeated lookup by `Operation` — exactly what a map gives for free and an iterator would tax via a mandatory `maps.Collect` first. `FailedOperations` converted because it was exposing a slice for a walk-once pattern; `GetAll` isn't that shape.
+
+## `ErrorRule.Mode` is a method, `AfterN`/`Err` stay plain fields
+
+`NewErrorRule` validates `mode` at construction, but as a plain exported field, `Mode` could still be overwritten afterward — `rule.Mode = ErrorMode(999)` bypassed the validation entirely and surfaced as a panic later, inside `CheckAndApply`, far from the actual mistake. Unexported to `mode` with a `Mode() ErrorMode` getter, closing the gap at the type level rather than relying on callers not to do it.
+
+`AfterN` and `Err` were evaluated for the same treatment and rejected. `AfterN` has no invalid value to guard against — it's a plain `uint64` used only as a numeric comparison threshold in `shouldReturnError()`; no value of it can cause a panic. `Err` set to `nil` post-construction makes a rule silently inert (a matched rule with a nil `Err` returns `nil` from `CheckAndApply`, indistinguishable from "didn't match") rather than panicking — a real but much narrower, self-inflicted footgun — and unexporting it would cost the legitimate read access `GetAll()` consumers already rely on (`errors.Is(rule.Err, ...)`) for comparatively little gain.

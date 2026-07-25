@@ -266,7 +266,7 @@ type PathMatcher interface {
 
 type ErrorRule struct {
     Err      error
-    Mode     ErrorMode
+    mode     ErrorMode      // unexported; read via Mode()
     AfterN   uint64
     matchers []PathMatcher  // Composable matchers
     usedOnce atomic.Bool

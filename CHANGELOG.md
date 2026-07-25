@@ -18,6 +18,7 @@ Stabilization release: breaking API corrections, a full audit of the panic/error
 - `NewMockFS`, `NewMockFile`, `NewLatencySimulator`, `NewLatencySimulatorPerOp`, and `NewFileInfo` now return `(T, error)` instead of panicking on invalid input. `MustNewMockFS`, `MustNewMockFile`, `MustNewLatencySimulator`, `MustNewLatencySimulatorPerOp`, and `MustNewFileInfo` are new panicking counterparts, for callers that want the previous behavior.
 - `NewErrorRule` now also validates `mode`: an invalid `ErrorMode` returns an error instead of panicking on first use inside `CheckAndApply`.
 - `Stats.FailedOperations()` now returns `iter.Seq[Operation]` instead of `[]Operation`. Collect with `slices.Collect(stats.FailedOperations())` where a `[]Operation` is still needed.
+- `ErrorRule.Mode` is now unexported; use the new `(*ErrorRule).Mode()` getter instead of the `Mode` field. `NewErrorRule` already validated `mode` at construction; as a plain exported field it was still directly mutable afterward, silently bypassing that validation until the corrupted value reached a panic deep inside `CheckAndApply`. Unexporting closes the gap at the type level instead of relying on callers not to do it.
 
 ### Added
 

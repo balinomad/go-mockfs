@@ -756,7 +756,7 @@ func TestErrorInjector_GetAll(t *testing.T) {
 		if !errors.Is(all[mockfs.OpOpen][0].Err, mockfs.ErrNotExist) {
 			t.Error("OpOpen rule error mismatch")
 		}
-		if all[mockfs.OpRead][0].Mode != mockfs.ErrorModeOnce {
+		if all[mockfs.OpRead][0].Mode() != mockfs.ErrorModeOnce {
 			t.Error("OpRead rule mode mismatch")
 		}
 		if all[mockfs.OpWrite][0].AfterN != 5 {
