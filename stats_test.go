@@ -402,7 +402,7 @@ func TestStats_FailedOperations(t *testing.T) {
 	t.Parallel()
 
 	s := mockfs.NewStatsRecorder(nil)
-	if len(s.FailedOperations()) != 0 {
+	if len(slices.Collect(s.FailedOperations())) != 0 {
 		t.Error("empty stats has failures")
 	}
 
@@ -410,7 +410,7 @@ func TestStats_FailedOperations(t *testing.T) {
 	s.Set(mockfs.OpWrite, 3, 1)
 	s.Set(mockfs.OpRead, 10, 0)
 
-	failed := s.FailedOperations()
+	failed := slices.Collect(s.FailedOperations())
 	if len(failed) != 2 {
 		t.Fatalf("FailedOperations len = %d, want 2", len(failed))
 	}
@@ -637,7 +637,7 @@ func TestStats_SnapshotMethods(t *testing.T) {
 		s.Set(mockfs.OpRead, 10, 1)
 		snap := s.Snapshot()
 
-		failed := snap.FailedOperations()
+		failed := slices.Collect(snap.FailedOperations())
 		if len(failed) != 2 {
 			t.Errorf("FailedOperations len = %d, want 2", len(failed))
 		}
@@ -818,9 +818,7 @@ func TestStats_Concurrent(t *testing.T) {
 
 	// Concurrent writers
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for j := range 100 {
 				op := mockfs.Operation((j % (int(mockfs.NumOperations) - 2)) + 1)
 				var err error
@@ -835,20 +833,18 @@ func TestStats_Concurrent(t *testing.T) {
 					s.Reset()
 				}
 			}
-		}()
+		})
 	}
 
 	// Concurrent readers (unchanged)
 	for range 5 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 100 {
 				_ = s.Snapshot()
 				_ = s.Count(mockfs.OpRead)
 				_ = s.HasFailures()
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -911,7 +907,7 @@ func TestStatsRecorder_ByteCounters(t *testing.T) {
 func BenchmarkStatsRecorder_Record(b *testing.B) {
 	s := mockfs.NewStatsRecorder(nil)
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		s.Record(mockfs.OpRead, 100, nil)
 	}
 }
@@ -921,7 +917,7 @@ func BenchmarkStatsRecorder_Snapshot(b *testing.B) {
 	s.Record(mockfs.OpRead, 100, nil)
 	s.Record(mockfs.OpWrite, 200, nil)
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		_ = s.Snapshot()
 	}
 }
@@ -931,7 +927,7 @@ func BenchmarkStats_Count(b *testing.B) {
 	s.Record(mockfs.OpRead, 100, nil)
 	snap := s.Snapshot()
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		_ = snap.Count(mockfs.OpRead)
 	}
 }
@@ -946,7 +942,7 @@ func BenchmarkStats_Delta(b *testing.B) {
 	snap2 := s2.Snapshot()
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		_ = snap2.Delta(snap1)
 	}
 }

@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [2.0.0-rc.3] — Unreleased
 
-Stabilization release: breaking API corrections and bug fixes from an API/documentation audit. No methods removed; several gained a new return value.
+Stabilization release: breaking API corrections, a full audit of the panic/error boundary, and bug fixes from an API/documentation audit. Several methods changed return type outright, not just gained one; five new `Must*` constructors and a new `ErrUsage` sentinel were added.
 
 ### Breaking changes
 
@@ -16,6 +16,7 @@ Stabilization release: breaking API corrections and bug fixes from an API/docume
 - All 24 `MockFS.FailX`/`FailXOnce` convenience methods (e.g. `FailStat`, `FailOpen`, `FailReadAfter`, `FailReadNext`) now return `error`. For methods that hardcode `ErrorModeAlways`/`ErrorModeOnce` with `after=0`, the error is unreachable through them; `FailReadAfter` and `FailReadNext` can genuinely fail if `successes`/`count` is negative.
 - `NewMockFS`, `NewMockFile`, `NewLatencySimulator`, `NewLatencySimulatorPerOp`, and `NewFileInfo` now return `(T, error)` instead of panicking on invalid input. `MustNewMockFS`, `MustNewMockFile`, `MustNewLatencySimulator`, `MustNewLatencySimulatorPerOp`, and `MustNewFileInfo` are new panicking counterparts, for callers that want the previous behavior.
 - `NewErrorRule` now also validates `mode`: an invalid `ErrorMode` returns an error instead of panicking on first use inside `CheckAndApply`.
+- `Stats.FailedOperations()` now returns `iter.Seq[Operation]` instead of `[]Operation`. Collect with `slices.Collect(stats.FailedOperations())` where a `[]Operation` is still needed.
 
 ### Added
 

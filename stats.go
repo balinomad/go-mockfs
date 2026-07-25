@@ -2,7 +2,9 @@ package mockfs
 
 import (
 	"fmt"
+	"iter"
 	"math"
+	"slices"
 	"sync"
 )
 
@@ -50,8 +52,9 @@ type Stats interface {
 	// HasFailures reports whether any operation has failed.
 	HasFailures() bool
 
-	// Failures reports operations that have at least one failure.
-	FailedOperations() []Operation
+	// FailedOperations returns an iterator over operations that have at least
+	// one recorded failure, in Operation-constant order.
+	FailedOperations() iter.Seq[Operation]
 
 	// Empty reports whether no operations have been recorded.
 	Empty() bool
@@ -384,10 +387,10 @@ func (r *statsRecorder) HasFailures() bool {
 	return false
 }
 
-// FailedOperations reports operations that have at least one failure.
-func (r *statsRecorder) FailedOperations() []Operation {
+// FailedOperations returns an iterator over operations that have at least
+// one recorded failure, in Operation-constant order.
+func (r *statsRecorder) FailedOperations() iter.Seq[Operation] {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
 
 	var failed []Operation
 	for i := range int(NumOperations) {
@@ -396,7 +399,9 @@ func (r *statsRecorder) FailedOperations() []Operation {
 		}
 	}
 
-	return failed
+	r.mu.RUnlock()
+
+	return slices.Values(failed)
 }
 
 // Empty reports whether any operations have been recorded.
@@ -509,15 +514,16 @@ func (s statsSnapshot) HasFailures() bool {
 	return false
 }
 
-// FailedOperations returns operations that have at least one failure.
-func (s statsSnapshot) FailedOperations() []Operation {
-	var failed []Operation
-	for i := range int(NumOperations) {
-		if s.ops[i].failure > 0 {
-			failed = append(failed, Operation(i))
+// FailedOperations returns an iterator over operations that have at least
+// one recorded failure, in Operation-constant order.
+func (s statsSnapshot) FailedOperations() iter.Seq[Operation] {
+	return func(yield func(Operation) bool) {
+		for i := range int(NumOperations) {
+			if s.ops[i].failure > 0 && !yield(Operation(i)) {
+				return
+			}
 		}
 	}
-	return failed
 }
 
 // Empty reports whether any operations have been recorded.
@@ -629,7 +635,7 @@ func (sa *statsAssertion) NoFailures() StatsAssertion {
 	sa.checks = append(sa.checks, func(t TestReporter) {
 		if sa.stats.HasFailures() {
 			t.Helper()
-			failed := sa.stats.FailedOperations()
+			failed := slices.Collect(sa.stats.FailedOperations())
 			t.Errorf("expected no failures, but found failures in: %v", failed)
 		}
 	})
