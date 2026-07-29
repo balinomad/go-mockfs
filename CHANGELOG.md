@@ -35,6 +35,7 @@ Stabilization release: breaking API corrections, a full audit of the panic/error
 - `USAGE.md`'s "Testing Retry Logic" example had the same non-pointer assertion bug; corrected to use `OpenMockFile`.
 - Injected/sentinel errors returned from `ErrorInjector.CheckAndApply` were incorrectly re-wrapped with a `mockfs: ` prefix at 16 call sites across `mockfs.go` and `mockfile.go` (`Stat`, `Open`, `ReadDir`, `Mkdir`, `MkdirAll`, `Remove`, `RemoveAll`, `Rename`, `WriteFile`, `ReadFile`, `failExact` in `mockfs.go`; `WriteAt`, `Seek`, `ReadDir`, `Stat`, `Close` in `mockfile.go`), breaking `errors.Is`/exact-message matching for callers and failing the package's own runnable Examples. Errors are now returned verbatim.
 - `MockFS.ReadFile` unconditionally wrapped its result with `fmt.Errorf("mockfs: %w", err)`, producing `%!w(<nil>)` on every successful call.
+- Serialized-mode latency simulation (`WithLatency`/`WithPerOperationLatency` — the default, and the only mode `MockFS`/`MockFile` use internally) held an internal mutex across the simulated delay, which deadlocks under `testing/synctest`: `sync.Mutex` waits are never durably blocking in a bubble. Replaced with a channel-based ticket for serialization; behavior under real time is unchanged (`latency.go`).
 
 ### Changed
 

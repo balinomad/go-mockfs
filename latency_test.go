@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/balinomad/go-mockfs/v2"
@@ -15,26 +16,30 @@ func TestNewLatencySimulator(t *testing.T) {
 
 	t.Run("zero duration", func(t *testing.T) {
 		t.Parallel()
-		ls := mockfs.MustNewLatencySimulator(0)
-		if ls == nil {
-			t.Fatal("returned nil, expected non-nil simulator")
-		}
+		synctest.Test(t, func(t *testing.T) {
+			ls := mockfs.MustNewLatencySimulator(0)
+			if ls == nil {
+				t.Fatal("returned nil, expected non-nil simulator")
+			}
 
-		start := time.Now()
-		ls.Simulate(mockfs.OpRead)
-		assertNoDuration(t, start, "zero duration")
+			start := time.Now()
+			ls.Simulate(mockfs.OpRead)
+			assertNoDuration(t, start, "zero duration")
+		})
 	})
 
 	t.Run("positive duration", func(t *testing.T) {
 		t.Parallel()
-		ls := mockfs.MustNewLatencySimulator(testDuration)
-		if ls == nil {
-			t.Fatal("returned nil, expected non-nil simulator")
-		}
+		synctest.Test(t, func(t *testing.T) {
+			ls := mockfs.MustNewLatencySimulator(testDuration)
+			if ls == nil {
+				t.Fatal("returned nil, expected non-nil simulator")
+			}
 
-		start := time.Now()
-		ls.Simulate(mockfs.OpRead)
-		assertDuration(t, start, testDuration, "positive duration")
+			start := time.Now()
+			ls.Simulate(mockfs.OpRead)
+			assertDuration(t, start, testDuration, "positive duration")
+		})
 	})
 
 	t.Run("negative duration returns error", func(t *testing.T) {
@@ -99,14 +104,16 @@ func TestNewLatencySimulatorPerOp(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ls := mockfs.MustNewLatencySimulatorPerOp(tt.durations)
-			start := time.Now()
-			ls.Simulate(tt.opToTest)
-			if tt.expectedDur == 0 {
-				assertNoDuration(t, start, tt.name)
-			} else {
-				assertDuration(t, start, tt.expectedDur, tt.name)
-			}
+			synctest.Test(t, func(t *testing.T) {
+				ls := mockfs.MustNewLatencySimulatorPerOp(tt.durations)
+				start := time.Now()
+				ls.Simulate(tt.opToTest)
+				if tt.expectedDur == 0 {
+					assertNoDuration(t, start, tt.name)
+				} else {
+					assertDuration(t, start, tt.expectedDur, tt.name)
+				}
+			})
 		})
 	}
 
@@ -132,15 +139,17 @@ func TestNewLatencySimulatorPerOp(t *testing.T) {
 
 func TestNewNoopLatencySimulator(t *testing.T) {
 	t.Parallel()
-	ls := mockfs.NewNoopLatencySimulator()
-	if ls == nil {
-		t.Fatal("returned nil, expected non-nil simulator")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		ls := mockfs.NewNoopLatencySimulator()
+		if ls == nil {
+			t.Fatal("returned nil, expected non-nil simulator")
+		}
 
-	start := time.Now()
-	ls.Simulate(mockfs.OpRead)
-	ls.Simulate(mockfs.OpWrite)
-	assertNoDuration(t, start, "noop simulator")
+		start := time.Now()
+		ls.Simulate(mockfs.OpRead)
+		ls.Simulate(mockfs.OpWrite)
+		assertNoDuration(t, start, "noop simulator")
+	})
 }
 
 func TestLatencySimulator_Simulate_Concurrency(t *testing.T) {
@@ -148,61 +157,65 @@ func TestLatencySimulator_Simulate_Concurrency(t *testing.T) {
 
 	t.Run("default is serialized", func(t *testing.T) {
 		t.Parallel()
-		ls := mockfs.MustNewLatencySimulator(testDuration)
-		numGoroutines := 3
+		synctest.Test(t, func(t *testing.T) {
+			ls := mockfs.MustNewLatencySimulator(testDuration)
+			numGoroutines := 3
 
-		var wg sync.WaitGroup
-		startTimes := make([]time.Time, numGoroutines)
-		endTimes := make([]time.Time, numGoroutines)
+			var wg sync.WaitGroup
+			startTimes := make([]time.Time, numGoroutines)
+			endTimes := make([]time.Time, numGoroutines)
 
-		wg.Add(numGoroutines)
-		for i := range numGoroutines {
-			go func(idx int) {
-				defer wg.Done()
-				startTimes[idx] = time.Now()
-				ls.Simulate(mockfs.OpRead)
-				endTimes[idx] = time.Now()
-			}(i)
-		}
-		wg.Wait()
-
-		minStart := startTimes[0]
-		maxEnd := endTimes[0]
-		for i := 1; i < numGoroutines; i++ {
-			if startTimes[i].Before(minStart) {
-				minStart = startTimes[i]
+			wg.Add(numGoroutines)
+			for i := range numGoroutines {
+				go func(idx int) {
+					defer wg.Done()
+					startTimes[idx] = time.Now()
+					ls.Simulate(mockfs.OpRead)
+					endTimes[idx] = time.Now()
+				}(i)
 			}
-			if endTimes[i].After(maxEnd) {
-				maxEnd = endTimes[i]
-			}
-		}
+			wg.Wait()
 
-		totalElapsed := maxEnd.Sub(minStart)
-		// A safe check is that the total duration is at least (n-1) * duration.
-		expectedMinTotal := testDuration * time.Duration(numGoroutines-1)
-		if totalElapsed < expectedMinTotal {
-			t.Errorf("serialized mode operations overlapped too much. Total: %v, expected at least %v", totalElapsed, expectedMinTotal)
-		}
+			minStart := startTimes[0]
+			maxEnd := endTimes[0]
+			for i := 1; i < numGoroutines; i++ {
+				if startTimes[i].Before(minStart) {
+					minStart = startTimes[i]
+				}
+				if endTimes[i].After(maxEnd) {
+					maxEnd = endTimes[i]
+				}
+			}
+
+			totalElapsed := maxEnd.Sub(minStart)
+			// A safe check is that the total duration is at least (n-1) * duration.
+			expectedMinTotal := testDuration * time.Duration(numGoroutines-1)
+			if totalElapsed < expectedMinTotal {
+				t.Errorf("serialized mode operations overlapped too much. Total: %v, expected at least %v", totalElapsed, expectedMinTotal)
+			}
+		})
 	})
 
 	t.Run("async is parallel", func(t *testing.T) {
 		t.Parallel()
-		ls := mockfs.MustNewLatencySimulator(testDuration)
-		numGoroutines := 3
+		synctest.Test(t, func(t *testing.T) {
+			ls := mockfs.MustNewLatencySimulator(testDuration)
+			numGoroutines := 3
 
-		start := time.Now()
-		var wg sync.WaitGroup
-		wg.Add(numGoroutines)
-		for range numGoroutines {
-			go func() {
-				defer wg.Done()
-				ls.Simulate(mockfs.OpRead, mockfs.Async())
-			}()
-		}
-		wg.Wait()
+			start := time.Now()
+			var wg sync.WaitGroup
+			wg.Add(numGoroutines)
+			for range numGoroutines {
+				go func() {
+					defer wg.Done()
+					ls.Simulate(mockfs.OpRead, mockfs.Async())
+				}()
+			}
+			wg.Wait()
 
-		// In async mode, all should run in parallel. Total time should be ~1 duration.
-		assertDuration(t, start, testDuration, "async mode")
+			// In async mode, all should run in parallel. Total time should be ~1 duration.
+			assertDuration(t, start, testDuration, "async mode")
+		})
 	})
 }
 
@@ -230,89 +243,95 @@ func TestLatencySimulator_Simulate_Async(t *testing.T) {
 
 func TestLatencySimulator_Simulate_Once(t *testing.T) {
 	t.Parallel()
-	ls := mockfs.MustNewLatencySimulator(testDuration)
+	synctest.Test(t, func(t *testing.T) {
+		ls := mockfs.MustNewLatencySimulator(testDuration)
 
-	start := time.Now()
-	ls.Simulate(mockfs.OpRead, mockfs.Once())
+		start := time.Now()
+		ls.Simulate(mockfs.OpRead, mockfs.Once())
 
-	// First call should sleep
-	assertDuration(t, start, testDuration, "once first call")
+		// First call should sleep
+		assertDuration(t, start, testDuration, "once first call")
 
-	// Second call should not sleep
-	start = time.Now()
-	ls.Simulate(mockfs.OpRead, mockfs.Once())
-	assertNoDuration(t, start, "once second call")
+		// Second call should not sleep
+		start = time.Now()
+		ls.Simulate(mockfs.OpRead, mockfs.Once())
+		assertNoDuration(t, start, "once second call")
 
-	// Different operation should still sleep
-	start = time.Now()
-	ls.Simulate(mockfs.OpWrite, mockfs.Once())
-	assertDuration(t, start, testDuration, "once different operation")
+		// Different operation should still sleep
+		start = time.Now()
+		ls.Simulate(mockfs.OpWrite, mockfs.Once())
+		assertDuration(t, start, testDuration, "once different operation")
+	})
 }
 
 func TestLatencySimulator_Simulate_OnceAsync(t *testing.T) {
 	t.Parallel()
-	ls := mockfs.MustNewLatencySimulator(testDuration)
+	synctest.Test(t, func(t *testing.T) {
+		ls := mockfs.MustNewLatencySimulator(testDuration)
 
-	var wg sync.WaitGroup
-	callCount := int32(0)
-	completedCount := int32(0)
+		var wg sync.WaitGroup
+		callCount := int32(0)
+		completedCount := int32(0)
 
-	start := time.Now()
+		start := time.Now()
 
-	// Launch 10 concurrent calls with OnceAsync
-	for range 10 {
-		wg.Go(func() {
-			atomic.AddInt32(&callCount, 1)
-			ls.Simulate(mockfs.OpRead, mockfs.OnceAsync())
-			atomic.AddInt32(&completedCount, 1)
-		})
-	}
+		// Launch 10 concurrent calls with OnceAsync
+		for range 10 {
+			wg.Go(func() {
+				atomic.AddInt32(&callCount, 1)
+				ls.Simulate(mockfs.OpRead, mockfs.OnceAsync())
+				atomic.AddInt32(&completedCount, 1)
+			})
+		}
 
-	wg.Wait()
-	elapsed := time.Since(start)
+		wg.Wait()
+		elapsed := time.Since(start)
 
-	// Should complete in ~testDuration (all run async, but only one actually sleeps)
-	if elapsed > testDuration+tolerance*2 {
-		t.Errorf("onceAsync: expected ~%v, got %v", testDuration, elapsed)
-	}
+		// Should complete in ~testDuration (all run async, but only one actually sleeps)
+		if elapsed > testDuration+tolerance*2 {
+			t.Errorf("onceAsync: expected ~%v, got %v", testDuration, elapsed)
+		}
 
-	if callCount != 10 {
-		t.Errorf("expected 10 calls, got %d", callCount)
-	}
-	if completedCount != 10 {
-		t.Errorf("expected 10 completions, got %d", completedCount)
-	}
+		if callCount != 10 {
+			t.Errorf("expected 10 calls, got %d", callCount)
+		}
+		if completedCount != 10 {
+			t.Errorf("expected 10 completions, got %d", completedCount)
+		}
+	})
 }
 
 func TestLatencySimulator_Simulate_OnceSerialized(t *testing.T) {
 	t.Parallel()
-	ls := mockfs.MustNewLatencySimulator(testDuration)
+	synctest.Test(t, func(t *testing.T) {
+		ls := mockfs.MustNewLatencySimulator(testDuration)
 
-	var wg sync.WaitGroup
-	completed := int32(0)
+		var wg sync.WaitGroup
+		completed := int32(0)
 
-	start := time.Now()
+		start := time.Now()
 
-	// Launch multiple goroutines with Once (serialized)
-	for range 5 {
-		wg.Go(func() {
-			ls.Simulate(mockfs.OpRead, mockfs.Once())
-			atomic.AddInt32(&completed, 1)
-		})
-	}
+		// Launch multiple goroutines with Once (serialized)
+		for range 5 {
+			wg.Go(func() {
+				ls.Simulate(mockfs.OpRead, mockfs.Once())
+				atomic.AddInt32(&completed, 1)
+			})
+		}
 
-	wg.Wait()
-	elapsed := time.Since(start)
+		wg.Wait()
+		elapsed := time.Since(start)
 
-	// Only first goroutine should sleep, others skip immediately
-	// Total time should be ~testDuration, not 5*testDuration
-	if elapsed > testDuration+tolerance*2 {
-		t.Errorf("once serialized: expected ~%v, got %v", testDuration, elapsed)
-	}
+		// Only first goroutine should sleep, others skip immediately
+		// Total time should be ~testDuration, not 5*testDuration
+		if elapsed > testDuration+tolerance*2 {
+			t.Errorf("once serialized: expected ~%v, got %v", testDuration, elapsed)
+		}
 
-	if completed != 5 {
-		t.Errorf("expected 5 completions, got %d", completed)
-	}
+		if completed != 5 {
+			t.Errorf("expected 5 completions, got %d", completed)
+		}
+	})
 }
 
 func TestLatencySimulator_MixedOptions(t *testing.T) {
@@ -320,276 +339,303 @@ func TestLatencySimulator_MixedOptions(t *testing.T) {
 
 	t.Run("once then non-once", func(t *testing.T) {
 		t.Parallel()
-		ls := mockfs.MustNewLatencySimulator(testDuration)
+		synctest.Test(t, func(t *testing.T) {
+			ls := mockfs.MustNewLatencySimulator(testDuration)
 
-		// First with Once
-		start := time.Now()
-		ls.Simulate(mockfs.OpRead, mockfs.Once())
-		assertDuration(t, start, testDuration, "once first")
+			// First with Once
+			start := time.Now()
+			ls.Simulate(mockfs.OpRead, mockfs.Once())
+			assertDuration(t, start, testDuration, "once first")
 
-		// Then without Once (should still sleep)
-		start = time.Now()
-		ls.Simulate(mockfs.OpRead)
-		assertDuration(t, start, testDuration, "non-once after once")
+			// Then without Once (should still sleep)
+			start = time.Now()
+			ls.Simulate(mockfs.OpRead)
+			assertDuration(t, start, testDuration, "non-once after once")
+		})
 	})
 
 	t.Run("async then serialized", func(t *testing.T) {
 		t.Parallel()
-		ls := mockfs.MustNewLatencySimulator(testDuration)
+		synctest.Test(t, func(t *testing.T) {
+			ls := mockfs.MustNewLatencySimulator(testDuration)
 
-		// Async call
-		start := time.Now()
-		ls.Simulate(mockfs.OpRead, mockfs.Async())
-		assertDuration(t, start, testDuration, "async")
+			// Async call
+			start := time.Now()
+			ls.Simulate(mockfs.OpRead, mockfs.Async())
+			assertDuration(t, start, testDuration, "async")
 
-		// Serialized call
-		start = time.Now()
-		ls.Simulate(mockfs.OpRead)
-		assertDuration(t, start, testDuration, "serialized after async")
+			// Serialized call
+			start = time.Now()
+			ls.Simulate(mockfs.OpRead)
+			assertDuration(t, start, testDuration, "serialized after async")
+		})
 	})
 }
 
 func TestReset(t *testing.T) {
 	t.Parallel()
-	ls := mockfs.MustNewLatencySimulator(testDuration)
+	synctest.Test(t, func(t *testing.T) {
+		ls := mockfs.MustNewLatencySimulator(testDuration)
 
-	// First call with Once
-	start := time.Now()
-	ls.Simulate(mockfs.OpRead, mockfs.Once())
-	assertDuration(t, start, testDuration, "before reset")
+		// First call with Once
+		start := time.Now()
+		ls.Simulate(mockfs.OpRead, mockfs.Once())
+		assertDuration(t, start, testDuration, "before reset")
 
-	// Second call should be skipped
-	start = time.Now()
-	ls.Simulate(mockfs.OpRead, mockfs.Once())
-	assertNoDuration(t, start, "before reset - second call")
+		// Second call should be skipped
+		start = time.Now()
+		ls.Simulate(mockfs.OpRead, mockfs.Once())
+		assertNoDuration(t, start, "before reset - second call")
 
-	// Reset
-	ls.Reset()
+		// Reset
+		ls.Reset()
 
-	// After reset, should sleep again
-	start = time.Now()
-	ls.Simulate(mockfs.OpRead, mockfs.Once())
-	assertDuration(t, start, testDuration, "after reset")
+		// After reset, should sleep again
+		start = time.Now()
+		ls.Simulate(mockfs.OpRead, mockfs.Once())
+		assertDuration(t, start, testDuration, "after reset")
+	})
 }
 
 func TestReset_MultipleOperations(t *testing.T) {
 	t.Parallel()
-	ls := mockfs.MustNewLatencySimulator(testDuration)
+	synctest.Test(t, func(t *testing.T) {
+		ls := mockfs.MustNewLatencySimulator(testDuration)
 
-	// Mark multiple operations as seen
-	ls.Simulate(mockfs.OpRead, mockfs.Once())
-	ls.Simulate(mockfs.OpWrite, mockfs.Once())
-	ls.Simulate(mockfs.OpOpen, mockfs.Once())
+		// Mark multiple operations as seen
+		ls.Simulate(mockfs.OpRead, mockfs.Once())
+		ls.Simulate(mockfs.OpWrite, mockfs.Once())
+		ls.Simulate(mockfs.OpOpen, mockfs.Once())
 
-	// Verify they're skipped
-	start := time.Now()
-	ls.Simulate(mockfs.OpRead, mockfs.Once())
-	ls.Simulate(mockfs.OpWrite, mockfs.Once())
-	ls.Simulate(mockfs.OpOpen, mockfs.Once())
-	assertNoDuration(t, start, "all operations seen")
+		// Verify they're skipped
+		start := time.Now()
+		ls.Simulate(mockfs.OpRead, mockfs.Once())
+		ls.Simulate(mockfs.OpWrite, mockfs.Once())
+		ls.Simulate(mockfs.OpOpen, mockfs.Once())
+		assertNoDuration(t, start, "all operations seen")
 
-	// Reset
-	ls.Reset()
+		// Reset
+		ls.Reset()
 
-	// All should work again
-	start = time.Now()
-	ls.Simulate(mockfs.OpRead, mockfs.Once())
-	assertDuration(t, start, testDuration, "OpRead after reset")
+		// All should work again
+		start = time.Now()
+		ls.Simulate(mockfs.OpRead, mockfs.Once())
+		assertDuration(t, start, testDuration, "OpRead after reset")
 
-	start = time.Now()
-	ls.Simulate(mockfs.OpWrite, mockfs.Once())
-	assertDuration(t, start, testDuration, "OpWrite after reset")
+		start = time.Now()
+		ls.Simulate(mockfs.OpWrite, mockfs.Once())
+		assertDuration(t, start, testDuration, "OpWrite after reset")
+	})
 }
 
 func TestLatencySimulator_ConcurrentReset(t *testing.T) {
 	t.Parallel()
-	// This test verifies Reset is safe when called after operations complete
-	ls := mockfs.MustNewLatencySimulator(testDuration)
+	synctest.Test(t, func(t *testing.T) {
+		// This test verifies Reset is safe when called after operations complete
+		ls := mockfs.MustNewLatencySimulator(testDuration)
 
-	var wg sync.WaitGroup
+		var wg sync.WaitGroup
 
-	// Run multiple operations
-	for range 10 {
-		wg.Go(func() {
-			ls.Simulate(mockfs.OpRead, mockfs.Once())
-		})
-	}
+		// Run multiple operations
+		for range 10 {
+			wg.Go(func() {
+				ls.Simulate(mockfs.OpRead, mockfs.Once())
+			})
+		}
 
-	wg.Wait()
+		wg.Wait()
 
-	// Now reset (safe because all operations completed)
-	ls.Reset()
+		// Now reset (safe because all operations completed)
+		ls.Reset()
 
-	// Verify reset worked
-	start := time.Now()
-	ls.Simulate(mockfs.OpRead, mockfs.Once())
-	assertDuration(t, start, testDuration, "after concurrent reset")
+		// Verify reset worked
+		start := time.Now()
+		ls.Simulate(mockfs.OpRead, mockfs.Once())
+		assertDuration(t, start, testDuration, "after concurrent reset")
+	})
 }
 
 func TestLatencySimulator_MultipleOperationTypes(t *testing.T) {
 	t.Parallel()
-	durations := map[mockfs.Operation]time.Duration{
-		mockfs.OpRead:  testDuration,
-		mockfs.OpWrite: testDurationLong,
-		mockfs.OpOpen:  testDuration / 2,
-	}
-	ls := mockfs.MustNewLatencySimulatorPerOp(durations)
+	synctest.Test(t, func(t *testing.T) {
+		durations := map[mockfs.Operation]time.Duration{
+			mockfs.OpRead:  testDuration,
+			mockfs.OpWrite: testDurationLong,
+			mockfs.OpOpen:  testDuration / 2,
+		}
+		ls := mockfs.MustNewLatencySimulatorPerOp(durations)
 
-	start := time.Now()
-	ls.Simulate(mockfs.OpRead)
-	assertDuration(t, start, testDuration, "OpRead")
+		start := time.Now()
+		ls.Simulate(mockfs.OpRead)
+		assertDuration(t, start, testDuration, "OpRead")
 
-	start = time.Now()
-	ls.Simulate(mockfs.OpWrite)
-	assertDuration(t, start, testDurationLong, "OpWrite")
+		start = time.Now()
+		ls.Simulate(mockfs.OpWrite)
+		assertDuration(t, start, testDurationLong, "OpWrite")
 
-	start = time.Now()
-	ls.Simulate(mockfs.OpOpen)
-	assertDuration(t, start, testDuration/2, "OpOpen")
+		start = time.Now()
+		ls.Simulate(mockfs.OpOpen)
+		assertDuration(t, start, testDuration/2, "OpOpen")
+	})
 }
 
 func TestLatencySimulator_ZeroDurationOperation(t *testing.T) {
 	t.Parallel()
-	ls := mockfs.MustNewLatencySimulatorPerOp(map[mockfs.Operation]time.Duration{
-		mockfs.OpRead:  testDuration,
-		mockfs.OpWrite: 0, // Explicit zero
+	synctest.Test(t, func(t *testing.T) {
+		ls := mockfs.MustNewLatencySimulatorPerOp(map[mockfs.Operation]time.Duration{
+			mockfs.OpRead:  testDuration,
+			mockfs.OpWrite: 0, // Explicit zero
+		})
+
+		start := time.Now()
+		ls.Simulate(mockfs.OpWrite)
+		assertNoDuration(t, start, "zero duration operation")
+
+		start = time.Now()
+		ls.Simulate(mockfs.OpRead)
+		assertDuration(t, start, testDuration, "non-zero duration operation")
 	})
-
-	start := time.Now()
-	ls.Simulate(mockfs.OpWrite)
-	assertNoDuration(t, start, "zero duration operation")
-
-	start = time.Now()
-	ls.Simulate(mockfs.OpRead)
-	assertDuration(t, start, testDuration, "non-zero duration operation")
 }
 
 func TestSimOpt_Once(t *testing.T) {
 	t.Parallel()
-	// Test Once() behavior: first call sleeps, second doesn't
-	ls := mockfs.MustNewLatencySimulator(testDuration)
+	synctest.Test(t, func(t *testing.T) {
+		// Test Once() behavior: first call sleeps, second doesn't
+		ls := mockfs.MustNewLatencySimulator(testDuration)
 
-	start := time.Now()
-	ls.Simulate(mockfs.OpRead, mockfs.Once())
-	assertDuration(t, start, testDuration, "Once first call should sleep")
+		start := time.Now()
+		ls.Simulate(mockfs.OpRead, mockfs.Once())
+		assertDuration(t, start, testDuration, "Once first call should sleep")
 
-	start = time.Now()
-	ls.Simulate(mockfs.OpRead, mockfs.Once())
-	assertNoDuration(t, start, "Once second call should not sleep")
+		start = time.Now()
+		ls.Simulate(mockfs.OpRead, mockfs.Once())
+		assertNoDuration(t, start, "Once second call should not sleep")
+	})
 }
 
 func TestSimOpt_Async(t *testing.T) {
 	t.Parallel()
-	// Test Async() behavior: multiple concurrent calls complete in ~testDuration
-	ls := mockfs.MustNewLatencySimulator(testDuration)
+	synctest.Test(t, func(t *testing.T) {
+		// Test Async() behavior: multiple concurrent calls complete in ~testDuration
+		ls := mockfs.MustNewLatencySimulator(testDuration)
 
-	start := time.Now()
-	var wg sync.WaitGroup
+		start := time.Now()
+		var wg sync.WaitGroup
 
-	for range 3 {
-		wg.Go(func() {
-			ls.Simulate(mockfs.OpRead, mockfs.Async())
-		})
-	}
+		for range 3 {
+			wg.Go(func() {
+				ls.Simulate(mockfs.OpRead, mockfs.Async())
+			})
+		}
 
-	wg.Wait()
-	elapsed := time.Since(start)
+		wg.Wait()
+		elapsed := time.Since(start)
 
-	// All 3 should run concurrently (not serialized)
-	if elapsed > testDuration+tolerance*2 {
-		t.Errorf("Async should allow concurrent execution, expected ~%v, got %v", testDuration, elapsed)
-	}
+		// All 3 should run concurrently (not serialized)
+		if elapsed > testDuration+tolerance*2 {
+			t.Errorf("Async should allow concurrent execution, expected ~%v, got %v", testDuration, elapsed)
+		}
+	})
 }
 
 func TestSimOpt_OnceAsync(t *testing.T) {
 	t.Parallel()
-	// Test OnceAsync() behavior: combines both Once and Async
-	ls := mockfs.MustNewLatencySimulator(testDuration)
+	synctest.Test(t, func(t *testing.T) {
+		// Test OnceAsync() behavior: combines both Once and Async
+		ls := mockfs.MustNewLatencySimulator(testDuration)
 
-	start := time.Now()
-	var wg sync.WaitGroup
+		start := time.Now()
+		var wg sync.WaitGroup
 
-	// First call should sleep
-	wg.Go(func() {
+		// First call should sleep
+		wg.Go(func() {
+			ls.Simulate(mockfs.OpRead, mockfs.OnceAsync())
+		})
+		wg.Wait()
+		assertDuration(t, start, testDuration, "OnceAsync first call should sleep")
+
+		// Second call should not sleep (Once behavior)
+		start = time.Now()
 		ls.Simulate(mockfs.OpRead, mockfs.OnceAsync())
+		assertNoDuration(t, start, "OnceAsync second call should not sleep")
 	})
-	wg.Wait()
-	assertDuration(t, start, testDuration, "OnceAsync first call should sleep")
-
-	// Second call should not sleep (Once behavior)
-	start = time.Now()
-	ls.Simulate(mockfs.OpRead, mockfs.OnceAsync())
-	assertNoDuration(t, start, "OnceAsync second call should not sleep")
 }
+
 func TestLatencySimulator_ClonePreservesPerOpDurations(t *testing.T) {
 	t.Parallel()
-	durations := map[mockfs.Operation]time.Duration{
-		mockfs.OpRead:  testDuration,
-		mockfs.OpWrite: testDurationLong,
-	}
-	ls := mockfs.MustNewLatencySimulatorPerOp(durations)
+	synctest.Test(t, func(t *testing.T) {
+		durations := map[mockfs.Operation]time.Duration{
+			mockfs.OpRead:  testDuration,
+			mockfs.OpWrite: testDurationLong,
+		}
+		ls := mockfs.MustNewLatencySimulatorPerOp(durations)
 
-	cloned := ls.Clone()
+		cloned := ls.Clone()
 
-	start := time.Now()
-	cloned.Simulate(mockfs.OpRead)
-	assertDuration(t, start, testDuration, "cloned OpRead")
+		start := time.Now()
+		cloned.Simulate(mockfs.OpRead)
+		assertDuration(t, start, testDuration, "cloned OpRead")
 
-	start = time.Now()
-	cloned.Simulate(mockfs.OpWrite)
-	assertDuration(t, start, testDurationLong, "cloned OpWrite")
+		start = time.Now()
+		cloned.Simulate(mockfs.OpWrite)
+		assertDuration(t, start, testDurationLong, "cloned OpWrite")
+	})
 }
 
 func TestSimOpt_MultipleOptions(t *testing.T) {
 	t.Parallel()
-	// Test applying both Once() and Async() separately
-	ls := mockfs.MustNewLatencySimulator(testDuration)
+	synctest.Test(t, func(t *testing.T) {
+		// Test applying both Once() and Async() separately
+		ls := mockfs.MustNewLatencySimulator(testDuration)
 
-	start := time.Now()
-	var wg sync.WaitGroup
+		start := time.Now()
+		var wg sync.WaitGroup
 
-	// Launch concurrent calls with both options
-	for range 5 {
-		wg.Go(func() {
-			ls.Simulate(mockfs.OpRead, mockfs.Once(), mockfs.Async())
-		})
-	}
+		// Launch concurrent calls with both options
+		for range 5 {
+			wg.Go(func() {
+				ls.Simulate(mockfs.OpRead, mockfs.Once(), mockfs.Async())
+			})
+		}
 
-	wg.Wait()
-	elapsed := time.Since(start)
+		wg.Wait()
+		elapsed := time.Since(start)
 
-	// Should complete quickly (async) and only one should actually sleep (once)
-	if elapsed > testDuration+tolerance*2 {
-		t.Errorf("Multiple options should work together, expected ~%v, got %v", testDuration, elapsed)
-	}
+		// Should complete quickly (async) and only one should actually sleep (once)
+		if elapsed > testDuration+tolerance*2 {
+			t.Errorf("Multiple options should work together, expected ~%v, got %v", testDuration, elapsed)
+		}
 
-	// Second call should not sleep (once was applied)
-	start = time.Now()
-	ls.Simulate(mockfs.OpRead, mockfs.Once(), mockfs.Async())
-	assertNoDuration(t, start, "Multiple options second call should not sleep")
+		// Second call should not sleep (once was applied)
+		start = time.Now()
+		ls.Simulate(mockfs.OpRead, mockfs.Once(), mockfs.Async())
+		assertNoDuration(t, start, "Multiple options second call should not sleep")
+	})
 }
 
 func TestLatencySimulator_MultipleOptOrder(t *testing.T) {
 	t.Parallel()
-	ls1 := mockfs.MustNewLatencySimulator(testDuration)
-	ls2 := mockfs.MustNewLatencySimulator(testDuration)
+	synctest.Test(t, func(t *testing.T) {
+		ls1 := mockfs.MustNewLatencySimulator(testDuration)
+		ls2 := mockfs.MustNewLatencySimulator(testDuration)
 
-	start := time.Now()
-	ls1.Simulate(mockfs.OpRead, mockfs.Once(), mockfs.Async())
-	assertDuration(t, start, testDuration, "Once then Async")
+		start := time.Now()
+		ls1.Simulate(mockfs.OpRead, mockfs.Once(), mockfs.Async())
+		assertDuration(t, start, testDuration, "Once then Async")
 
-	start = time.Now()
-	ls2.Simulate(mockfs.OpRead, mockfs.Async(), mockfs.Once())
-	assertDuration(t, start, testDuration, "Async then Once")
+		start = time.Now()
+		ls2.Simulate(mockfs.OpRead, mockfs.Async(), mockfs.Once())
+		assertDuration(t, start, testDuration, "Async then Once")
 
-	// Both should skip on second call
-	start = time.Now()
-	ls1.Simulate(mockfs.OpRead, mockfs.Once(), mockfs.Async())
-	assertNoDuration(t, start, "ls1 second call")
+		// Both should skip on second call
+		start = time.Now()
+		ls1.Simulate(mockfs.OpRead, mockfs.Once(), mockfs.Async())
+		assertNoDuration(t, start, "ls1 second call")
 
-	start = time.Now()
-	ls2.Simulate(mockfs.OpRead, mockfs.Async(), mockfs.Once())
-	assertNoDuration(t, start, "ls2 second call")
+		start = time.Now()
+		ls2.Simulate(mockfs.OpRead, mockfs.Async(), mockfs.Once())
+		assertNoDuration(t, start, "ls2 second call")
+	})
 }
 
 // Benchmark tests.

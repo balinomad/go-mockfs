@@ -2,7 +2,7 @@ package mockfs
 
 import (
 	"fmt"
-	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -14,8 +14,8 @@ import (
 type LatencySimulator interface {
 	// Simulate simulates latency for an operation. It is thread-safe.
 	//
-	// By default, Simulate serializes access (holds lock during sleep) to model
-	// blocking I/O. Use Async() to release the lock before sleeping.
+	// By default, Simulate serializes access (holds a ticket during sleep) to model
+	// blocking I/O. Use Async() to skip the ticket and sleep independently.
 	//
 	// Use Once() to ensure an operation's latency is simulated at most once.
 	Simulate(op Operation, opts ...SimOpt)
@@ -40,7 +40,7 @@ type SimOpt func(*simOptions)
 // The first call simulates latency; subsequent calls for the same operation return immediately.
 func Once() SimOpt { return func(o *simOptions) { o.once = true } }
 
-// Async makes Simulate release the lock before sleeping (non-serialized).
+// Async makes Simulate skip the serialization ticket before sleeping (non-serialized).
 // Use this when operations should not block each other.
 func Async() SimOpt { return func(o *simOptions) { o.async = true } }
 
@@ -50,8 +50,15 @@ func OnceAsync() SimOpt { return func(o *simOptions) { o.once = true; o.async = 
 // latencySimulator implements LatencySimulator.
 type latencySimulator struct {
 	durations [NumOperations]time.Duration // Duration for each operation, OpUnknown contains global duration.
-	seen      [NumOperations]bool          // Tracks whether an operation latency has been simulated.
-	mu        sync.Mutex                   // Mutex for concurrent access.
+	seen      [NumOperations]atomic.Bool   // Tracks whether an operation latency has been simulated; lock-free.
+	serialize chan struct{}                // 1-buffered ticket serializing non-async sleeps across all operations.
+}
+
+// newSerializeTicket returns a ready-to-acquire, single-token ticket channel.
+func newSerializeTicket() chan struct{} {
+	ch := make(chan struct{}, 1)
+	ch <- struct{}{}
+	return ch
 }
 
 // NewLatencySimulator returns a LatencySimulator with a global duration for all operations.
@@ -64,7 +71,7 @@ func NewLatencySimulator(duration time.Duration) (LatencySimulator, error) {
 		return nil, fmt.Errorf("mockfs: %w: negative duration not allowed: %v", ErrUsage, duration)
 	}
 
-	ls := &latencySimulator{}
+	ls := &latencySimulator{serialize: newSerializeTicket()}
 	ls.durations[OpUnknown] = duration
 
 	return ls, nil
@@ -87,7 +94,7 @@ func MustNewLatencySimulator(duration time.Duration) LatencySimulator {
 // Returns an error wrapping ErrUsage if any duration is negative. Use
 // MustNewLatencySimulatorPerOp to panic instead.
 func NewLatencySimulatorPerOp(durations map[Operation]time.Duration) (LatencySimulator, error) {
-	ls := &latencySimulator{}
+	ls := &latencySimulator{serialize: newSerializeTicket()}
 	for op, dur := range durations {
 		if dur < 0 {
 			return nil, fmt.Errorf("mockfs: %w: negative duration not allowed for %v: %v", ErrUsage, op, dur)
@@ -110,7 +117,7 @@ func MustNewLatencySimulatorPerOp(durations map[Operation]time.Duration) Latency
 
 // NewNoopLatencySimulator returns a LatencySimulator that does nothing (useful for tests).
 func NewNoopLatencySimulator() LatencySimulator {
-	return &latencySimulator{}
+	return &latencySimulator{serialize: newSerializeTicket()}
 }
 
 // Simulate simulates latency for an operation. It is thread-safe.
@@ -143,62 +150,58 @@ func (ls *latencySimulator) Simulate(op Operation, opts ...SimOpt) {
 
 	// Handle Once mode
 	if so.once {
-		ls.mu.Lock()
-		if ls.seen[op] {
-			ls.mu.Unlock()
-
+		if !ls.seen[op].CompareAndSwap(false, true) {
 			return
 		}
-		ls.seen[op] = true
 
 		if so.async {
-			ls.mu.Unlock()
 			time.Sleep(dur)
 
 			return
 		}
 
-		// Serialized once: hold lock while sleeping
+		// Serialized once: hold the ticket while sleeping, not a mutex. See the
+		// comment on the non-once branch below for why.
+		<-ls.serialize
 		time.Sleep(dur)
-		ls.mu.Unlock()
+		ls.serialize <- struct{}{}
 
 		return
 	}
 
 	// Non-once mode
 	if !so.async {
-		// Serialized: hold lock during sleep
-		ls.mu.Lock()
+		// Serialized: hold the ticket during sleep. A sync.Mutex held across
+		// time.Sleep is never durably blocking inside a testing/synctest bubble,
+		// which deadlocks any concurrent caller waiting on it. A channel receive
+		// on an empty channel is durably blocking, so a 1-buffered ticket
+		// serializes calls the same way without that risk.
+		<-ls.serialize
 		time.Sleep(dur)
-		ls.mu.Unlock()
+		ls.serialize <- struct{}{}
 
 		return
 	}
 
-	// Async: sleep without lock
+	// Async: sleep without the ticket
 	time.Sleep(dur)
 }
 
 // Reset clears the internal "seen" state for all operations.
 // Must be called when no other goroutines are calling Simulate().
 func (ls *latencySimulator) Reset() {
-	ls.mu.Lock()
-	defer ls.mu.Unlock()
-
-	ls.seen = [NumOperations]bool{}
+	for i := range ls.seen {
+		ls.seen[i].Store(false)
+	}
 }
 
 // Clone returns a copy of the simulator with reset state.
 // The returned simulator has the same duration configuration but
-// fresh Once() tracking state.
+// fresh Once() tracking state and its own independent serialization ticket.
 func (ls *latencySimulator) Clone() LatencySimulator {
-	ls.mu.Lock()
-	defer ls.mu.Unlock()
-
-	clone := &latencySimulator{
+	return &latencySimulator{
 		durations: ls.durations,
+		serialize: newSerializeTicket(),
 		// seen is zero-initialized
 	}
-
-	return clone
 }
