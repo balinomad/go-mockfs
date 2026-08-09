@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"testing/fstest"
+	"testing/synctest"
 	"time"
 
 	"github.com/balinomad/go-mockfs/v2"
@@ -1774,6 +1775,90 @@ func TestMockFile_ConcurrentStats(t *testing.T) {
 	if stats.Count(mockfs.OpRead) != 1000 {
 		t.Errorf("read count = %d, want 1000", stats.Count(mockfs.OpRead))
 	}
+}
+
+// TestMockFile_ConcurrentLatency_NoDeadlock verifies that concurrent operations on a
+// single *MockFile with configured latency do not deadlock inside a testing/synctest
+// bubble. Before the fix recorded in DECISIONS.md, every locked method held f.mu — a
+// sync.Mutex — across LatencySimulator.Simulate()'s sleep; a sync.Mutex wait is not
+// durably blocking inside a synctest bubble, so a bubble with one goroutine sleeping
+// while holding f.mu and others waiting on it never reached "all goroutines durably
+// blocked," and the fake clock never advanced.
+func TestMockFile_ConcurrentLatency_NoDeadlock(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		file := mockfs.NewMockFileFromBytes("test.txt", make([]byte, 64),
+			mockfs.WithFileLatency(testDuration))
+
+		var wg sync.WaitGroup
+		for range 5 {
+			wg.Go(func() {
+				buf := make([]byte, 8)
+				_, _ = file.Read(buf)
+			})
+			wg.Go(func() {
+				_, _ = file.Write([]byte("x"))
+			})
+			wg.Go(func() {
+				_, _ = file.Stat()
+			})
+			wg.Go(func() {
+				_, _ = file.Seek(0, io.SeekStart)
+			})
+		}
+		wg.Wait()
+
+		requireNoError(t, file.Close())
+	})
+}
+
+// TestMockFile_ConcurrentLatency_StillSerialized verifies the channel-ticket fix
+// preserves the full per-handle operation atomicity the prior sync.Mutex provided:
+// operations on one *MockFile still fully serialize through each other's simulated
+// latency. Mirrors TestLatencySimulator_Simulate_Concurrency's "default is
+// serialized" case one layer up, at the MockFile method level.
+func TestMockFile_ConcurrentLatency_StillSerialized(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		file := mockfs.NewMockFileFromBytes("test.txt", make([]byte, 64),
+			mockfs.WithFileLatency(testDuration))
+
+		numGoroutines := 3
+		startTimes := make([]time.Time, numGoroutines)
+		endTimes := make([]time.Time, numGoroutines)
+
+		var wg sync.WaitGroup
+		wg.Add(numGoroutines)
+		for i := range numGoroutines {
+			go func(idx int) {
+				defer wg.Done()
+				buf := make([]byte, 4)
+				startTimes[idx] = time.Now()
+				_, _ = file.Read(buf)
+				endTimes[idx] = time.Now()
+			}(i)
+		}
+		wg.Wait()
+
+		minStart := startTimes[0]
+		maxEnd := endTimes[0]
+		for i := 1; i < numGoroutines; i++ {
+			if startTimes[i].Before(minStart) {
+				minStart = startTimes[i]
+			}
+			if endTimes[i].After(maxEnd) {
+				maxEnd = endTimes[i]
+			}
+		}
+
+		totalElapsed := maxEnd.Sub(minStart)
+		expectedMinTotal := testDuration * time.Duration(numGoroutines-1)
+		if totalElapsed < expectedMinTotal {
+			t.Errorf("operations overlapped: elapsed = %v, want >= %v (still fully serialized)", totalElapsed, expectedMinTotal)
+		}
+
+		requireNoError(t, file.Close())
+	})
 }
 
 // --- Benchmarks ---

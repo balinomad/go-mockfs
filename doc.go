@@ -295,6 +295,11 @@
 // Note: Like real filesystems, concurrent modifications and reads may produce
 // non-deterministic ordering. Use synchronization in tests if order matters.
 //
+// Locks that could be held across a simulated-latency sleep (LatencySimulator's
+// internal serialization and each MockFile's per-handle lock) use channel-based
+// tickets rather than sync.Mutex, so combining configured latency with concurrent
+// access — including inside testing/synctest — does not deadlock.
+//
 // # Advanced Usage
 //
 // For advanced patterns including:

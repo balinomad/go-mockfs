@@ -6,7 +6,6 @@ import (
 	"io"
 	"io/fs"
 	"path"
-	"sync"
 	"testing/fstest"
 	"time"
 )
@@ -32,7 +31,7 @@ type MockFile struct {
 	mapFile        *fstest.MapFile                  // The underlying file data.
 	name           string                           // Cleaned name used to open this file (relative to its MockFS).
 	position       int64                            // Current read position in the file.
-	mu             sync.Mutex                       // Protects all mutable state.
+	mu             chan struct{}                    // 1-buffered ticket guarding all mutable state.
 	closed         bool                             // Tracks if the file has been closed.
 	writeMode      writeMode                        // How writes modify the file data.
 	readDirHandler func(int) ([]fs.DirEntry, error) // Handler for ReadDir operations (directories only).
@@ -195,12 +194,23 @@ func newMockFile(
 	return &MockFile{
 		mapFile:        mapFile,
 		name:           name,
+		mu:             newFileLock(),
 		writeMode:      writeMode,
 		injector:       injector,
 		latency:        latencySimulator,
 		readDirHandler: readDirHandler,
 		stats:          stats,
 	}
+}
+
+// newFileLock returns a ready-to-acquire, single-token ticket channel used as
+// f.mu's mutual-exclusion primitive. A real sync.Mutex held across
+// LatencySimulator.Simulate()'s sleep is not durably blocking under
+// testing/synctest (see DECISIONS.md's latency.go entry); this ticket is.
+func newFileLock() chan struct{} {
+	ch := make(chan struct{}, 1)
+	ch <- struct{}{}
+	return ch
 }
 
 // NewMockFile constructs a MockFile with the given MapFile and options.
@@ -305,8 +315,8 @@ func NewMockDir(
 //
 //nolint:nonamedreturns // Deferred function is using the named returns.
 func (f *MockFile) Read(b []byte) (n int, err error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	<-f.mu
+	defer func() { f.mu <- struct{}{} }()
 
 	// Record the result of this operation on exit
 	defer func() { f.stats.Record(OpRead, n, err) }()
@@ -339,8 +349,8 @@ func (f *MockFile) Read(b []byte) (n int, err error) {
 //
 //nolint:nonamedreturns // Deferred function is using the named returns.
 func (f *MockFile) ReadAt(b []byte, off int64) (n int, err error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	<-f.mu
+	defer func() { f.mu <- struct{}{} }()
 
 	// Record the result of this operation on exit
 	defer func() { f.stats.Record(OpRead, n, err) }()
@@ -379,8 +389,8 @@ func (f *MockFile) ReadAt(b []byte, off int64) (n int, err error) {
 //
 //nolint:nonamedreturns // Deferred function is using the named returns.
 func (f *MockFile) Write(b []byte) (n int, err error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	<-f.mu
+	defer func() { f.mu <- struct{}{} }()
 
 	// Record the result of this operation on exit
 	defer func() { f.stats.Record(OpWrite, n, err) }()
@@ -428,8 +438,8 @@ func (f *MockFile) Write(b []byte) (n int, err error) {
 //
 //nolint:nonamedreturns // Deferred function is using the named returns.
 func (f *MockFile) WriteAt(b []byte, off int64) (n int, err error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	<-f.mu
+	defer func() { f.mu <- struct{}{} }()
 
 	// Record the result of this operation on exit
 	defer func() { f.stats.Record(OpWrite, n, err) }()
@@ -476,8 +486,8 @@ func (f *MockFile) WriteAt(b []byte, off int64) (n int, err error) {
 //
 //nolint:nonamedreturns // Deferred function is using the named returns.
 func (f *MockFile) Seek(offset int64, whence int) (n int64, err error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	<-f.mu
+	defer func() { f.mu <- struct{}{} }()
 
 	// Record the result of this operation on exit
 	defer func() { f.stats.Record(OpSeek, 0, err) }()
@@ -521,8 +531,8 @@ func (f *MockFile) Seek(offset int64, whence int) (n int64, err error) {
 //
 //nolint:nonamedreturns // Deferred function is using the named returns.
 func (f *MockFile) ReadDir(n int) (entries []fs.DirEntry, err error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	<-f.mu
+	defer func() { f.mu <- struct{}{} }()
 
 	// Record the result of this operation on exit
 	defer func() { f.stats.Record(OpReadDir, 0, err) }()
@@ -560,8 +570,8 @@ func (f *MockFile) ReadDir(n int) (entries []fs.DirEntry, err error) {
 //
 //nolint:nonamedreturns // Deferred function is using the named returns.
 func (f *MockFile) Stat() (fi fs.FileInfo, err error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	<-f.mu
+	defer func() { f.mu <- struct{}{} }()
 
 	// Record the result of this operation on exit
 	defer func() { f.stats.Record(OpStat, 0, err) }()
@@ -603,8 +613,8 @@ func (f *MockFile) Stat() (fi fs.FileInfo, err error) {
 //
 //nolint:nonamedreturns // Deferred function is using the named returns.
 func (f *MockFile) Close() (err error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+	<-f.mu
+	defer func() { f.mu <- struct{}{} }()
 
 	// Record the result of this operation on exit
 	defer func() { f.stats.Record(OpClose, 0, err) }()
