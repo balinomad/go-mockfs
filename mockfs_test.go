@@ -701,6 +701,66 @@ func TestMockFS_ReadDir(t *testing.T) {
 	}
 }
 
+// TestMockFS_ReadDir_NestedSubdirectory verifies that ReadDir on a directory
+// correctly represents a nested subdirectory as a single directory entry,
+// sourced from the subdirectory's own map entry rather than any of its
+// descendant files. Exercises collectDirEntries's subdirectory-resolution path,
+// which is now deterministic regardless of map iteration order (see
+// DECISIONS.md); previously no test covered this scenario at all.
+func TestMockFS_ReadDir_NestedSubdirectory(t *testing.T) {
+	t.Parallel()
+
+	mfs := mockfs.MustNewMockFS()
+	requireNoError(t, mfs.AddFile("d/file1.txt", "1", 0o644), "AddFile d/file1.txt")
+	requireNoError(t, mfs.AddFile("d/sub/nested.txt", "nested", 0o644), "AddFile d/sub/nested.txt")
+
+	entries, err := mfs.ReadDir("d")
+	requireNoError(t, err, "ReadDir(\"d\")")
+
+	if len(entries) != 2 {
+		t.Fatalf("len(entries) = %d, want 2: %v", len(entries), entries)
+	}
+
+	var gotFile, gotSub fs.DirEntry
+	for _, e := range entries {
+		switch e.Name() {
+		case "file1.txt":
+			gotFile = e
+		case "sub":
+			gotSub = e
+		default:
+			t.Errorf("unexpected entry %q", e.Name())
+		}
+	}
+
+	if gotFile == nil {
+		t.Fatal("missing file1.txt entry")
+	}
+	if gotFile.IsDir() {
+		t.Error("file1.txt: IsDir() = true, want false")
+	}
+
+	if gotSub == nil {
+		t.Fatal("missing sub entry")
+	}
+	if !gotSub.IsDir() {
+		t.Error("sub: IsDir() = false, want true — nested.txt must not appear directly under d")
+	}
+
+	// The subdirectory entry must be sourced from its own map entry, not
+	// synthesized from the nested file
+	wantInfo, err := mfs.Stat("d/sub")
+	requireNoError(t, err, "Stat(\"d/sub\")")
+	gotInfo, err := gotSub.Info()
+	requireNoError(t, err, "sub.Info()")
+	if gotInfo.Mode() != wantInfo.Mode() {
+		t.Errorf("sub Mode() = %v, want %v", gotInfo.Mode(), wantInfo.Mode())
+	}
+	if !gotInfo.ModTime().Equal(wantInfo.ModTime()) {
+		t.Errorf("sub ModTime() = %v, want %v", gotInfo.ModTime(), wantInfo.ModTime())
+	}
+}
+
 // --- SubFS ---
 
 func TestMockFS_Sub(t *testing.T) {

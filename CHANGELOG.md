@@ -42,6 +42,7 @@ Stabilization release: breaking API corrections, a full audit of the panic/error
 
 - `go.mod` requires `go 1.25`. Originally set to `go 1.22` for `bytes.Clone`, the `slices` package, and Go 1.22 loop-variable-capture semantics; raised before release because Go 1.22 — and, by release time, 1.23 and 1.24 — reached end-of-life with no fix available for [GO-2025-3750](https://pkg.go.dev/vuln/GO-2025-3750) (CVE-2025-0913) on any of those branches.
 - CI (`go.yml`) reworked: the package is now verified across ubuntu/macos/windows on both the `go.mod`-pinned and latest stable Go versions, plus a linux/arm64 cross-compile check. See `CONTRIBUTING.md` for the full CI, lint, and build setup.
+- `collectDirEntries` (`mockfs.go`) restructured into two deterministic passes: which of two code paths represented a nested subdirectory in `ReadDir` previously depended on Go's map iteration order — output was always correct either way, but the split made line coverage of the subdirectory-resolution path non-deterministic across test runs. Now a single, order-independent lookup per unique child name. No public API or output change.
 
 ### Documentation
 

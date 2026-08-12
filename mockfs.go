@@ -1139,13 +1139,13 @@ func (m *MockFS) createReadDirHandler(dirPath string) func(int) ([]fs.DirEntry, 
 
 // collectDirEntries returns all directory entries for a directory.
 func (m *MockFS) collectDirEntries(dirPath, prefix string) []fs.DirEntry {
-	seen := make(map[string]bool)
-	entries := make([]fs.DirEntry, 0, 16)
-
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	for p, file := range m.files {
+	// Pass 1: collect the set of unique immediate child names. Set membership
+	// doesn't depend on map iteration order, so this is deterministic.
+	childNames := make(map[string]bool)
+	for p := range m.files {
 		if p == dirPath {
 			continue // Skip the directory itself
 		}
@@ -1161,43 +1161,33 @@ func (m *MockFS) collectDirEntries(dirPath, prefix string) []fs.DirEntry {
 			continue
 		}
 
-		// Only immediate children (no subdirectories)
-		if before, _, ok := strings.Cut(rel, "/"); ok {
-			// This is in a subdirectory, only add the subdirectory once
-			sub := before
-			if seen[sub] {
-				continue
-			}
+		name, _, _ := strings.Cut(rel, "/")
+		childNames[name] = true
+	}
 
-			seen[sub] = true
+	// Pass 2: one authoritative lookup per unique child name, whether the
+	// child is a file or a directory.
+	entries := make([]fs.DirEntry, 0, len(childNames))
+	for name := range childNames {
+		childPath := name
+		if dirPath != "." {
+			childPath = path.Join(dirPath, name)
+		}
 
-			subPath := sub
-			if dirPath != "." {
-				subPath = path.Join(dirPath, sub)
-			}
-
-			// Look up the actual subdirectory entry
-			if subdir, exists := m.files[subPath]; exists {
-				entries = append(entries, &FileInfo{
-					name:    sub,
-					mode:    subdir.Mode,
-					modTime: subdir.ModTime,
-					size:    0,
-				})
-			}
+		child, exists := m.files[childPath]
+		if !exists {
+			// Defensive: unreachable through the public API. Remove, RemoveAll,
+			// Rename, and RemoveEntry all preserve the invariant that a directory
+			// referenced by a descendant has its own map entry.
 			continue
 		}
 
-		// Direct child file
-		if !seen[rel] {
-			seen[rel] = true
-			entries = append(entries, &FileInfo{
-				name:    rel,
-				mode:    file.Mode,
-				modTime: file.ModTime,
-				size:    int64(len(file.Data)),
-			})
-		}
+		entries = append(entries, &FileInfo{
+			name:    name,
+			mode:    child.Mode,
+			modTime: child.ModTime,
+			size:    int64(len(child.Data)),
+		})
 	}
 
 	return entries
