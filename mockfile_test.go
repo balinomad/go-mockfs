@@ -270,44 +270,48 @@ func TestFileOptions(t *testing.T) {
 
 	t.Run("latency", func(t *testing.T) {
 		t.Parallel()
-		file := mockfs.NewMockFileFromString("test.txt", "data", mockfs.WithFileLatency(testDuration))
+		synctest.Test(t, func(t *testing.T) {
+			file := mockfs.NewMockFileFromString("test.txt", "data", mockfs.WithFileLatency(testDuration))
 
-		buf := make([]byte, 4)
-		start := time.Now()
-		_, err := file.Read(buf)
-		requireNoError(t, err)
-		assertDuration(t, start, testDuration, "read with latency")
+			buf := make([]byte, 4)
+			start := time.Now()
+			_, err := file.Read(buf)
+			requireNoError(t, err)
+			assertDuration(t, start, testDuration, "read with latency")
+		})
 	})
 
 	t.Run("per-operation latency", func(t *testing.T) {
 		t.Parallel()
-		inj := mockfs.NewErrorInjector()
-		inj.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrUnexpectedEOF, mockfs.ErrorModeOnce, 0)
-		file := mockfs.NewMockFileFromString("test.txt", "test",
-			mockfs.WithFileErrorInjector(inj),
-			mockfs.WithFilePerOperationLatency(map[mockfs.Operation]time.Duration{
-				mockfs.OpRead:  testDuration,
-				mockfs.OpWrite: testDuration,
-			}))
+		synctest.Test(t, func(t *testing.T) {
+			inj := mockfs.NewErrorInjector()
+			inj.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrUnexpectedEOF, mockfs.ErrorModeOnce, 0)
+			file := mockfs.NewMockFileFromString("test.txt", "test",
+				mockfs.WithFileErrorInjector(inj),
+				mockfs.WithFilePerOperationLatency(map[mockfs.Operation]time.Duration{
+					mockfs.OpRead:  testDuration,
+					mockfs.OpWrite: testDuration,
+				}))
 
-		// First read should fail
-		buf := make([]byte, 4)
-		_, err := file.Read(buf)
-		assertError(t, err, mockfs.ErrUnexpectedEOF, "first read")
+			// First read should fail
+			buf := make([]byte, 4)
+			_, err := file.Read(buf)
+			assertError(t, err, mockfs.ErrUnexpectedEOF, "first read")
 
-		// Second read should succeed with latency
-		start := time.Now()
-		n, err := file.Read(buf)
-		requireNoError(t, err, "second read")
-		if n != 4 {
-			t.Errorf("read n = %d, want 4", n)
-		}
-		assertDuration(t, start, testDuration, "read latency")
+			// Second read should succeed with latency
+			start := time.Now()
+			n, err := file.Read(buf)
+			requireNoError(t, err, "second read")
+			if n != 4 {
+				t.Errorf("read n = %d, want 4", n)
+			}
+			assertDuration(t, start, testDuration, "read latency")
 
-		// Close should not have latency (not in per-op config)
-		start = time.Now()
-		_ = file.Close()
-		assertNoDuration(t, start, "close should be fast")
+			// Close should not have latency (not in per-op config)
+			start = time.Now()
+			_ = file.Close()
+			assertNoDuration(t, start, "close should be fast")
+		})
 	})
 }
 
@@ -855,16 +859,17 @@ func TestMockFile_WriteAt_ReadOnly(t *testing.T) {
 // with the behaviour of Write.
 func TestMockFile_WriteAt_LatencyBeforeError(t *testing.T) {
 	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"),
+			mockfs.WithFileReadOnly(),
+			mockfs.WithFileLatency(testDuration),
+		)
 
-	file := mockfs.NewMockFileFromBytes("test.txt", []byte("data"),
-		mockfs.WithFileReadOnly(),
-		mockfs.WithFileLatency(testDuration),
-	)
-
-	start := time.Now()
-	_, err := file.WriteAt([]byte("X"), 0)
-	assertError(t, err, mockfs.ErrPermission)
-	assertDuration(t, start, testDuration, "WriteAt on read-only file must apply latency before returning error")
+		start := time.Now()
+		_, err := file.WriteAt([]byte("X"), 0)
+		assertError(t, err, mockfs.ErrPermission)
+		assertDuration(t, start, testDuration, "WriteAt on read-only file must apply latency before returning error")
+	})
 }
 
 func TestMockFile_WriteAt_ErrorInjection(t *testing.T) {
@@ -1422,94 +1427,98 @@ func TestMockFile_LatencySimulation(t *testing.T) {
 // TestMockFile_LatencyReset tests that latency state is reset on close.
 func TestMockFile_LatencyReset(t *testing.T) {
 	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		latencySim := mockfs.MustNewLatencySimulator(testDuration)
+		file := mockfs.NewMockFileFromString("test.txt", "test", mockfs.WithFileLatencySimulator(latencySim))
 
-	latencySim := mockfs.MustNewLatencySimulator(testDuration)
-	file := mockfs.NewMockFileFromString("test.txt", "test", mockfs.WithFileLatencySimulator(latencySim))
+		// Read with latency
+		buf := make([]byte, 4)
+		start := time.Now()
+		file.Read(buf)
+		assertDuration(t, start, testDuration, "first read")
 
-	// Read with latency
-	buf := make([]byte, 4)
-	start := time.Now()
-	file.Read(buf)
-	assertDuration(t, start, testDuration, "first read")
-
-	// Close should reset
-	_ = file.Close()
+		// Close should reset
+		_ = file.Close()
+	})
 }
 
 // TestMockFile_LatencyOnceMode tests Once latency mode behavior.
 func TestMockFile_LatencyOnceMode(t *testing.T) {
 	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		latencySim := mockfs.MustNewLatencySimulator(testDuration)
 
-	latencySim := mockfs.MustNewLatencySimulator(testDuration)
+		file := mockfs.NewMockFileFromString("test.txt", "test", mockfs.WithFileLatencySimulator(latencySim))
 
-	file := mockfs.NewMockFileFromString("test.txt", "test", mockfs.WithFileLatencySimulator(latencySim))
+		// First read - should have latency
+		buf := make([]byte, 4)
+		start := time.Now()
+		_, err := file.Read(buf)
+		requireNoError(t, err, "first read")
+		elapsed := time.Since(start)
 
-	// First read - should have latency
-	buf := make([]byte, 4)
-	start := time.Now()
-	_, err := file.Read(buf)
-	requireNoError(t, err, "first read")
-	elapsed := time.Since(start)
-
-	// We expect latency on first call
-	if elapsed < testDuration-tolerance {
-		t.Errorf("first read: expected latency ~%v, got %v", testDuration, elapsed)
-	}
+		// We expect latency on first call
+		if elapsed < testDuration-tolerance {
+			t.Errorf("first read: expected latency ~%v, got %v", testDuration, elapsed)
+		}
+	})
 }
 
 // TestMockFile_LatencySharedSimulator tests sharing latency simulator between files.
 func TestMockFile_LatencySharedSimulator(t *testing.T) {
 	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		sharedLatency := mockfs.MustNewLatencySimulator(testDuration)
 
-	sharedLatency := mockfs.MustNewLatencySimulator(testDuration)
+		file1 := mockfs.NewMockFileFromString("file1.txt", "file1", mockfs.WithFileLatencySimulator(sharedLatency))
+		file2 := mockfs.NewMockFileFromString("file2.txt", "file2", mockfs.WithFileLatencySimulator(sharedLatency))
 
-	file1 := mockfs.NewMockFileFromString("file1.txt", "file1", mockfs.WithFileLatencySimulator(sharedLatency))
-	file2 := mockfs.NewMockFileFromString("file2.txt", "file2", mockfs.WithFileLatencySimulator(sharedLatency))
+		// Both files should experience latency
+		buf := make([]byte, 5)
 
-	// Both files should experience latency
-	buf := make([]byte, 5)
+		start := time.Now()
+		_, err := file1.Read(buf)
+		requireNoError(t, err, "file1 read")
+		assertDuration(t, start, testDuration, "file1 read")
 
-	start := time.Now()
-	_, err := file1.Read(buf)
-	requireNoError(t, err, "file1 read")
-	assertDuration(t, start, testDuration, "file1 read")
-
-	start = time.Now()
-	_, err = file2.Read(buf)
-	requireNoError(t, err, "file2 read")
-	assertDuration(t, start, testDuration, "file2 read")
+		start = time.Now()
+		_, err = file2.Read(buf)
+		requireNoError(t, err, "file2 read")
+		assertDuration(t, start, testDuration, "file2 read")
+	})
 }
 
 // TestMockFile_LatencyCloning tests that files get independent latency simulators.
 func TestMockFile_LatencyCloning(t *testing.T) {
 	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		// Create a MockFS with latency that uses Once mode
+		mfs := mockfs.MustNewMockFS(
+			mockfs.File("file1.txt", "data1"),
+			mockfs.File("file2.txt", "data2"),
+			mockfs.WithLatency(testDuration),
+		)
 
-	// Create a MockFS with latency that uses Once mode
-	mfs := mockfs.MustNewMockFS(
-		mockfs.File("file1.txt", "data1"),
-		mockfs.File("file2.txt", "data2"),
-		mockfs.WithLatency(testDuration),
-	)
+		// Open two files - each should get cloned latency simulator
+		f1, err := mfs.Open("file1.txt")
+		requireNoError(t, err, "open file1")
+		defer f1.Close()
 
-	// Open two files - each should get cloned latency simulator
-	f1, err := mfs.Open("file1.txt")
-	requireNoError(t, err, "open file1")
-	defer f1.Close()
+		f2, err := mfs.Open("file2.txt")
+		requireNoError(t, err, "open file2")
+		defer f2.Close()
 
-	f2, err := mfs.Open("file2.txt")
-	requireNoError(t, err, "open file2")
-	defer f2.Close()
+		// Both files should experience latency independently
+		buf := make([]byte, 5)
 
-	// Both files should experience latency independently
-	buf := make([]byte, 5)
+		start := time.Now()
+		f1.Read(buf)
+		assertDuration(t, start, testDuration, "file1 first read")
 
-	start := time.Now()
-	f1.Read(buf)
-	assertDuration(t, start, testDuration, "file1 first read")
-
-	start = time.Now()
-	f2.Read(buf)
-	assertDuration(t, start, testDuration, "file2 first read")
+		start = time.Now()
+		f2.Read(buf)
+		assertDuration(t, start, testDuration, "file2 first read")
+	})
 }
 
 // --- Concurrency Tests ---
