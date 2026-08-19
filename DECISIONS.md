@@ -16,7 +16,7 @@ Records design and implementation choices that were evaluated and rejected, so t
 
 `StatsRecorder.Record`/`Set`/`SetBytes` are the one deliberate exception, left panicking: every reachable misuse of these three requires implementing a custom filesystem against the exported `StatsRecorder` interface and calling them with invalid data directly — not reachable through `mockfs`'s own constructors or options — and they're called from `defer` at every internal record site, where an `error`-returning signature would break the pattern for a narrow, advanced-only misuse surface.
 
-`ErrorRule.Mode` is exported and unvalidated after construction: `NewErrorRule` now rejects an invalid `ErrorMode` up front, but a caller can still set `rule.Mode = ErrorMode(999)` post-construction and hit the pre-existing panic in `shouldReturnError()` at `CheckAndApply` time. Left open — closing it needs either an unexported field (API change) or a defensive re-check in `shouldReturnError()`; not addressed in rc.3.
+`ErrorRule.Mode`'s post-construction mutability was flagged here during this work, then closed — see "`ErrorRule.Mode` is a method, `AfterN`/`Err` stay plain fields" below.
 
 ## `ErrorInjector` stays a single 13-method interface
 
@@ -98,3 +98,14 @@ Three fixes were evaluated:
 Applied to all `t.Parallel()`-marked real-time latency/duration checks in `mockfile_test.go`: `TestMockFile_LatencyCloning`, `TestMockFile_LatencyReset`, `TestMockFile_LatencyOnceMode`, `TestMockFile_LatencySharedSimulator`, `TestMockFile_WriteAt_LatencyBeforeError`, and both `TestFileOptions` subtests (`latency`, `per-operation latency`). `TestMockFile_LatencyOnceMode`'s check (`elapsed < testDuration-tolerance`) is lower-bound-only and was never actually exposed to this failure mode — only an upper-bound check can fail from overshoot — converted anyway for consistency with the rest of the file, not because it carried the same risk.
 
 `TestMockFile_LatencySimulation` was left on real time: it does not call `t.Parallel()` (its subtests share one file and depend on sequential ordering, marked `//nolint:paralleltest`), so it does not run concurrently with the rest of the package's parallel suite and carries substantially lower exposure to this failure mode.
+
+## `Add*ForAllOps` methods validate `mode` through a shared `validateModeAndAfter`, not inline checks
+
+`AddExactForAllOps`, `AddGlobForAllOps`, `AddRegexpForAllOps`, and `AddAllForAllOps` called `validateAfter(after, mode)` directly, bypassing the `mode.IsValid()` check `NewErrorRule` performs before calling that same function. `AddExact`, `AddGlob`, `AddRegexp`, and `AddAll` were unaffected only because they happen to route through `NewErrorRule` — not from any explicit decision to validate mode for four of the eight methods and not the other four. An invalid `ErrorMode` passed to any of the four `*ForAllOps` methods fell through `validateAfter`'s `default: return 0, nil` branch, was accepted silently, and only surfaced later as a panic inside `CheckAndApply` → `shouldReturnError()`'s `default` case — the third time a mode-validation gap in this file has reached that same panic, after `NewErrorRule`'s original missing check (closed pre-rc.3) and `ErrorRule.Mode`'s post-construction mutability (see "`ErrorRule.Mode` is a method, `AfterN`/`Err` stay plain fields" above).
+
+Two fixes were evaluated:
+
+1. **Add `if !mode.IsValid() { return ... }` inline to each of the four functions.** Rejected: same shape of omission that caused the bug — the check would live at four separate call sites instead of one, so a ninth function added later to this file could repeat the mistake exactly as these four did relative to `NewErrorRule`.
+2. **Extract a shared `validateModeAndAfter(mode ErrorMode, after int) (uint64, error)`, used by `NewErrorRule` and all four `*ForAllOps` methods.** Adopted. Makes "mode invalid" and "after negative for a mode that reads it" one validation contract enforced in one place; nothing can get one check without the other. `validateAfter` is unchanged and now has a single caller (`validateModeAndAfter`).
+
+No regression: checked every call site of these eight methods across `error_test.go`, `mockfs_test.go`, and `mockfile_test.go` — none passes an invalid mode or negative `after`, so no previously-passing call starts failing.

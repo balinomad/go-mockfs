@@ -834,7 +834,8 @@ func TestErrorInjector_EdgeCases(t *testing.T) {
 
 // TestErrorInjector_AfterParameter verifies that all functions accepting 'after'
 // work correctly with valid values (>= 0). This indirectly confirms they call
-// mustAfter, which is tested separately for panic behavior.
+// validateAfter (via validateModeAndAfter for the four *ForAllOps variants),
+// which is tested for its error path separately in TestErrorInjector_InvalidModeAfter.
 func TestErrorInjector_AfterParameter(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -897,6 +898,74 @@ func TestErrorInjector_AfterParameter(t *testing.T) {
 			inj := mockfs.NewErrorInjector()
 			// Should not panic with valid after values
 			tt.fn(inj)
+		})
+	}
+}
+
+// TestErrorInjector_InvalidModeAfter verifies that all eight ErrorInjector
+// methods accepting mode and after reject an invalid ErrorMode and a negative
+// after (for ErrorModeAfterSuccesses/ErrorModeNext) with an error wrapping
+// ErrUsage. AddExactForAllOps, AddGlobForAllOps, AddRegexpForAllOps, and
+// AddAllForAllOps previously validated only after, not mode — an invalid mode
+// was silently accepted and only surfaced later as a panic inside
+// CheckAndApply. This pins the fix (validateModeAndAfter).
+func TestErrorInjector_InvalidModeAfter(t *testing.T) {
+	t.Parallel()
+
+	fns := []struct {
+		name string
+		fn   func(ei mockfs.ErrorInjector, mode mockfs.ErrorMode, after int) error
+	}{
+		{"AddExact", func(ei mockfs.ErrorInjector, mode mockfs.ErrorMode, after int) error {
+			return ei.AddExact(mockfs.OpRead, "test.txt", mockfs.ErrNotExist, mode, after)
+		}},
+		{"AddGlob", func(ei mockfs.ErrorInjector, mode mockfs.ErrorMode, after int) error {
+			return ei.AddGlob(mockfs.OpRead, "*.txt", mockfs.ErrNotExist, mode, after)
+		}},
+		{"AddRegexp", func(ei mockfs.ErrorInjector, mode mockfs.ErrorMode, after int) error {
+			return ei.AddRegexp(mockfs.OpRead, ".*", mockfs.ErrNotExist, mode, after)
+		}},
+		{"AddAll", func(ei mockfs.ErrorInjector, mode mockfs.ErrorMode, after int) error {
+			return ei.AddAll(mockfs.OpRead, mockfs.ErrNotExist, mode, after)
+		}},
+		{"AddExactForAllOps", func(ei mockfs.ErrorInjector, mode mockfs.ErrorMode, after int) error {
+			return ei.AddExactForAllOps("test.txt", mockfs.ErrNotExist, mode, after)
+		}},
+		{"AddGlobForAllOps", func(ei mockfs.ErrorInjector, mode mockfs.ErrorMode, after int) error {
+			return ei.AddGlobForAllOps("*.txt", mockfs.ErrNotExist, mode, after)
+		}},
+		{"AddRegexpForAllOps", func(ei mockfs.ErrorInjector, mode mockfs.ErrorMode, after int) error {
+			return ei.AddRegexpForAllOps(".*", mockfs.ErrNotExist, mode, after)
+		}},
+		{"AddAllForAllOps", func(ei mockfs.ErrorInjector, mode mockfs.ErrorMode, after int) error {
+			return ei.AddAllForAllOps(mockfs.ErrNotExist, mode, after)
+		}},
+	}
+
+	cases := []struct {
+		name  string
+		mode  mockfs.ErrorMode
+		after int
+	}{
+		{"invalid mode", mockfs.ErrorMode(999), 0},
+		{"negative after, AfterSuccesses", mockfs.ErrorModeAfterSuccesses, -1},
+		{"negative after, Next", mockfs.ErrorModeNext, -1},
+	}
+
+	for _, fn := range fns {
+		t.Run(fn.name, func(t *testing.T) {
+			t.Parallel()
+			for _, c := range cases {
+				t.Run(c.name, func(t *testing.T) {
+					t.Parallel()
+					inj := mockfs.NewErrorInjector()
+					err := fn.fn(inj, c.mode, c.after)
+					assertAnyError(t, err, fn.name+"/"+c.name)
+					if !errors.Is(err, mockfs.ErrUsage) {
+						t.Errorf("%s/%s: err = %v, want wrapping ErrUsage", fn.name, c.name, err)
+					}
+				})
+			}
 		})
 	}
 }

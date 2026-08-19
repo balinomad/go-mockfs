@@ -37,6 +37,7 @@ Stabilization release: breaking API corrections, a full audit of the panic/error
 - `MockFS.ReadFile` unconditionally wrapped its result with `fmt.Errorf("mockfs: %w", err)`, producing `%!w(<nil>)` on every successful call.
 - Serialized-mode latency simulation (`WithLatency`/`WithPerOperationLatency` — the default, and the only mode `MockFS`/`MockFile` use internally) held an internal mutex across the simulated delay, which deadlocks under `testing/synctest`: `sync.Mutex` waits are never durably blocking in a bubble. Replaced with a channel-based ticket for serialization; behavior under real time is unchanged (`latency.go`).
 - `(*MockFile)`'s locked methods (`Read`, `ReadAt`, `Write`, `WriteAt`, `Seek`, `ReadDir`, `Stat`, `Close`) held `f.mu` — a `sync.Mutex` — across `LatencySimulator.Simulate()`'s sleep, the same `testing/synctest` deadlock class as the `latency.go` fix above; any consumer combining configured latency with concurrent calls into the same file handle inside their own `synctest.Test` could hang. `f.mu` replaced with a channel-based ticket, same acquire/hold/release discipline as before; behavior under real time is unchanged (`mockfile.go`).
+- `AddExactForAllOps`, `AddGlobForAllOps`, `AddRegexpForAllOps`, and `AddAllForAllOps` validated `after` but not `mode`: an invalid `ErrorMode` was silently accepted and only surfaced later as a panic inside `CheckAndApply` → `shouldReturnError`, instead of failing at the call that misused it. `AddExact`, `AddGlob`, `AddRegexp`, and `AddAll` were unaffected — they validate both via `NewErrorRule`. Fixed by extracting `validateModeAndAfter`, now used by all eight methods and by `NewErrorRule` itself (`error.go`).
 
 ### Changed
 
@@ -44,6 +45,7 @@ Stabilization release: breaking API corrections, a full audit of the panic/error
 - CI (`go.yml`) reworked: the package is now verified across ubuntu/macos/windows on both the `go.mod`-pinned and latest stable Go versions, plus a linux/arm64 cross-compile check. See `CONTRIBUTING.md` for the full CI, lint, and build setup.
 - `collectDirEntries` (`mockfs.go`) restructured into two deterministic passes: which of two code paths represented a nested subdirectory in `ReadDir` previously depended on Go's map iteration order — output was always correct either way, but the split made line coverage of the subdirectory-resolution path non-deterministic across test runs. Now a single, order-independent lookup per unique child name. No public API or output change.
 - `mockfile_test.go`: six `t.Parallel()` real-time latency assertions (`TestMockFile_LatencyCloning`, `TestMockFile_LatencyReset`, `TestMockFile_LatencyOnceMode`, `TestMockFile_LatencySharedSimulator`, `TestMockFile_WriteAt_LatencyBeforeError`, both `TestFileOptions` latency subtests) moved into `synctest.Test`, matching the existing `latency_test.go` pattern. They asserted real wall-clock duration against a ±20ms tolerance; under `-race -shuffle=on` CI load, ordinary scheduler contention exceeded it — confirmed as the cause of a `TestMockFile_LatencyCloning` failure (`file2 first read: expected duration 50ms (±20ms), got 111.9061ms`), not a logic defect. No test behavior or coverage change.
+- `error_test.go`: added `TestErrorInjector_InvalidModeAfter`, closing the coverage gap on all eight `ErrorInjector` validation-error returns (`AddExact`, `AddGlob`, `AddRegexp`, `AddAll`, and their `*ForAllOps` variants) for an invalid `mode` and a negative `after`; corrected `TestErrorInjector_AfterParameter`'s doc comment, which referenced a `mustAfter` helper that no longer exists in this codebase.
 
 ### Documentation
 
@@ -52,6 +54,7 @@ Stabilization release: breaking API corrections, a full audit of the panic/error
 - `USAGE.md`: added a "Prefer OpenMockFile Over Type Assertions" best practice.
 - `doc.go`: "Panic Policy" section rewritten to describe the testing-error/usage-error/internal-invariant model and the new `Must*` constructors; `Basic Usage`, `Latency Simulation`, `Write Operations`, `SubFS Support`, and the `Statistics` example updated to `MustNewMockFS`.
 - `README.md`, `USAGE.md`, `MIGRATION-v1-to-v2.md`: examples updated for the `NewMockFS`/`NewMockFile`/`NewLatencySimulator`/`NewLatencySimulatorPerOp`/`NewFileInfo` signature change.
+- `error.go`: `ErrorInjector`'s eight `Add*`/`Add*ForAllOps` method docs now note they return an error for an invalid `mode`, not just a negative `after`.
 
 ## [2.0.0-rc.2] 2025-12-04
 
