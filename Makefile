@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 
-.PHONY: tidy upgrade lint test fulltest bench cover fullcover cyclo fullcyclo examples
+.PHONY: tidy upgrade lint test fulltest bench cover fullcover cyclo fullcyclo check examples
 
 tidy:
 	go mod tidy
@@ -50,6 +50,15 @@ cyclo:
 fullcyclo:
 	@clear
 	@gocyclo . || true
+
+check:
+	go get -u ./...
+	go mod tidy
+	go vet ./...
+	go build ./...
+	golangci-lint run ./...
+	govulncheck ./...
+	go test -race -count=1 -shuffle=on -timeout 30s ./...
 
 examples:
 	go test -v -run Example
