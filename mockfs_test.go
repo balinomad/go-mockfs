@@ -551,17 +551,82 @@ func TestMockFS_Open(t *testing.T) {
 	})
 }
 
-func TestMockFS_ReadFile(t *testing.T) {
+// TestMockFS_OpenMockFile verifies OpenMockFile: it must return the concrete
+// *MockFile directly (usable without a type assertion) on success, and must
+// propagate Open's error verbatim — including an injected error — on failure.
+func TestMockFS_OpenMockFile(t *testing.T) {
 	t.Parallel()
-
-	injectedErr := errors.New("injected")
 
 	tests := []struct {
 		name    string
 		setup   func(*mockfs.MockFS)
 		path    string
 		wantErr error
-		want    string
+	}{
+		{
+			name: "success",
+			setup: func(m *mockfs.MockFS) {
+				_ = m.AddFile("a.txt", "data", 0o644)
+			},
+			path: "a.txt",
+		},
+		{
+			name:    "non-existent",
+			path:    "missing.txt",
+			wantErr: mockfs.ErrNotExist,
+		},
+		{
+			name: "injected open error",
+			setup: func(m *mockfs.MockFS) {
+				_ = m.AddFile("file.txt", "data", 0o644)
+				m.FailOpen("file.txt", mockfs.ErrPermission)
+			},
+			path:    "file.txt",
+			wantErr: mockfs.ErrPermission,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			mfs := mockfs.MustNewMockFS()
+			if tt.setup != nil {
+				tt.setup(mfs)
+			}
+
+			mf, err := mfs.OpenMockFile(tt.path)
+			if tt.wantErr != nil {
+				assertError(t, err, tt.wantErr)
+				return
+			}
+			requireNoError(t, err)
+			defer func() { _ = mf.Close() }()
+
+			data, err := io.ReadAll(mf)
+			requireNoError(t, err)
+			if string(data) != "data" {
+				t.Errorf("content = %q, want %q", data, "data")
+			}
+			if mf.Stats().Count(mockfs.OpRead) == 0 {
+				t.Error("OpenMockFile did not return a usable *MockFile: Stats() not tracking Read")
+			}
+		})
+	}
+}
+
+func TestMockFS_ReadFile(t *testing.T) {
+	t.Parallel()
+
+	injectedErr := errors.New("injected")
+	closeErr := errors.New("close failed")
+
+	tests := []struct {
+		name          string
+		setup         func(*mockfs.MockFS)
+		path          string
+		wantErr       error
+		wantJoinedErr error // if set, err must also satisfy errors.Is against this
+		want          string
 	}{
 		{
 			name: "success",
@@ -593,6 +658,26 @@ func TestMockFS_ReadFile(t *testing.T) {
 			path:    "../invalid",
 			wantErr: mockfs.ErrInvalid,
 		},
+		{
+			name: "close error after successful read",
+			setup: func(m *mockfs.MockFS) {
+				_ = m.AddFile("close-fail.txt", "data", 0o644)
+				m.FailClose("close-fail.txt", closeErr)
+			},
+			path:    "close-fail.txt",
+			wantErr: closeErr,
+		},
+		{
+			name: "close error joined with read error",
+			setup: func(m *mockfs.MockFS) {
+				_ = m.AddFile("both-fail.txt", "data", 0o644)
+				m.FailRead("both-fail.txt", injectedErr)
+				m.FailClose("both-fail.txt", closeErr)
+			},
+			path:          "both-fail.txt",
+			wantErr:       injectedErr,
+			wantJoinedErr: closeErr,
+		},
 	}
 
 	for _, tt := range tests {
@@ -606,6 +691,9 @@ func TestMockFS_ReadFile(t *testing.T) {
 			data, err := mfs.ReadFile(tt.path)
 			if tt.wantErr != nil {
 				assertError(t, err, tt.wantErr)
+				if tt.wantJoinedErr != nil && !errors.Is(err, tt.wantJoinedErr) {
+					t.Errorf("expected error to also wrap %q via errors.Is, got %q", tt.wantJoinedErr, err)
+				}
 				return
 			}
 			requireNoError(t, err)
@@ -758,6 +846,61 @@ func TestMockFS_ReadDir_NestedSubdirectory(t *testing.T) {
 	}
 	if !gotInfo.ModTime().Equal(wantInfo.ModTime()) {
 		t.Errorf("sub ModTime() = %v, want %v", gotInfo.ModTime(), wantInfo.ModTime())
+	}
+}
+
+// TestMockFS_ReadDir_Pagination verifies that a directory file handle's
+// ReadDir(n) correctly paginates MockFS-backed entries: a partial batch that
+// doesn't reach the end, the final batch reaching the end (returned together
+// with io.EOF), and a subsequent call once already past the end (empty slice,
+// io.EOF). Exercises createReadDirClosure, which backs MockFS directories —
+// a separate implementation from NewDirHandler's handler in mockfile.go,
+// already covered by TestNewDirHandler.
+func TestMockFS_ReadDir_Pagination(t *testing.T) {
+	t.Parallel()
+
+	mfs := mockfs.MustNewMockFS(
+		mockfs.Dir("d",
+			mockfs.File("a.txt", "1"),
+			mockfs.File("b.txt", "2"),
+			mockfs.File("c.txt", "3"),
+		),
+	)
+
+	dir, err := mfs.OpenMockFile("d")
+	requireNoError(t, err, "OpenMockFile(\"d\")")
+	defer func() { _ = dir.Close() }()
+
+	// First page: partial batch, more remains.
+	entries, err := dir.ReadDir(1)
+	requireNoError(t, err, "page 1")
+	if len(entries) != 1 || entries[0].Name() != "a.txt" {
+		t.Fatalf("page 1 = %v, want [a.txt]", entries)
+	}
+
+	// Second page: partial batch, more remains.
+	entries, err = dir.ReadDir(1)
+	requireNoError(t, err, "page 2")
+	if len(entries) != 1 || entries[0].Name() != "b.txt" {
+		t.Fatalf("page 2 = %v, want [b.txt]", entries)
+	}
+
+	// Third page: final entry, batch returned together with io.EOF.
+	entries, err = dir.ReadDir(1)
+	if !errors.Is(err, io.EOF) {
+		t.Errorf("page 3: err = %v, want io.EOF", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "c.txt" {
+		t.Fatalf("page 3 = %v, want [c.txt]", entries)
+	}
+
+	// Fourth page: already past the end, empty slice with io.EOF.
+	entries, err = dir.ReadDir(1)
+	if !errors.Is(err, io.EOF) {
+		t.Errorf("page 4: err = %v, want io.EOF", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("page 4 = %v, want empty", entries)
 	}
 }
 
@@ -1807,6 +1950,20 @@ func TestMockFS_ErrorInjection_Next(t *testing.T) {
 	_, err := f.Read(buf)
 	if err != nil {
 		t.Errorf("read 4: expected success, got %v", err)
+	}
+}
+
+// TestMockFS_FailReadNext_NegativeCount verifies that FailReadNext rejects a
+// negative count with an error wrapping ErrUsage, instead of silently
+// constructing an unusable rule.
+func TestMockFS_FailReadNext_NegativeCount(t *testing.T) {
+	t.Parallel()
+
+	mfs := mockfs.MustNewMockFS(mockfs.File("file.txt", "data"))
+	err := mfs.FailReadNext("file.txt", io.EOF, -1)
+	assertAnyError(t, err, "FailReadNext() negative count")
+	if !errors.Is(err, mockfs.ErrUsage) {
+		t.Errorf("err = %v, want wrapping ErrUsage", err)
 	}
 }
 

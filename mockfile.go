@@ -610,8 +610,6 @@ func (f *MockFile) Stat() (fi fs.FileInfo, err error) {
 //
 // Close returns fs.ErrClosed if called multiple times, allowing tests to detect
 // double-close bugs.
-//
-//nolint:nonamedreturns // Deferred function is using the named returns.
 func (f *MockFile) Close() (err error) {
 	<-f.mu
 	defer func() { f.mu <- struct{}{} }()

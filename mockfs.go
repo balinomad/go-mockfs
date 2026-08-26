@@ -863,8 +863,6 @@ func (m *MockFS) ResetStats() {
 // --- WritableFS Implementation ---
 
 // Mkdir creates a directory in the filesystem.
-//
-//nolint:nonamedreturns // Deferred function is using the named returns.
 func (m *MockFS) Mkdir(dirPath string, perm FileMode) (err error) {
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpMkdir, 0, err) }()
@@ -892,8 +890,6 @@ func (m *MockFS) Mkdir(dirPath string, perm FileMode) (err error) {
 }
 
 // MkdirAll creates a directory path and all parents if needed.
-//
-//nolint:nonamedreturns // Deferred function is using the named returns.
 func (m *MockFS) MkdirAll(dirPath string, perm FileMode) (err error) {
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpMkdirAll, 0, err) }()
@@ -918,8 +914,6 @@ func (m *MockFS) MkdirAll(dirPath string, perm FileMode) (err error) {
 
 // Remove removes a file or directory from the filesystem.
 // Directories must be empty to be removed.
-//
-//nolint:nonamedreturns // Deferred function is using the named returns.
 func (m *MockFS) Remove(filePath string) (err error) {
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpRemove, 0, err) }()
@@ -959,8 +953,6 @@ func (m *MockFS) Remove(filePath string) (err error) {
 }
 
 // RemoveAll removes a path and any children recursively.
-//
-//nolint:nonamedreturns // Deferred function is using the named returns.
 func (m *MockFS) RemoveAll(filePath string) (err error) {
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpRemoveAll, 0, err) }()
@@ -993,8 +985,6 @@ func (m *MockFS) RemoveAll(filePath string) (err error) {
 
 // Rename renames a file or directory in the filesystem.
 // If the destination already exists, it will be overwritten.
-//
-//nolint:nonamedreturns // Deferred function is using the named returns.
 func (m *MockFS) Rename(oldpath, newpath string) (err error) {
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpRename, 0, err) }()
@@ -1052,8 +1042,6 @@ func (m *MockFS) Rename(oldpath, newpath string) (err error) {
 }
 
 // WriteFile writes data to a file in the filesystem.
-//
-//nolint:nonamedreturns // Deferred function is using the named returns.
 func (m *MockFS) WriteFile(filePath string, data []byte, perm FileMode) (err error) {
 	// Record the result of this operation on exit
 	defer func() {
