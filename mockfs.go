@@ -863,7 +863,9 @@ func (m *MockFS) ResetStats() {
 // --- WritableFS Implementation ---
 
 // Mkdir creates a directory in the filesystem.
-func (m *MockFS) Mkdir(dirPath string, perm FileMode) (err error) {
+func (m *MockFS) Mkdir(dirPath string, perm FileMode) error {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpMkdir, 0, err) }()
 
@@ -890,7 +892,9 @@ func (m *MockFS) Mkdir(dirPath string, perm FileMode) (err error) {
 }
 
 // MkdirAll creates a directory path and all parents if needed.
-func (m *MockFS) MkdirAll(dirPath string, perm FileMode) (err error) {
+func (m *MockFS) MkdirAll(dirPath string, perm FileMode) error {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpMkdirAll, 0, err) }()
 
@@ -914,7 +918,9 @@ func (m *MockFS) MkdirAll(dirPath string, perm FileMode) (err error) {
 
 // Remove removes a file or directory from the filesystem.
 // Directories must be empty to be removed.
-func (m *MockFS) Remove(filePath string) (err error) {
+func (m *MockFS) Remove(filePath string) error {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpRemove, 0, err) }()
 
@@ -953,7 +959,9 @@ func (m *MockFS) Remove(filePath string) (err error) {
 }
 
 // RemoveAll removes a path and any children recursively.
-func (m *MockFS) RemoveAll(filePath string) (err error) {
+func (m *MockFS) RemoveAll(filePath string) error {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpRemoveAll, 0, err) }()
 
@@ -985,7 +993,9 @@ func (m *MockFS) RemoveAll(filePath string) (err error) {
 
 // Rename renames a file or directory in the filesystem.
 // If the destination already exists, it will be overwritten.
-func (m *MockFS) Rename(oldpath, newpath string) (err error) {
+func (m *MockFS) Rename(oldpath, newpath string) error {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpRename, 0, err) }()
 
@@ -1042,7 +1052,9 @@ func (m *MockFS) Rename(oldpath, newpath string) (err error) {
 }
 
 // WriteFile writes data to a file in the filesystem.
-func (m *MockFS) WriteFile(filePath string, data []byte, perm FileMode) (err error) {
+func (m *MockFS) WriteFile(filePath string, data []byte, perm FileMode) error {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() {
 		written := 0

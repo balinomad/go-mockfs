@@ -610,9 +610,11 @@ func (f *MockFile) Stat() (fi fs.FileInfo, err error) {
 //
 // Close returns fs.ErrClosed if called multiple times, allowing tests to detect
 // double-close bugs.
-func (f *MockFile) Close() (err error) {
+func (f *MockFile) Close() error {
 	<-f.mu
 	defer func() { f.mu <- struct{}{} }()
+
+	var err error
 
 	// Record the result of this operation on exit
 	defer func() { f.stats.Record(OpClose, 0, err) }()
