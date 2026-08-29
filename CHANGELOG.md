@@ -56,7 +56,7 @@ Stabilization release: breaking API corrections, a full audit of the panic/error
 - `README.md`, `USAGE.md`, `MIGRATION-v1-to-v2.md`: examples updated for the `NewMockFS`/`NewMockFile`/`NewLatencySimulator`/`NewLatencySimulatorPerOp`/`NewFileInfo` signature change.
 - `error.go`: `ErrorInjector`'s eight `Add*`/`Add*ForAllOps` method docs now note they return an error for an invalid `mode`, not just a negative `after`.
 
-## [2.0.0-rc.2] 2025-12-04
+## [2.0.0-rc.2] - 2025-12-04
 
 ### Breaking changes
 

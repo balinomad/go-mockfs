@@ -44,8 +44,8 @@ Every `//nolint` directive must name the specific linter and give a reason (`nol
 `.github/workflows/go.yml` runs on push and pull request against `master`, `v1`, and `v2`, with these jobs:
 
 - `mod-tidy` — fails if `go mod tidy` would change `go.mod` or `go.sum`.
-- `lint` — `golangci-lint`, pinned to `v2.2.0` for reproducibility.
-- `vulncheck` — `govulncheck`, pinned to `v1.3.0`, against the Go vulnerability database.
+- `lint` — `golangci-lint`, pinned to `v2.12.0` for reproducibility.
+- `vulncheck` — `govulncheck`, pinned to `v1.1.4`, against the Go vulnerability database.
 - `build` — cross-compiles for `linux/arm64` (tests run on `linux/amd64`; the deployment target is `arm64`).
 - `test` — matrix across `ubuntu-latest`, `macos-latest`, and `windows-latest`, on both the `go.mod`-pinned and latest stable Go versions; `-race -shuffle=on` with coverage on Linux, uploaded to Codecov.
 - `ci-gate` — required status check; fails if any job above failed or was cancelled.
