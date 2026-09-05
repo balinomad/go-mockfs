@@ -3,7 +3,6 @@
 [![Size](https://img.shields.io/github/languages/code-size/balinomad/go-mockfs)](https://github.com/balinomad/go-mockfs)
 [![License](https://img.shields.io/github/license/balinomad/go-mockfs)](./LICENSE)
 [![Go](https://github.com/balinomad/go-mockfs/actions/workflows/go.yml/badge.svg?branch=v2)](https://github.com/balinomad/go-mockfs/actions/workflows/go.yml?query=branch%3Av2)
-[![Go Report Card](https://goreportcard.com/badge/github.com/balinomad/go-mockfs/v2)](https://goreportcard.com/report/github.com/balinomad/go-mockfs/v2)
 [![codecov](https://codecov.io/github/balinomad/go-mockfs/graph/badge.svg?token=L1K68IIN51&branch=v2)](https://codecov.io/github/balinomad/go-mockfs?branch=v2)
 
 # mockfs
@@ -12,7 +11,7 @@ _A flexible and feature-rich mock filesystem for Go testing, built on `testing/f
 
 ## Overview
 
-`mockfs` enables robust testing of filesystem-dependent code by providing a complete in-memory filesystem with precise control over behavior, errors, and performance characteristics. It implements Go's standard `fs` interfaces and adds powerful testing capabilities designed for both experienced Go developers and those new to filesystem testing.
+`mockfs` enables testing of filesystem-dependent code by providing a complete in-memory filesystem with precise control over behavior, errors, and performance characteristics. It implements Go's standard `fs` interfaces and adds powerful testing capabilities designed for both experienced Go developers and those new to filesystem testing.
 
 Built for testing scenarios that require:
 
@@ -44,7 +43,7 @@ go get github.com/balinomad/go-mockfs/v2@latest
 
 ### Basic Usage
 
-`NewMockFS`, `NewMockFile`, `NewLatencySimulator`, `NewLatencySimulatorPerOp`, and `NewFileInfo` return `(T, error)` for invalid setup (bad path, nil MapFile, negative duration, ...) — check with `errors.Is(err, mockfs.ErrUsage)`. Each has a `Must*` counterpart (`MustNewMockFS`, etc.) that panics instead; the examples below use it, since a setup mistake here is a bug in the test itself, not something to check `err` for.
+`NewMockFS`, `NewMockFile`, `NewLatencySimulator`, `NewLatencySimulatorPerOp`, and `NewFileInfo` return `(T, error)` for invalid setup: bad path, nil MapFile, or negative duration. Check this with `errors.Is(err, mockfs.ErrUsage)`. Each also has a `Must*` counterpart, for example `MustNewMockFS`. A `Must*` function panics. It does not return an error. The examples below use the `Must*` form. A setup mistake here is a bug in the test itself, not a condition to check `err` for.
 
 ```go
 package main_test
@@ -152,7 +151,7 @@ mockFile.Stats().Count(mockfs.OpRead)  // File handle: 1 read
 file.(*mockfs.MockFile).Stats().Count(mockfs.OpRead)
 ```
 
-Fluent assertions are available for either `Stats` value:
+Either `Stats` value offers fluent assertions:
 
 ```go
 mfs.Stats().Expect().
@@ -214,6 +213,7 @@ mfs = mockfs.MustNewMockFS(mockfs.WithPerOperationLatency(
 - **[API Reference](https://pkg.go.dev/github.com/balinomad/go-mockfs/v2)** – Complete API documentation on pkg.go.dev
 - **[Usage Guide](USAGE.md)** – Advanced patterns, best practices, and real-world examples
 - **[Migration Guide](MIGRATION-v1-to-v2.md)** – Upgrading from v1 to v2
+- **[Design Decisions](DECISIONS.md)** – Rejected alternatives and rationale for contested implementation choices
 - **[Changelog](CHANGELOG.md)** – Release history and breaking changes
 
 ## Examples

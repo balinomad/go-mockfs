@@ -2,7 +2,7 @@
 // on [testing/fstest.MapFS].
 //
 // MockFS extends the standard library's mock capabilities with critical
-// features for robust testing, including:
+// features for testing, including:
 //   - Configurable error injection for any filesystem operation and path.
 //   - Simulated latency to test timeout and race condition handling.
 //   - Operation counters for verifying filesystem access patterns.
@@ -13,7 +13,7 @@
 // # Target Audience
 //
 // This library is designed for both experienced Go developers and those new to
-// filesystem testing. It follows Go conventions while providing comprehensive
+// filesystem testing. It follows Go conventions and provides comprehensive
 // features for testing complex I/O scenarios.
 //
 // # Basic Usage
@@ -121,8 +121,8 @@
 //   - Async(): Non-blocking (releases lock before sleeping)
 //   - OnceAsync(): Combines both Once and Async
 //
-// Each opened file gets an independent latency simulator (cloned from the
-// filesystem's simulator), ensuring file handles have independent Once() state.
+// Each opened file gets an independent latency simulator, cloned from the
+// filesystem's simulator. This gives each file handle independent Once() state.
 //
 // # Write Operations
 //
@@ -171,7 +171,8 @@
 // # SubFS Support
 //
 // Full fs.SubFS implementation with automatic path adjustment for error rules.
-// Passing "." returns the same MockFS (matching stdlib fs.Sub behaviour):
+// Passing "." returns the same MockFS. This matches standard library fs.Sub
+// behaviour:
 //
 //	mfs := mockfs.MustNewMockFS(
 //	    mockfs.Dir("app",
@@ -236,51 +237,57 @@
 //
 // This package distinguishes three kinds of failure:
 //
-//   - Testing errors — the actual failures under test (missing files,
-//     permission denials, injected faults from [ErrorInjector] or a FailX
-//     method). Returned as a plain error value, unwrapped, exactly as
-//     configured. Check with [errors.Is] against the configured error; this
-//     is the primary mechanism the package exists to exercise.
+//   - Testing errors — the actual failures under test: missing files,
+//     permission denials, or injected faults from [ErrorInjector] or a FailX
+//     method. The package returns it as a plain error value, unwrapped,
+//     exactly as configured. Check it with [errors.Is] against the
+//     configured error. This is the primary mechanism the package exists to
+//     exercise.
 //
 //   - Usage errors — mistakes in the test setup code itself, not the code
-//     under test: an invalid path passed to [File] or [Dir], a nil MapFile,
-//     a negative latency, an invalid [NewFileInfo] argument, or an invalid
-//     ErrorMode or negative "after" passed to [NewErrorRule]. The
-//     constructor returns an error wrapping [ErrUsage]:
+//     under test. Examples: an invalid path passed to [File] or [Dir], a nil
+//     MapFile, a negative latency, an invalid [NewFileInfo] argument, or an
+//     invalid ErrorMode or a negative "after" passed to [NewErrorRule]. The
+//     constructor returns an error that wraps [ErrUsage]:
 //     errors.Is(err, mockfs.ErrUsage).
 //
 //     [NewMockFS], [NewMockFile], [NewLatencySimulator],
 //     [NewLatencySimulatorPerOp], and [NewFileInfo] each have a Must*
-//     counterpart ([MustNewMockFS], [MustNewMockFile],
-//     [MustNewLatencySimulator], [MustNewLatencySimulatorPerOp],
-//     [MustNewFileInfo]) that panics with that same error instead of
-//     returning it, following the standard library's Must convention
-//     ([regexp.MustCompile], [template.Must]). Prefer Must* for ordinary
-//     test setup — a usage error there is a bug in the test, and a panic
-//     with a full stack trace is faster to diagnose than an error return
-//     the test forgets to check. Use the plain form when the caller
-//     genuinely needs to handle the failure, e.g. building a MockFS from
-//     configuration that isn't a compile-time constant.
+//     counterpart: [MustNewMockFS], [MustNewMockFile],
+//     [MustNewLatencySimulator], [MustNewLatencySimulatorPerOp], and
+//     [MustNewFileInfo]. A Must* function panics with the same error instead
+//     of returning it. This follows the standard library's Must convention,
+//     for example [regexp.MustCompile] and [template.Must]. Prefer Must* for
+//     ordinary test setup. A usage error there is a bug in the test itself.
+//     A panic with a full stack trace is faster to diagnose than an error
+//     return the test forgets to check. When the caller genuinely needs to
+//     handle the failure, use the plain form. For example, use it when
+//     building a MockFS from configuration that isn't a compile-time
+//     constant.
 //
-//   - Internal invariants — conditions unreachable through the public API,
-//     indicating a bug in mockfs itself rather than the caller. These
-//     always panic, with no error-returning form:
+//   - Internal invariants — conditions unreachable through the public API.
+//     These indicate a bug in mockfs itself, not the caller. These always
+//     panic, with no error-returning form:
 //     [StatsRecorder.Record]: operation constant is out of range.
 //     [StatsRecorder.Set]: operation is out of range, failures is negative,
 //     or failures exceeds total.
-//     [StatsRecorder.SetBytes]: read or written is negative.//
+//     [StatsRecorder.SetBytes]: read or written is negative.
 //
 // # Limitations
 //
 //   - Symlinks are not supported (mode can be set, but not followed).
-//   - File permissions (MapFile.Mode) are metadata only and not enforced.
-//     Use ErrorInjector to simulate permission errors explicitly.
+//   - File permissions (MapFile.Mode) are metadata only. The package does
+//     not enforce them. Use ErrorInjector to simulate permission errors
+//     explicitly.
 //   - Path cleaning uses lexical processing only (no filesystem queries).
-//   - Operations on open files may succeed even if the file is removed from the MockFS internal map
-//     (matching real filesystem behavior).
-//   - This package is not optimized for large filesystems.
-//   - ReadFile on a directory returns empty data without error (matches MapFS behaviour).
-//     Use Stat or Open+ReadDir to distinguish directories from empty files.
+//   - Operations on open files may succeed even if the file is removed from
+//     the MockFS internal map. This matches real filesystem behavior.
+//   - This package is not optimized for large filesystems: ReadDir scans the
+//     entire file map on every call (O(n) in total file count). See
+//     DECISIONS.md ("collectDirEntries stays O(n)").
+//   - ReadFile on a directory returns empty data without error (matches
+//     MapFS behaviour). Use Stat or Open+ReadDir to distinguish directories
+//     from empty files.
 //
 // # Concurrency
 //
@@ -289,30 +296,31 @@
 //   - Perform operations on the same filesystem
 //   - Modify the filesystem structure (add/remove files)
 //
-// Each file handle clones the latency simulator on Open(), ensuring independent
-// Once() state even when multiple files are opened concurrently.
+// Each file handle clones the latency simulator on Open(). This gives each
+// handle independent Once() state, even when multiple files open
+// concurrently.
 //
 // Note: Like real filesystems, concurrent modifications and reads may produce
 // non-deterministic ordering. Use synchronization in tests if order matters.
 //
-// Locks that could be held across a simulated-latency sleep (LatencySimulator's
-// internal serialization and each MockFile's per-handle lock) use channel-based
-// tickets rather than sync.Mutex, so combining configured latency with concurrent
-// access — including inside testing/synctest — does not deadlock.
+// Locks that could be held across a simulated-latency sleep use channel-based
+// tickets, not sync.Mutex. This applies to LatencySimulator's internal
+// serialization and each MockFile's per-handle lock. As a result, combining
+// configured latency with concurrent access does not deadlock, including
+// inside testing/synctest.
 //
 // # Advanced Usage
 //
-// For advanced patterns including:
+// USAGE.md covers advanced patterns, including:
 //   - Testing error recovery with retries
 //   - Testing timeout handling
 //   - Testing concurrent access
 //   - Dependency injection patterns
 //   - Performance testing strategies
 //
-// See the USAGE.md file in the repository: https://github.com/balinomad/go-mockfs/blob/v2/USAGE.md
-//
 // # Migration from v1
 //
-// If upgrading from v1, see MIGRATION-v1-to-v2.md for a comprehensive migration guide:
+// If you upgrade from v1, see MIGRATION-v1-to-v2.md for a comprehensive
+// migration guide:
 // https://github.com/balinomad/go-mockfs/blob/v2/MIGRATION-v1-to-v2.md
 package mockfs

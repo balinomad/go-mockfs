@@ -217,7 +217,7 @@ func TestConcurrentWriteRace(t *testing.T) {
 
 ### Abstracting Filesystem Operations
 
-When testing code that uses `os` package functions directly:
+When you test code that uses `os` package functions directly:
 
 ```go
 // Define abstraction

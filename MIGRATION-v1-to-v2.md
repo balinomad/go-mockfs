@@ -91,7 +91,7 @@ _Version 2.0.0_ represents a major architectural redesign of the `mockfs` librar
 **_v2_ Architecture:**
 
 - Uses `MapFile` for file storage (not embedded `fstest.MapFS`)
-- `MockFile` is a full implementation managing its own state, data, and position
+- `MockFile` is a full implementation that manages its own state, data, and position
 - Error injection via `ErrorRule` with `PathMatcher` interface hierarchy (Exact/Glob/Regexp/Wildcard matchers)
 - Stats exposed via immutable `Stats` interface with separate `StatsRecorder` for mutation
 - Separate stats tracking for filesystem-level vs file-handle-level operations
@@ -228,11 +228,11 @@ func (m *MockFS) Stats() Stats {
 
 **Impact:**
 
-- _v2_ stats are immutable snapshots, enabling safe concurrent reads
+- _v2_ stats are immutable snapshots. This enables safe concurrent reads
 - Success/failure tracking added
 - Byte counters added for Read/Write operations
 - Stats comparison via `Delta()` and `Equal()`
-- Fluent assertions via `Expect()`, returning a `StatsAssertion` for use in tests
+- Fluent assertions via `Expect()`, which returns a `StatsAssertion` for use in tests
 - Separate tracking: `MockFS.Stats()` for filesystem ops, `(*MockFile).Stats()` for file-handle ops
 
 ### Error Injection Architecture
@@ -298,7 +298,7 @@ type ErrorInjector interface {
 - Cross-operation helpers (`AddExactForAllOps`, `AddGlobForAllOps`, etc.)
 - `CloneForSub()` enables automatic rule adjustment for sub-filesystems
 - `ErrorInjector` interface enables custom implementations and testing
-- `AddExact`, `AddAll`, `AddExactForAllOps`, and `AddAllForAllOps` return `error` (invalid `after` values are reported rather than silently accepted); `AddGlob`, `AddRegexp`, and their `*ForAllOps` variants already returned `error` for a malformed pattern and now also report invalid `after` values
+- `AddExact`, `AddAll`, `AddExactForAllOps`, and `AddAllForAllOps` return `error` (invalid `after` values are reported rather than silently accepted). `AddGlob`, `AddRegexp`, and their `*ForAllOps` variants already returned `error` for a malformed pattern, and now also report invalid `after` values
 
 ### Latency Simulation
 
@@ -335,7 +335,7 @@ func OnceAsync() SimOpt  // Both Once and Async
 
 - _v2_ latency is per-file-handle with independent `Once()` state
 - `Async()` mode enables non-serialized I/O simulation
-- `Clone()` gives each file handle independent tracking while preserving duration config
+- `Clone()` gives each file handle independent tracking. It preserves the duration configuration
 - `Reset()` clears `Once()` state (automatically called on file close)
 
 ### WritableFS Interface
@@ -420,7 +420,7 @@ These methods were removed from `MockFS`:
 
 ### Convenience Methods
 
-_v2_ provides convenience methods directly on `MockFS` that wrap `ErrorInjector()` calls. These replace _v1_'s `Add*Error` methods while retaining the same behavior.
+_v2_ provides convenience methods directly on `MockFS` that wrap `ErrorInjector()` calls. These replace _v1_'s `Add*Error` methods. They retain the same behavior.
 
 | _v1_ Method                        | _v2_ Equivalent               |
 | ---------------------------------- | ----------------------------- |
@@ -1046,7 +1046,7 @@ injector.Clear()
 
 ### Standalone MockFile Constructors
 
-_v2_ provides constructors for creating `MockFile` instances without requiring a `MockFS` context, enabling easier unit testing of functions that accept `io.Reader`, `io.Writer`, or `io.ReadWriter`.
+_v2_ provides constructors for creating `MockFile` instances without requiring a `MockFS` context. This enables easier unit testing of functions that accept `io.Reader`, `io.Writer`, or `io.ReadWriter`.
 
 ```go
 // From string content
@@ -1556,7 +1556,7 @@ func TestSubFilesystem(t *testing.T) {
 
 ### Documentation
 
-- [ ] Update code comments referencing old API names
+- [ ] Update code comments that reference old API names
 - [ ] Update examples in documentation
 - [ ] Note any breaking changes in CHANGELOG or release notes
 
