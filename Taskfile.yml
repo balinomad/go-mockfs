@@ -1,0 +1,89 @@
+# Tool installation:
+#   go install github.com/go-task/task/v3/cmd/task@latest
+#
+# Examples:
+#
+# Execute the full test suite (clears screen, bypasses cache, shuffles tests, verbose output)
+#   task test:full
+#
+# Pass additional go test flags dynamically (e.g., target a specific test)
+#   task test:full -- -run TestAPIRoute
+
+version: "3"
+
+vars:
+  TIMEOUT: 30s
+  COVER_DIR: .cover
+
+tasks:
+  setup:
+    desc: Install necessary toolchain dependencies
+    cmds:
+      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - go install golang.org/x/vuln/cmd/govulncheck@latest
+
+  tidy:
+    desc: Clean and tidy dependencies
+    cmds:
+      - go mod tidy
+
+  upgrade:
+    desc: Upgrade all dependencies
+    cmds:
+      - go get -u ./...
+      - go mod tidy
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  vuln:
+    desc: Run govulncheck
+    cmds:
+      - govulncheck ./...
+
+  build:
+    desc: Build the project
+    cmds:
+      - go build ./...
+
+  test:
+    desc: Run standard tests
+    cmds:
+      - go test -race -timeout {{.TIMEOUT}} ./...
+
+  test:full:
+    desc: Run tests with no cache, shuffle, and verbose output
+    cmds:
+      - go test -race -v -count=1 -shuffle=on -timeout {{.TIMEOUT}} ./...
+
+  bench:
+    desc: Run benchmarks
+    cmds:
+      - go test -bench . -benchmem -run ^$ -timeout {{.TIMEOUT}} ./...
+
+  cover:
+    desc: Run tests, print summary, and generate HTML coverage report
+    silent: true
+    cmds:
+      - mkdir -p {{.COVER_DIR}}
+      - rm -f {{.COVER_DIR}}/coverage.txt {{.COVER_DIR}}/coverage.html
+      - go test -race -covermode=atomic -coverprofile={{.COVER_DIR}}/coverage.txt ./...
+      - go tool cover -func={{.COVER_DIR}}/coverage.txt
+      - go tool cover -html={{.COVER_DIR}}/coverage.txt -o {{.COVER_DIR}}/coverage.html
+      - echo "HTML report generated at {{.COVER_DIR}}/coverage.html"
+
+  examples:
+    desc: Run example tests
+    cmds:
+      - go test -v -run Example ./...
+
+  check:
+    desc: Run the complete CI/CD pipeline
+    cmds:
+      - task: upgrade
+      - task: build
+      - task: lint
+      - task: vuln
+      - task: test:full
