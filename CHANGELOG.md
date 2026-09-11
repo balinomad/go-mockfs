@@ -4,7 +4,7 @@ All notable changes to `github.com/balinomad/go-mockfs` are documented here, new
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [2.0.0-rc.3] — Unreleased
+## [2.0.0] — 2026-09-12
 
 Stabilization release: breaking API corrections, a full audit of the panic/error boundary, and bug fixes from an API/documentation audit. Several methods changed return type outright, not just gained one. This release also added five new `Must*` constructors and a new `ErrUsage` sentinel.
 
@@ -127,7 +127,7 @@ This release refactored complex functions and unit tests for readability. It mad
 
 Initial release.
 
-[2.0.0-rc.3]: https://github.com/balinomad/go-mockfs/compare/v2.0.0-rc.2...v2.0.0-rc.3
+[2.0.0]: https://github.com/balinomad/go-mockfs/compare/v2.0.0-rc.2...v2.0.0
 [2.0.0-rc.2]: https://github.com/balinomad/go-mockfs/compare/v2.0.0-rc.1...v2.0.0-rc.2
 [2.0.0-rc.1]: https://github.com/balinomad/go-mockfs/compare/v1.0.2...v2.0.0-rc.1
 [1.0.2]: https://github.com/balinomad/go-mockfs/compare/v1.0.1...v1.0.2
