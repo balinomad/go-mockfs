@@ -104,6 +104,8 @@ type ErrorRule struct {
 //     calls before the error behaviour activates. Returns an error wrapping ErrUsage if after is
 //     negative for these modes. Ignored for ErrorModeAlways and ErrorModeOnce.
 //   - matchers - an optional list of path matchers. If not provided, the rule applies to no paths.
+//
+// Use MustNewErrorRule to panic instead.
 func NewErrorRule(err error, mode ErrorMode, after int, matchers ...PathMatcher) (*ErrorRule, error) {
 	afterN, validationErr := validateModeAndAfter(mode, after)
 	if validationErr != nil {
@@ -111,6 +113,16 @@ func NewErrorRule(err error, mode ErrorMode, after int, matchers ...PathMatcher)
 	}
 
 	return newValidatedErrorRule(err, mode, afterN, matchers...), nil
+}
+
+// MustNewErrorRule is like NewErrorRule but panics if construction fails.
+func MustNewErrorRule(err error, mode ErrorMode, after int, matchers ...PathMatcher) *ErrorRule {
+	rule, validationErr := NewErrorRule(err, mode, after, matchers...)
+	if validationErr != nil {
+		//nolint:forbidigo // Must* panic is intentional; see doc.go Panic Policy.
+		panic(validationErr)
+	}
+	return rule
 }
 
 // newValidatedErrorRule constructs an ErrorRule directly from an already-validated afterN.

@@ -73,10 +73,11 @@ type RegexpMatcher struct {
 }
 
 // NewRegexpMatcher creates a matcher for a regular expression.
+// Returns an error wrapping ErrUsage if the pattern fails to compile.
 func NewRegexpMatcher(pattern string) (*RegexpMatcher, error) {
 	r, err := regexp.Compile(pattern)
 	if err != nil {
-		return nil, fmt.Errorf("mockfs: compile regexp pattern %q: %w", pattern, err)
+		return nil, fmt.Errorf("mockfs: %w: compile regexp pattern %q: %w", ErrUsage, pattern, err)
 	}
 	return &RegexpMatcher{re: r}, nil
 }
@@ -136,11 +137,11 @@ type GlobMatcher struct {
 }
 
 // NewGlobMatcher creates a matcher for a glob pattern.
-// Returns path.ErrBadPattern if the pattern is malformed.
+// Returns an error wrapping ErrUsage and path.ErrBadPattern if the pattern is malformed.
 func NewGlobMatcher(pattern string) (*GlobMatcher, error) {
 	// Validate the pattern
 	if _, err := path.Match(pattern, ""); errors.Is(err, path.ErrBadPattern) {
-		return nil, path.ErrBadPattern
+		return nil, fmt.Errorf("mockfs: %w: %w", ErrUsage, path.ErrBadPattern)
 	}
 	return &GlobMatcher{pattern: pattern}, nil
 }

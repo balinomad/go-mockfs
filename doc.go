@@ -252,26 +252,30 @@
 //     errors.Is(err, mockfs.ErrUsage).
 //
 //     [NewMockFS], [NewMockFile], [NewLatencySimulator],
-//     [NewLatencySimulatorPerOp], and [NewFileInfo] each have a Must*
-//     counterpart: [MustNewMockFS], [MustNewMockFile],
-//     [MustNewLatencySimulator], [MustNewLatencySimulatorPerOp], and
-//     [MustNewFileInfo]. A Must* function panics with the same error instead
-//     of returning it. This follows the standard library's Must convention,
-//     for example [regexp.MustCompile] and [template.Must]. Prefer Must* for
-//     ordinary test setup. A usage error there is a bug in the test itself.
-//     A panic with a full stack trace is faster to diagnose than an error
-//     return the test forgets to check. When the caller genuinely needs to
-//     handle the failure, use the plain form. For example, use it when
-//     building a MockFS from configuration that isn't a compile-time
-//     constant.
+//     [NewLatencySimulatorPerOp], [NewFileInfo], and [NewErrorRule] each
+//     have a Must* counterpart: [MustNewMockFS], [MustNewMockFile],
+//     [MustNewLatencySimulator], [MustNewLatencySimulatorPerOp],
+//     [MustNewFileInfo], and [MustNewErrorRule]. A Must* function panics
+//     with the same error instead of returning it. This follows the standard
+//     library's Must convention, for example [regexp.MustCompile] and
+//     [template.Must]. Prefer Must* for ordinary test setup. A usage error
+//     there is a bug in the test itself. A panic with a full stack trace is
+//     faster to diagnose than an error return the test forgets to check.
+//     When the caller genuinely needs to handle the failure, use the plain form.
+//     For example, use it when building a MockFS from configuration that
+//     isn't a compile-time constant.
 //
 //   - Internal invariants — conditions unreachable through the public API.
 //     These indicate a bug in mockfs itself, not the caller. These always
-//     panic, with no error-returning form:
-//     [StatsRecorder.Record]: operation constant is out of range.
-//     [StatsRecorder.Set]: operation is out of range, failures is negative,
-//     or failures exceeds total.
-//     [StatsRecorder.SetBytes]: read or written is negative.
+//     panic, with no error-returning form. Two shapes recur: a method that
+//     indexes internal state by an Operation value receives one outside the
+//     valid range (for example [StatsRecorder.Record], [StatsRecorder.Set],
+//     [StatsRecorder.SetBytes], and the Count-family accessors on both
+//     StatsRecorder and a Stats snapshot); or a switch on an internal enum
+//     (write mode, error mode) reaches its default case because
+//     construction should already have validated the value. This describes
+//     the category; it is not an exhaustive list of call sites. Grep the
+//     source for panic( to find every one.
 //
 // # Limitations
 //

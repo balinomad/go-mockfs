@@ -273,6 +273,27 @@ func TestErrorRule_Validation(t *testing.T) {
 	})
 }
 
+// TestMustNewErrorRule_Panic mirrors TestErrorRule_Validation's cases,
+// verifying MustNewErrorRule panics under the same conditions NewErrorRule
+// returns an error for.
+func TestMustNewErrorRule_Panic(t *testing.T) {
+	t.Parallel()
+
+	t.Run("invalid mode", func(t *testing.T) {
+		t.Parallel()
+		requirePanic(t, func() {
+			mockfs.MustNewErrorRule(mockfs.ErrNotExist, mockfs.ErrorMode(999), 0, mockfs.NewWildcardMatcher())
+		}, "MustNewErrorRule() invalid mode")
+	})
+
+	t.Run("negative after", func(t *testing.T) {
+		t.Parallel()
+		requirePanic(t, func() {
+			mockfs.MustNewErrorRule(mockfs.ErrNotExist, mockfs.ErrorModeAfterSuccesses, -1)
+		}, "MustNewErrorRule() negative after")
+	})
+}
+
 // TestErrorRule_CloneForSub tests the CloneForSub method.
 func TestErrorRule_CloneForSub(t *testing.T) {
 	t.Parallel()
