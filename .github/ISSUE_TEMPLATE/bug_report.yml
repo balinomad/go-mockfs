@@ -3,6 +3,14 @@ description: Report a defect or unexpected behavior.
 title: "[Bug]: "
 labels: ["bug"]
 body:
+  - type: checkboxes
+    id: duplicate-check
+    attributes:
+      label: Existing Issues
+      description: Please check before filing.
+      options:
+        - label: I searched open and closed issues and did not find this already reported.
+          required: true
   - type: textarea
     id: description
     attributes:
@@ -28,12 +36,55 @@ body:
     validations:
       required: true
   - type: textarea
-    id: environment
+    id: actual
     attributes:
-      label: Environment
-      description: Provide your runtime and infrastructure details.
-      value: |
-        - **OS**: <!-- TODO: Add OS -->
-        - **Runtime**: <!-- TODO: Add Go version -->
+      label: Actual Behavior
+      description: What actually happened instead.
     validations:
       required: true
+  - type: dropdown
+    id: version
+    attributes:
+      label: Version
+      description: Which line of the module are you using?
+      options:
+        - v2.x (current)
+        - v1.x (legacy)
+        - master (unreleased)
+      default: 0
+    validations:
+      required: true
+  - type: input
+    id: version-detail
+    attributes:
+      label: Exact Version or Commit
+      description: Tag, release, or commit SHA.
+      placeholder: "v2.0.0, v1.0.2, or master@abc1234"
+    validations:
+      required: true
+  - type: input
+    id: go-version
+    attributes:
+      label: Go Version
+      description: Output of `go version`.
+      placeholder: "go1.25.11 linux/amd64"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: Matches the CI matrix in go.yml.
+      options:
+        - Linux (ubuntu-latest)
+        - macOS (macos-latest)
+        - Windows (windows-latest)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: minimal-repro
+    attributes:
+      label: Minimal Reproduction
+      description: A minimal, compilable Go snippet that reproduces the bug, if you have one.
+      render: go

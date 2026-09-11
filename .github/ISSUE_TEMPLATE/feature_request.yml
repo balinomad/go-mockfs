@@ -3,6 +3,14 @@ description: Suggest an idea or enhancement.
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
+  - type: checkboxes
+    id: decisions-check
+    attributes:
+      label: Prior Art
+      description: Please check before filing.
+      options:
+        - label: I checked DECISIONS.md and this is not a previously rejected design.
+          required: true
   - type: textarea
     id: problem
     attributes:
