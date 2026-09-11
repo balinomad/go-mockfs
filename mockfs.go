@@ -318,9 +318,9 @@ func MustNewMockFS(opts ...FsOption) *MockFS {
 // Stat returns file information for the given path.
 // It implements the fs.StatFS interface.
 // This is a filesystem-level operation that does not open the file.
-//
-//nolint:nonamedreturns // Deferred function is using the named returns.
-func (m *MockFS) Stat(name string) (fi fs.FileInfo, err error) {
+func (m *MockFS) Stat(name string) (fs.FileInfo, error) {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpStat, 0, err) }()
 
@@ -334,7 +334,8 @@ func (m *MockFS) Stat(name string) (fi fs.FileInfo, err error) {
 		basename = cleanName[idx+1:]
 	}
 
-	if err := m.injector.CheckAndApply(OpStat, cleanName); err != nil {
+	err = m.injector.CheckAndApply(OpStat, cleanName)
+	if err != nil {
 		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
 		return nil, err
 	}
@@ -346,7 +347,8 @@ func (m *MockFS) Stat(name string) (fi fs.FileInfo, err error) {
 	m.mu.RUnlock()
 
 	if !exists {
-		return nil, &fs.PathError{Op: OpStat.String(), Path: name, Err: fs.ErrNotExist}
+		err = &fs.PathError{Op: OpStat.String(), Path: name, Err: fs.ErrNotExist}
+		return nil, err
 	}
 
 	// Build FileInfo from MapFile
@@ -362,9 +364,9 @@ func (m *MockFS) Stat(name string) (fi fs.FileInfo, err error) {
 // It implements the fs.FS interface.
 // This is a filesystem-level operation. The returned MockFile handles file-level operations.
 // Use OpenMockFile to obtain the concrete *MockFile directly without a type assertion.
-//
-//nolint:nonamedreturns // Deferred function is using the named returns.
-func (m *MockFS) Open(name string) (f fs.File, err error) {
+func (m *MockFS) Open(name string) (fs.File, error) {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpOpen, 0, err) }()
 
@@ -373,7 +375,8 @@ func (m *MockFS) Open(name string) (f fs.File, err error) {
 		return nil, err
 	}
 
-	if err := m.injector.CheckAndApply(OpOpen, cleanName); err != nil {
+	err = m.injector.CheckAndApply(OpOpen, cleanName)
+	if err != nil {
 		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
 		return nil, err
 	}
@@ -385,7 +388,8 @@ func (m *MockFS) Open(name string) (f fs.File, err error) {
 	m.mu.RUnlock()
 
 	if !exists {
-		return nil, &fs.PathError{Op: OpOpen.String(), Path: name, Err: ErrNotExist}
+		err = &fs.PathError{Op: OpOpen.String(), Path: name, Err: ErrNotExist}
+		return nil, err
 	}
 
 	// Create ReadDir handler for directories
@@ -430,7 +434,12 @@ func (m *MockFS) OpenMockFile(name string) (*MockFile, error) {
 // It opens the file, reads it, and closes it.
 // Note: OpOpen is recorded by Open(), OpRead and OpClose by MockFile.
 //
-//nolint:nonamedreturns // Deferred function is using the named returns.
+// Named return required: the deferred close merges its own error into err
+// via errors.Join. A defer can only change what the caller receives by
+// assigning to a named return; an unnamed return is already fixed at the
+// return statement.
+//
+//nolint:nonamedreturns // Deferred function is writing the named returns.
 func (m *MockFS) ReadFile(name string) (data []byte, err error) {
 	cleanName, err := m.validateAndCleanPath(name, OpRead)
 	if err != nil {
@@ -461,9 +470,9 @@ func (m *MockFS) ReadFile(name string) (data []byte, err error) {
 
 // ReadDir implements the fs.ReadDirFS interface.
 // This is a filesystem-level operation.
-//
-//nolint:nonamedreturns // Deferred function is using the named returns.
-func (m *MockFS) ReadDir(name string) (de []fs.DirEntry, err error) {
+func (m *MockFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	var err error
+
 	// Record the result of this operation on exit
 	defer func() { m.stats.Record(OpReadDir, 0, err) }()
 
@@ -472,7 +481,8 @@ func (m *MockFS) ReadDir(name string) (de []fs.DirEntry, err error) {
 		return nil, err
 	}
 
-	if err := m.injector.CheckAndApply(OpReadDir, cleanName); err != nil {
+	err = m.injector.CheckAndApply(OpReadDir, cleanName)
+	if err != nil {
 		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
 		return nil, err
 	}
@@ -484,16 +494,19 @@ func (m *MockFS) ReadDir(name string) (de []fs.DirEntry, err error) {
 	m.mu.RUnlock()
 
 	if !exists {
-		return nil, &fs.PathError{Op: OpReadDir.String(), Path: name, Err: ErrNotExist}
+		err = &fs.PathError{Op: OpReadDir.String(), Path: name, Err: ErrNotExist}
+		return nil, err
 	}
 
 	if !mapFile.Mode.IsDir() {
-		return nil, &fs.PathError{Op: OpReadDir.String(), Path: name, Err: ErrNotDir}
+		err = &fs.PathError{Op: OpReadDir.String(), Path: name, Err: ErrNotDir}
+		return nil, err
 	}
 
 	// Use the same handler logic
 	handler := m.createReadDirHandler(cleanName)
-	return handler(-1)
+	de, err := handler(-1)
+	return de, err
 }
 
 // Sub implements fs.SubFS to return a sub-filesystem.
@@ -876,9 +889,12 @@ func (m *MockFS) Mkdir(dirPath string, perm FileMode) error {
 	}
 	// Disallow "." for explicit Mkdir
 	if cleanPath == "." {
-		return &fs.PathError{Op: OpMkdir.String(), Path: dirPath, Err: ErrInvalid}
+		err = &fs.PathError{Op: OpMkdir.String(), Path: dirPath, Err: ErrInvalid}
+		return err
 	}
-	if err := m.injector.CheckAndApply(OpMkdir, cleanPath); err != nil {
+
+	err = m.injector.CheckAndApply(OpMkdir, cleanPath)
+	if err != nil {
 		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
 		return err
 	}
@@ -888,7 +904,8 @@ func (m *MockFS) Mkdir(dirPath string, perm FileMode) error {
 	defer m.mu.Unlock()
 
 	// Logic Layer
-	return m.mkdir(OpMkdir.String(), cleanPath, perm)
+	err = m.mkdir(OpMkdir.String(), cleanPath, perm)
+	return err
 }
 
 // MkdirAll creates a directory path and all parents if needed.
@@ -903,7 +920,9 @@ func (m *MockFS) MkdirAll(dirPath string, perm FileMode) error {
 	if err != nil {
 		return err
 	}
-	if err := m.injector.CheckAndApply(OpMkdirAll, cleanPath); err != nil {
+
+	err = m.injector.CheckAndApply(OpMkdirAll, cleanPath)
+	if err != nil {
 		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
 		return err
 	}
@@ -913,7 +932,8 @@ func (m *MockFS) MkdirAll(dirPath string, perm FileMode) error {
 	defer m.mu.Unlock()
 
 	// Logic Layer
-	return m.mkdirAll(OpMkdirAll.String(), cleanPath, perm)
+	err = m.mkdirAll(OpMkdirAll.String(), cleanPath, perm)
+	return err
 }
 
 // Remove removes a file or directory from the filesystem.
@@ -929,7 +949,8 @@ func (m *MockFS) Remove(filePath string) error {
 		return err
 	}
 
-	if err := m.injector.CheckAndApply(OpRemove, cleanPath); err != nil {
+	err = m.injector.CheckAndApply(OpRemove, cleanPath)
+	if err != nil {
 		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
 		return err
 	}
@@ -941,7 +962,8 @@ func (m *MockFS) Remove(filePath string) error {
 
 	file, exists := m.files[cleanPath]
 	if !exists {
-		return &fs.PathError{Op: "Remove", Path: filePath, Err: ErrNotExist}
+		err = &fs.PathError{Op: "Remove", Path: filePath, Err: ErrNotExist}
+		return err
 	}
 
 	// If it's a directory, check it's empty
@@ -949,7 +971,8 @@ func (m *MockFS) Remove(filePath string) error {
 		prefix := cleanPath + "/"
 		for p := range m.files {
 			if strings.HasPrefix(p, prefix) {
-				return &fs.PathError{Op: "Remove", Path: filePath, Err: ErrNotEmpty}
+				err = &fs.PathError{Op: "Remove", Path: filePath, Err: ErrNotEmpty}
+				return err
 			}
 		}
 	}
@@ -970,7 +993,8 @@ func (m *MockFS) RemoveAll(filePath string) error {
 		return err
 	}
 
-	if err := m.injector.CheckAndApply(OpRemoveAll, cleanPath); err != nil {
+	err = m.injector.CheckAndApply(OpRemoveAll, cleanPath)
+	if err != nil {
 		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
 		return err
 	}
@@ -1009,7 +1033,8 @@ func (m *MockFS) Rename(oldpath, newpath string) error {
 		return err
 	}
 
-	if err := m.injector.CheckAndApply(OpRename, cleanOld); err != nil {
+	err = m.injector.CheckAndApply(OpRename, cleanOld)
+	if err != nil {
 		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
 		return err
 	}
@@ -1021,7 +1046,8 @@ func (m *MockFS) Rename(oldpath, newpath string) error {
 
 	oldFile, exists := m.files[cleanOld]
 	if !exists {
-		return &fs.PathError{Op: "Rename", Path: oldpath, Err: ErrNotExist}
+		err = &fs.PathError{Op: "Rename", Path: oldpath, Err: ErrNotExist}
+		return err
 	}
 
 	// Copy to new location
@@ -1069,7 +1095,8 @@ func (m *MockFS) WriteFile(filePath string, data []byte, perm FileMode) error {
 		return err
 	}
 
-	if err := m.injector.CheckAndApply(OpWrite, cleanPath); err != nil {
+	err = m.injector.CheckAndApply(OpWrite, cleanPath)
+	if err != nil {
 		//nolint:wrapcheck // returned verbatim: injected/sentinel errors must match exactly for errors.Is and the package's runnable Example tests
 		return err
 	}
@@ -1081,14 +1108,16 @@ func (m *MockFS) WriteFile(filePath string, data []byte, perm FileMode) error {
 
 	// Check write mode restrictions
 	if m.writeMode == writeModeReadOnly {
-		return &fs.PathError{Op: "Write", Path: filePath, Err: ErrPermission}
+		err = &fs.PathError{Op: "Write", Path: filePath, Err: ErrPermission}
+		return err
 	}
 
 	// Find the existing file or create if it doesn't exist
 	existing, ok := m.files[cleanPath]
 	if !ok {
 		if !m.createIfMissing {
-			return &fs.PathError{Op: "Write", Path: filePath, Err: ErrNotExist}
+			err = &fs.PathError{Op: "Write", Path: filePath, Err: ErrNotExist}
+			return err
 		}
 
 		m.files[cleanPath] = &fstest.MapFile{
@@ -1370,9 +1399,14 @@ func (m *MockFS) validateAndCleanPath(p string, op Operation) (string, error) {
 // toBytes converts a variety of input types into a byte slice.
 // It never panics and never returns nil if error is nil, but may return an empty slice.
 //
-//nolint:nonamedreturns // Named return values are used in the deferred function.
+// Named return required: the deferred recover() overwrites data and err to
+// convert a recovered panic into this function's normal return values. A
+// defer can only change what the caller receives by assigning to a named
+// return; an unnamed return is already fixed at the return statement.
+//
+//nolint:nonamedreturns // Deferred function is writing the named returns.
 func toBytes(content any) (data []byte, err error) {
-	// Recover from panics to wrap with type information before re-panicking in caller.
+	// Recover from panics and convert the return values to an error carrying type information.
 	defer func() {
 		if r := recover(); r != nil {
 			data = []byte{}
