@@ -82,8 +82,13 @@ tasks:
   check:
     desc: Run the complete CI/CD pipeline
     cmds:
-      - task: upgrade
       - task: build
       - task: lint
       - task: vuln
-      - task: test:full
+      - go test -race -count=1 -shuffle=on -timeout {{.TIMEOUT}} ./...
+
+  check:upgrade:
+    desc: Upgrade all dependencies and run the complete CI/CD pipeline
+    cmds:
+      - task: upgrade
+      - task: check
